@@ -1,0 +1,55 @@
+SMS PROJECT — TASK LOG
+=======================
+Purpose: Claude Code appends ONE entry here after completing and testing each task.
+This is how the project owner (non-technical review) tracks progress and verifies
+work manually without re-reading all the code.
+
+RULES FOR CLAUDE CODE:
+- Append a new entry at the BOTTOM of this file after finishing a task. Do not edit or delete previous entries.
+- Use the exact format below for every entry.
+- "How to test manually" must be concrete steps the project owner can follow themselves
+  (exact commands to run, exact URL/screen to open, exact button to click, and what
+  result confirms success) — not just "check if it works."
+- If automated tests were run, state the command used and the result (pass/fail counts).
+- If something could NOT be fully tested (e.g. requires a live Paystack key), say so explicitly
+  and explain what the owner needs to do to test it themselves.
+
+ENTRY FORMAT:
+-------------
+[YYYY-MM-DD HH:MM] Task: <short task name>
+Files changed/added: <list>
+What was done: <2-4 sentences, plain language, no jargon dump>
+Automated tests run: <command + result, or "none">
+How to test manually:
+  1. <step>
+  2. <step>
+  3. <expected result>
+Known issues / follow-ups: <or "none">
+-------------------------------------------
+
+=======================
+LOG ENTRIES BELOW
+=======================
+
+[2026-09-22 18:18] Task: Initial project scaffold (Vite + React + Supabase + routing)
+Files changed/added: package.json, package-lock.json, index.html, vite.config.js, .oxlintrc.json, .gitignore, .env.local (not committed), README.md (Vite default), public/favicon.svg, src/main.jsx, src/App.jsx, src/index.css, src/lib/supabaseClient.js, src/lib/roles.js, src/context/AuthContext.js, src/context/AuthProvider.jsx, src/hooks/useAuth.js, src/components/ProtectedRoute.jsx, src/pages/Login.jsx, src/pages/AdminDashboard.jsx, src/pages/TeacherDashboard.jsx, src/pages/StudentDashboard.jsx, src/pages/ParentDashboard.jsx, src/pages/NotFound.jsx, test.txt
+What was done: Created a React (JavaScript) project with Vite and installed Supabase and React Router. Set up the src/ folders (components, pages, lib, hooks, context), a Supabase connection file that reads the keys from .env.local, and placeholder pages for login and the four role dashboards. The dashboard pages are already "guarded": anyone not signed in with the right role is sent back to /login. Because sign-in is not built yet, nobody is signed in, so for now every dashboard link redirects to the login page — this is expected. Git was initialised and everything was committed as "Initial scaffold".
+Automated tests run: No test suite exists yet. Checks run: "npm run lint" (0 problems), "npm run build" (built successfully), "npm run dev" (server started, page title "Jessiikong High School" served, all source files compiled with no errors).
+How to test manually:
+  1. Open a terminal in the project folder (C:\Users\HP\School-Management-System) and run:  npm run dev
+  2. The terminal should print "VITE ... ready" and a Local address such as http://localhost:5173/. Open that exact address in your browser.
+     (If another project is already running on 5173, Vite will pick the next free port, e.g. 5174 — use whichever address the terminal prints.)
+  3. Expected: the browser tab title reads "Jessiikong High School" and the page shows the heading "Jessiikong High School — Sign in" with the text "Placeholder page." The address bar will show /login.
+  4. In the address bar, change the ending to /admin (then /teacher, /student, /parent) and press Enter. Expected: each one sends you straight back to /login, because no one is signed in yet. This proves the role guards work.
+  5. Change the ending to /something-random and press Enter. Expected: a "Page not found" heading.
+  6. Press F12 and open the Console tab. Expected: no red errors.
+  7. In File Explorer, open the src folder. Expected folders: components, context, hooks, lib, pages. Inside lib you should see supabaseClient.js.
+  8. Open .env.local in the project root. Expected: two lines, VITE_SUPABASE_URL= and VITE_SUPABASE_ANON_KEY=. Paste your Supabase values after the = signs and save.
+  9. In the terminal run:  git log --oneline   Expected: one commit named "Initial scaffold". Run:  git status   Expected: .env.local is NOT listed (it is ignored, so your keys never get committed).
+  10. Stop the server with Ctrl + C in the terminal.
+Known issues / follow-ups:
+  - Supabase connection was NOT tested live because .env.local has no real keys yet. Nothing loads supabaseClient.js yet, so the app runs without keys; once the auth task starts using it, the app will show a clear "Missing Supabase env vars" error until .env.local is filled in. Restart "npm run dev" after editing .env.local.
+  - The dashboards can't be seen until sign-in and roles are built (next tasks). Only the login page is visible for now.
+  - README.md is currently Vite's default; replace it with your project README.
+  - During testing, port 5173 was already used by another project on this computer (SettleNG), so the check used port 5180.
+-------------------------------------------
