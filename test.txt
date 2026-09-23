@@ -929,3 +929,37 @@ Known issues / follow-ups:
   OTHER: README.md currently has some text at the end that looks like an instruction pasted into the file by mistake. It starts "Add this section to README.md, right before '## Next Steps'..." and ends "Confirm once added.". I left README.md exactly as it is. See my message in the chat.
   Nothing has been committed to git yet.
 -------------------------------------------
+
+[2026-09-23 23:14] Task: README.md clean-up — remove pasted instruction, add "Follow-ups explicitly deferred" section
+Files changed/added: README.md (only this file; no code or database changes)
+What was done: Text had been pasted into the end of README.md by mistake. It was a chat instruction, not project content. I removed it, then added a proper "Follow-ups explicitly deferred (do not forget)" section in the right place, directly above "## Next Steps". Nothing else in the file was changed.
+  REMOVED (9 lines that had been appended after the file's real last line, "Each step will be handed to Claude Code as a scoped, self-contained prompt..."):
+      (blank line)
+      Add this section to README.md, right before "## Next Steps":
+      (blank line)
+      ## Follow-ups explicitly deferred (do not forget)
+      - **Admin attendance overview/dashboard**: ...        <- was in the wrong place (end of file)
+      - **Admin: Correct Attendance screen**: ...           <- was in the wrong place (end of file)
+      (blank line)
+      Don't change anything else in the file. Confirm once added.
+    So the file ends, as before the accidental paste, with the "Each step will be handed to Claude Code..." line.
+  ADDED (5 lines, directly after the "## Current Status" paragraph and right above "## Next Steps"):
+      ## Follow-ups explicitly deferred (do not forget)
+      - **Admin attendance overview/dashboard**: a school-wide attendance view for admins (e.g. today's attendance %, per-class/per-section summaries, alerts for chronic absentees) — deferred until the "real dashboards for all four roles" step. Only the teacher-facing attendance module exists so far.
+      - **Admin: Correct Attendance screen**: admins can currently only fix old/locked attendance records via Supabase's Table Editor directly (bypasses the 7-day window, subject-scoping rules, and audit logging). A proper in-app screen going through the normal rules is still needed.
+      - **Score edit window**: unlike attendance's 7-day rule, scores currently have no time limit within the current session — a teacher can edit any term's scores at any time. Decision deferred to be made alongside the report-card task (likely rule: locked once results are published, or N days after term end, admins exempt).
+      (blank line)
+    The first two bullets are the same as in the pasted text. The third ("Score edit window") is new, from your request.
+  The same request arrived twice. The second time I only re-checked the file and made no edit, so the section appears ONCE, not twice.
+Automated tests run: none (documentation only). Checks done instead:
+  - Searched README.md for "Add this section to README.md", "Confirm once added" and "Don't change anything else": 0 matches.
+  - "## Follow-ups explicitly deferred" appears exactly once, and "## Next Steps" exactly once, directly after it.
+  - Compared README.md with the version before the accidental paste (commit c9c0a17): the ONLY difference is the 5 added lines above.
+How to test manually:
+  1. Open README.md (e.g. in VS Code or on GitHub once committed).
+  2. Scroll to "## Current Status". Expected: right after its one-line paragraph comes "## Follow-ups explicitly deferred (do not forget)" with three bullets (Admin attendance overview/dashboard, Admin: Correct Attendance screen, Score edit window), and then "## Next Steps".
+  3. Scroll to the very end. Expected: the last line is "Each step will be handed to Claude Code as a scoped, self-contained prompt with full relevant context from this document.", with nothing after it. No "Add this section..." or "Confirm once added." text anywhere.
+  4. (Optional) In a terminal in the project folder:  git diff c9c0a17 -- README.md
+     Expected: only the 5 added lines of the new section show as additions (plus a note about the file's last line ending).
+Known issues / follow-ups: The commit before this one (348b99a) still contains the README with the stray text. This clean-up and this test.txt entry are NOT committed yet.
+-------------------------------------------

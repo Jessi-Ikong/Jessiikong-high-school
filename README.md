@@ -135,6 +135,11 @@ All access control is enforced at the database level via Postgres RLS policies, 
 ## Current Status
 Planning and schema design complete (see decisions above). Implementation has not yet started.
 
+## Follow-ups explicitly deferred (do not forget)
+- **Admin attendance overview/dashboard**: a school-wide attendance view for admins (e.g. today's attendance %, per-class/per-section summaries, alerts for chronic absentees) — deferred until the "real dashboards for all four roles" step. Only the teacher-facing attendance module exists so far.
+- **Admin: Correct Attendance screen**: admins can currently only fix old/locked attendance records via Supabase's Table Editor directly (bypasses the 7-day window, subject-scoping rules, and audit logging). A proper in-app screen going through the normal rules is still needed.
+- **Score edit window**: unlike attendance's 7-day rule, scores currently have no time limit within the current session — a teacher can edit any term's scores at any time. Decision deferred to be made alongside the report-card task (likely rule: locked once results are published, or N days after term end, admins exempt).
+
 ## Next Steps
 1. Database schema (tables + types) as Supabase migrations
 2. RLS policies
@@ -148,11 +153,3 @@ Planning and schema design complete (see decisions above). Implementation has no
 10. Parent/student dashboards
 
 Each step will be handed to Claude Code as a scoped, self-contained prompt with full relevant context from this document.
-
-Add this section to README.md, right before "## Next Steps":
-
-## Follow-ups explicitly deferred (do not forget)
-- **Admin attendance overview/dashboard**: a school-wide attendance view for admins (e.g. today's attendance %, per-class/per-section summaries, alerts for chronic absentees) — deferred until the "real dashboards for all four roles" step. Only the teacher-facing attendance module exists so far.
-- **Admin: Correct Attendance screen**: admins can currently only fix old/locked attendance records via Supabase's Table Editor directly (bypasses the 7-day window, subject-scoping rules, and audit logging). A proper in-app screen going through the normal rules is still needed.
-
-Don't change anything else in the file. Confirm once added.
