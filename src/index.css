@@ -667,3 +667,219 @@ select {
   padding: 0.3rem 0.6rem;
   font-size: 0.85rem;
 }
+
+/* ---------- Teacher portal ---------- */
+.portal-shell {
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+.portal-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #ffffff;
+  border-bottom: 1px solid #e4e7eb;
+}
+
+.portal-brand {
+  font-weight: 600;
+}
+
+.portal-nav {
+  display: flex;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.portal-nav a {
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  color: #1f2933;
+  text-decoration: none;
+}
+
+.portal-nav a.active {
+  background: #e3ebf6;
+  color: #1f4e8c;
+  font-weight: 600;
+}
+
+.portal-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.portal-content {
+  max-width: 900px;
+  padding: 1.5rem;
+}
+
+.portal-content h1 {
+  margin: 0 0 0.25rem;
+}
+
+@media (max-width: 700px) {
+  .portal-content {
+    padding: 1rem;
+  }
+}
+
+.badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.alert-info-plain {
+  background: #e8f1fb;
+  color: #1e3a5f;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+}
+
+.slot-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.slot-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem;
+  background: #ffffff;
+  border: 1px solid #e4e7eb;
+  border-left: 4px solid #d97706;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.slot-card:hover {
+  border-color: #1f4e8c;
+}
+
+.slot-card.is-marked {
+  border-left-color: #059669;
+}
+
+.slot-card .badge {
+  align-self: flex-start;
+}
+
+.slot-card-time {
+  font-size: 0.85rem;
+  color: #616e7c;
+}
+
+.slot-card-subject {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.slot-card-action {
+  margin-top: 0.25rem;
+  color: #1f4e8c;
+  font-weight: 500;
+}
+
+.roster-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.roster {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  background: #ffffff;
+  border: 1px solid #e4e7eb;
+  border-radius: 8px;
+}
+
+.roster li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid #e4e7eb;
+}
+
+.roster li:last-child {
+  border-bottom: none;
+}
+
+.roster li.is-unset {
+  background: #fffbea;
+}
+
+.roster-name {
+  font-weight: 500;
+}
+
+.status-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.status-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.status-option:has(input:checked) {
+  font-weight: 600;
+}
+
+.status-present:has(input:checked) {
+  background: #def7ec;
+  border-color: #059669;
+}
+
+.status-absent:has(input:checked) {
+  background: #fde8e8;
+  border-color: #b91c1c;
+}
+
+.status-late:has(input:checked) {
+  background: #fef3c7;
+  border-color: #d97706;
+}
+
+.status-excused:has(input:checked) {
+  background: #e8f1fb;
+  border-color: #1f4e8c;
+}

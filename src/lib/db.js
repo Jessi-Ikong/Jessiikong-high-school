@@ -34,6 +34,8 @@ export function friendlyDbError(error, messages = {}) {
       return messages.check ?? 'Some of the values are not allowed. Check the dates and numbers.'
     case '23503': // foreign_key_violation
       return messages.foreignKey ?? 'This is still used by other records, so it cannot be removed.'
+    case 'P0001': // raised by our own database rules, already plain language
+      return error.message
     case '42501': // insufficient_privilege (RLS)
     case 'NO_ROWS_CHANGED':
       return "Nothing was saved: your account isn't allowed to do this, or the item no longer exists. Refresh the page and try again."

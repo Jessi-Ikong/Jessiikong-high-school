@@ -15,7 +15,9 @@ import Timetable from './pages/admin/Timetable'
 import Staff from './pages/admin/Staff'
 import Students from './pages/admin/Students'
 import Parents from './pages/admin/Parents'
+import TeacherLayout from './components/TeacherLayout'
 import TeacherDashboard from './pages/TeacherDashboard'
+import MarkAttendance from './pages/teacher/MarkAttendance'
 import StudentDashboard from './pages/StudentDashboard'
 import ParentDashboard from './pages/ParentDashboard'
 import NotFound from './pages/NotFound'
@@ -44,7 +46,11 @@ export default function App() {
         </Route>
       </Route>
       <Route element={<ProtectedRoute allowedRoles={[ROLES.TEACHER]} />}>
-        <Route path="/teacher/*" element={<TeacherDashboard />} />
+        <Route path="/teacher" element={<TeacherLayout />}>
+          <Route index element={<TeacherDashboard />} />
+          <Route path="attendance/:slotId" element={<MarkAttendance />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
       </Route>
       <Route element={<ProtectedRoute allowedRoles={[ROLES.STUDENT]} />}>
         <Route path="/student/*" element={<StudentDashboard />} />

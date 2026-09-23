@@ -565,3 +565,161 @@ Known issues / follow-ups:
   - "Copy last term's timetable" and a whole-school teacher view would save admins time later.
   - Nothing has been committed to git yet.
 -------------------------------------------
+
+[2026-09-23 20:44] Task: Teacher attendance module (dashboard + marking), scoped by subject
+Files changed/added: supabase/migrations/20260923000012_attendance_by_subject.sql (new), supabase/manual_checks/attendance_rls_check.sql (new), src/pages/TeacherDashboard.jsx (rewritten), src/pages/teacher/MarkAttendance.jsx (new), src/components/TeacherLayout.jsx (new), src/lib/dates.js (new), src/lib/db.js, src/App.jsx, src/index.css
+What was done:
+  - Teacher dashboard ("Today's classes"): shows ONLY the signed-in teacher's classes for today in the current term, in period order. Each class is a card with subject, class/section and period/time, plus "Attendance marked (N students)" in green or "Attendance not marked yet" in amber. Every card opens the marking screen: unmarked ones to mark, marked ones to view or edit. Weekends, no current term, and today being outside the term each show a clear message.
+  - Marking screen (/teacher/attendance/<class id>):
+    - It first checks the class is really yours. If not, it says "This class isn't on your timetable" and shows nothing.
+    - Date picker: the last 4 dates this class met (right weekday, inside the term, never the future). It defaults to today when opened from the dashboard.
+    - Student list: ONLY students in that section this session who TAKE that subject (student_subjects), A–Z by last name.
+    - Each student has Present / Absent / Late / Excused, with nothing pre-selected on a new day. An already-marked day shows the saved values.
+    - "Mark all present" fills everyone in, and you can still change individuals afterwards.
+    - Save refuses if anyone is left unmarked (it names them). It then writes one row per student; saving again UPDATES those rows instead of adding more. A green confirmation shows, e.g. "Attendance saved for 3 students on 22 Sept 2026."
+  DATABASE / RLS CHANGES (migration 012):
+    1. Attendance rule (validate_attendance): a student's attendance can only be recorded for a class whose SUBJECT they take. Otherwise: "This student does not take Biology, so their attendance cannot be recorded for this class". Attendance for a FUTURE date is refused (using Nigerian time).
+    2. Teacher visibility (teacher_can_see_student): a teacher now sees a student only if they teach that student's section AND one of that student's own subjects. Before, they saw everyone in any section they taught. This closes the parallel-class gap flagged in the timetable task. It also narrows which students' parents a teacher can see.
+    3. Attendance RLS policies: reviewed, and NO change was needed. A teacher can only insert or update attendance for classes where they are the teacher. A record can't be moved onto someone else's class. Only admins can delete. marked_by is always set to whoever saved.
+  Also: the database's own plain-language error messages (like the one in point 1) are now shown to users as-is instead of "Something went wrong".
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully. Date helper checks (which dates can be picked, weekends, local midnight): all passed.
+  - Database test on a temporary local copy with all 12 migrations: 20 checks, 20 passed, 0 failed. Scenario: SS1 A has parallel Biology (teacher Bola) and Literature (teacher Lara) on Tuesday P2, plus Mathematics (teacher Musa) for everyone. Results:
+      Bola sees ONLY Ada (Biology) and Lara sees ONLY Ben (Literature), not the rest of the section. Musa (Maths, whole section) sees all his students.
+      Bola's dashboard lists only her own Tuesday class, and her roster = Ada only.
+      Marking Ada works, and marked_by = Bola. Saving again (present -> late) UPDATES the same row: still 1 record.
+      Recording Ben (Literature) or Chi (Maths only) in the Biology class is REJECTED by the database.
+      Bola recording attendance in Lara's Literature class, or in a Biology class in another section taught by someone else, is REJECTED by RLS. Changing Lara's records affects 0 rows, and moving her own record onto Lara's class is rejected.
+      Lara sees only her own record, not Bola's.
+      A future date and a wrong weekday are rejected. Students can't mark attendance and see only their own.
+  - All earlier suites re-run with migration 012: 62/62, 33/33, 28/28, 17/17 passed.
+  - The new manual check script was run locally for two teachers: someone else's class -> BLOCKED by row-level security, their own class -> ALLOWED, nothing left behind.
+  - Checked against your live Supabase project (read-only) that every query the two pages use is valid, including the "only students taking this subject" filter.
+  - NOT tested by me in the browser: this needs teacher logins (I don't sign in with anyone's password) and migration 012 applied. Please follow the steps below.
+How to test manually:
+  A) APPLY THE MIGRATION (or ask me to)
+    1. In a terminal in the project folder:
+         npx supabase db push --dry-run     (expected: only 20260923000012_attendance_by_subject.sql)
+         npx supabase db push               (type Y)
+       Until this is applied, the attendance LIST is already limited to the right students (the page filters it), but the database itself won't yet refuse wrong-subject attendance, and teachers can still see their whole section elsewhere.
+  B) SET UP TEST DATA (as admin; use Gmail "+" aliases as before)
+    2. Make sure a session and term are marked CURRENT, and that the term's dates include today.
+    3. Subjects: Mathematics, Biology, Literature.
+    4. Staff: you have "Test Teacher" (jessiikong11+jhs-teacher@gmail.com). Add a second teacher, e.g. "Second Teacher" with jessiikong11+jhs-teacher2@gmail.com. Accept that invite from your Gmail and set a password.
+    5. Students (JSS1 A, current session; they don't need to accept their invites):
+         Ada Biology  - tick Mathematics + Biology     (email jessiikong11+jhs-ada@gmail.com)
+         Ben Literature - tick Mathematics + Literature (jessiikong11+jhs-ben@gmail.com)
+         Chi Maths    - tick Mathematics only           (jessiikong11+jhs-chi@gmail.com)
+    6. Timetable (JSS1 A, current term), on TODAY's weekday:
+         Period 1: Biology — Test Teacher   AND   Literature — Second Teacher   (parallel classes in one cell)
+         Period 2: Mathematics — Second Teacher
+  C) EACH TEACHER SEES ONLY THEIR OWN CLASSES
+    7. Sign in as Test Teacher. Expected: "Today's classes" shows ONE card, "Biology — JSS1 A — Period 1", marked amber "Attendance not marked yet". No Literature or Mathematics card.
+    8. Sign out and sign in as Second Teacher. Expected: TWO cards, Literature (Period 1) and Mathematics (Period 2). No Biology card.
+  D) PARALLEL CLASS: EACH LIST SHOWS ONLY THAT SUBJECT'S STUDENTS
+    9. As Test Teacher, open the Biology card. Expected: the list shows ONLY Ada Biology, not Ben or Chi.
+    10. As Second Teacher, open Literature. Expected: ONLY Ben Literature. Open Mathematics. Expected: all three (Ada, Ben, Chi), in A–Z order by last name.
+  E) MARKING AND EDITING WITHOUT DUPLICATES
+    11. In Mathematics: nothing is pre-selected and the rows are highlighted. Click "Save attendance" straight away. Expected: red "Choose a status for every student before saving (3 still have none: ...)".
+    12. Click "Mark all present", change Chi to Absent, then click "Save attendance". Expected: green "Attendance saved for 3 students on <today>." Back on "Today's classes", the Mathematics card is green: "Attendance marked (3 students)".
+    13. Open Mathematics again. Expected: a blue note "Attendance was already marked for <today>..." with Chi still shown as Absent. Change Chi to Late, then click "Save changes". Expected: "Attendance updated for 3 students...".
+    14. Check there are no duplicates. In Supabase > SQL Editor:
+          select timetable_slot_id, enrollment_id, date, count(*) from public.attendance_records group by 1, 2, 3 having count(*) > 1;
+        Expected: "Success. No rows returned". Then:
+          select status, count(*) from public.attendance_records where date = current_date group by status;
+        Expected: present 2, late 1 (plus any Biology/Literature you also marked).
+  F) A TEACHER CANNOT MARK SOMEONE ELSE'S CLASS (blocked by the database, not just hidden)
+    15. As Second Teacher, open the Literature card and copy the address from the browser bar (…/teacher/attendance/<long id>?date=...). Sign out, sign in as Test Teacher, paste that address and press Enter.
+        Expected: "This class isn't on your timetable, so you can't view or mark its attendance." and no student list.
+    16. Prove the DATABASE blocks it too (not just the page): open supabase/manual_checks/attendance_rls_check.sql in Notepad, copy it all into Supabase > SQL Editor, and click Run. It tests jessiikong11+jhs-teacher@gmail.com (change the email at the top to test another teacher).
+        Expected: a red box (deliberate, nothing is saved) containing:
+          - someone else's class [...]: expected BLOCKED, got BLOCKED (new row violates row-level security policy for table "attendance_records")  PASS
+          - their own class [...]: expected ALLOWED, got ALLOWED  PASS
+        "SKIPPED" means there was no suitable class with a student taking its subject yet (do part B first).
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. Teachers can pick from the last 4 dates their class met. There's no free date picker, and nothing older than 4 weeks back (admins could still correct older records later). The limit is only in the app, not in the database.
+  2. "Today" and "the current term" come from the term marked current. Classes in other terms don't appear on the dashboard.
+  3. Every student on the list must have a status before saving; saving part of a class isn't allowed.
+  4. Only students whose enrollment status is "active" are listed (withdrawn, promoted etc. are left out).
+  5. The future-date rule uses Nigerian time (Africa/Lagos), because the database server runs on UTC.
+  6. Teacher visibility is now subject-based everywhere (student lists, and which parents a teacher can see). A student with NO subjects assigned won't appear for any teacher, so make sure subjects are ticked when adding students.
+  7. Messaging still lets a parent and a teacher open a thread if the teacher teaches the child's SECTION (any subject). Say if that should also become subject-based.
+  FOLLOW-UPS: attendance summaries and percentages for admins, students and parents; notes per student (the database has a "note" field that isn't in the screen yet); a "past classes" list for teachers. Nothing has been committed to git yet.
+-------------------------------------------
+
+[2026-09-23 21:03] Task: Parent–teacher messaging scoped by subject
+Files changed/added: supabase/migrations/20260923000013_messaging_by_subject.sql (new)
+What was done: A teacher and a parent can now message each other only if the teacher actually teaches one of that parent's children a SUBJECT THE CHILD TAKES (from student_subjects). This is the same rule attendance and student visibility follow since migration 012. Before, teaching any class in the child's section was enough, so e.g. the Literature teacher could message the parent of a Biology student in a section with parallel electives. The rule now applies both to OPENING a thread and to SENDING each message.
+DATABASE / RLS CHANGES (migration 013):
+  1. teacher_linked_to_parent() (used by the "open a thread" policy on message_threads) now also requires the child to take the subject the teacher teaches them.
+  2. New helper thread_is_linked(). The "send a message" policy on messages was replaced: a message can only be sent if the thread's teacher and parent are still linked by a subject. Before, being in the thread was enough, so a thread opened under the old rule could be used forever.
+  3. Existing threads that no longer qualify stay READABLE (history is kept) but become READ-ONLY for both sides.
+  4. Which parents a teacher can see/look up was already subject-based since migration 012 (via teacher_can_see_student). A teacher still sees a parent they already have a thread with, so old conversations still show names. No change needed there.
+  App code: nothing to change. There is no messaging screen yet, and no page lists parents for teachers. When messaging is built, its "who can I message" list should rely on these database rules (the parents a teacher can see).
+Automated tests run:
+  - New messaging test on a temporary local copy (all 13 migrations): 16 checks, 16 passed, 0 failed. Scenario: SS1 A with parallel Biology (Bola) and Literature (Lara), and Maths (Musa) for everyone. Ada takes Biology; Ben takes Literature.
+      THE KEY CASE: Lara (Literature) can NOT open a thread with Ada's parent, can NOT send a message in an existing thread with them, can NOT even see Ada's parent, and the parent can't open the thread from their side either. All refused by row-level security.
+      Lara CAN open a thread with Ben's parent and send a message. Bola (Biology) CAN message Ada's parent (who can reply), but NOT Ben's parent. Musa (Maths, both children) can message both parents.
+      An old thread that no longer qualifies: still readable, but neither side can send new messages.
+  - The same test run WITHOUT migration 013 (migrations 1–12 only): the key checks FAIL. That confirms the old rule really did allow the Literature teacher to message the Biology student's parent, and that migration 013 is what fixes it.
+  - All existing suites re-run with migration 013: 62/62, 33/33, 28/28, 17/17, 20/20 passed. That includes the original messaging checks (a parent can message their child's teacher, not a teacher who doesn't teach their child; only one thread per pair; others can't read it).
+  - Not tested in a browser: there's no messaging screen yet.
+How to test manually:
+  1. Apply the migrations. Your project currently has up to 011; 012 (attendance) and 013 (this) are NOT applied yet:
+       npx supabase db push --dry-run    (expected: 20260923000012_attendance_by_subject.sql and 20260923000013_messaging_by_subject.sql)
+       npx supabase db push              (type Y)
+     Or ask me to run it.
+  2. With the test data from the 20:44 attendance entry (part B), copy this into Supabase > SQL Editor and click Run. It checks the rule directly for every teacher–parent pair:
+       select tu.first_name || ' ' || tu.last_name as teacher,
+              pu.first_name || ' ' || pu.last_name as parent,
+              private.teacher_linked_to_parent(t.id, p.id) as can_message
+         from public.teachers t join public.users tu on tu.id = t.user_id
+        cross join public.parents p join public.users pu on pu.id = p.user_id
+        order by 1, 2;
+     Expected: for a parent of Ada Biology (only), can_message is true for Test Teacher (Biology) and Second Teacher (Maths). If that parent's child took ONLY Literature, Test Teacher would show false even though they teach the same section.
+     To get parents into that list: Admin > Parents, add a parent (e.g. jessiikong11+jhs-parent@gmail.com) and use "Link student" to link them to Ada Biology.
+  3. The full "try to message and get blocked" check will be possible once the messaging screens exist. Until then it is covered by the automated test above.
+Known issues / follow-ups:
+  - This replaces assumption 7 in the [2026-09-23 20:44] entry ("Messaging still lets a parent and a teacher open a thread if the teacher teaches the child's SECTION"). Messaging is now subject-based too.
+  - Assumption: "teaches the child" covers any session in which the teacher taught the child that subject. That's the same rule as student visibility in migration 012. So a parent can still message last year's subject teacher. Say if it should be limited to the current session only.
+  - Nothing has been committed to git yet (this and the attendance work).
+-------------------------------------------
+
+[2026-09-23 21:42] Task: Messaging limited to the CURRENT session
+Files changed/added: supabase/migrations/20260923000013_messaging_by_subject.sql (updated; it was not yet applied to your project or committed, so I changed it in place instead of adding a new migration)
+What was done: A teacher and a parent can now message each other only if, in the session currently marked as CURRENT, the teacher teaches one of the parent's children a subject that child takes (their enrollment and subjects for THAT session). Having taught the child in a past session no longer counts. This applies both to opening a thread and to sending each message: teacher_linked_to_parent() now only looks at the current session's enrollments, and thread_is_linked() uses it, so it follows automatically.
+  Old threads are never deleted:
+    - A thread from a past session stays READABLE for both sides, but becomes READ-ONLY once the teacher no longer teaches that child a subject this session. That is the same behaviour as the 21:03 entry.
+    - If the teacher teaches the child a subject again in the current session, the same thread becomes usable again.
+Automated tests run:
+  - Messaging test suite on a temporary local copy (all 13 migrations): 25 checks, 25 passed, 0 failed. That's the 16 from before plus 9 new ones:
+      Last session (2025/2026) Chidi taught Ada and Ben Chemistry; this session he teaches neither.
+        Chidi can still READ his old thread with Ada's parent, but can NOT send in it. He can NOT open a new thread with Ben's parent, even though Ben was his student last session.
+        Ada's parent can still READ the old thread but can NOT send in it either.
+        When Chidi is given Ada's Chemistry class in the CURRENT session, the same old thread works again.
+      Making the other session current flips it: Bola, who teaches Ada only in 2026/2027, can no longer send, but can still read her thread.
+      With NO session marked current, nobody is linked, so no new messages can be sent.
+  - All other suites re-run with the updated migration: 62/62, 33/33, 28/28, 17/17, 20/20 passed.
+  - Not tested in a browser: there's no messaging screen yet.
+How to test manually:
+  1. Apply the pending migrations. 012 (attendance) and 013 (messaging) are still not on your project:
+       npx supabase db push --dry-run    (expected: 20260923000012_attendance_by_subject.sql and 20260923000013_messaging_by_subject.sql)
+       npx supabase db push              (type Y)
+     Or ask me to run it.
+  2. Check who can message whom right now (Supabase > SQL Editor):
+       select tu.first_name || ' ' || tu.last_name as teacher,
+              pu.first_name || ' ' || pu.last_name as parent,
+              private.teacher_linked_to_parent(t.id, p.id) as can_message_now
+         from public.teachers t join public.users tu on tu.id = t.user_id
+        cross join public.parents p join public.users pu on pu.id = p.user_id
+        order by 1, 2;
+     Expected: true only where the teacher teaches that parent's child a subject the child takes in the session marked current on the Sessions page.
+  3. See the session rule in action (optional, only if you have test data from the 20:44 entry): on the Sessions page, click "Make current" on a DIFFERENT session and run the query again. The rows that were true become false, because those classes belong to the other session. Switch the current session back afterwards.
+     Warning: this changes which session the whole app treats as current. Do it only with test data.
+Known issues / follow-ups:
+  - This replaces the assumption in the [2026-09-23 21:03] entry ("'teaches the child' covers any session..."). Messaging now counts the CURRENT session only.
+  - Timing to be aware of: when an admin marks a NEW session as current at the start of the school year, parent–teacher messaging stays read-only until that session's enrollments, subjects and timetable are set up. With no current session at all, no new messages can be sent.
+  - Only messaging changed. Which students (and their parents) a teacher can SEE is still based on any session they taught them (migration 012). So a teacher can still view last year's students' records but can't message their parents. Say if visibility should also be current-session only.
+  - Nothing has been committed to git yet (attendance, messaging and this change).
+-------------------------------------------
