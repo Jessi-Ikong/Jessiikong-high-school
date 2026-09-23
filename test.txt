@@ -233,3 +233,201 @@ How to test manually:
   5. Open http://localhost:5180/set-password. Expected: the heading, the red message and both links are centred.
 Known issues / follow-ups: The message boxes (e.g. "Incorrect email or password.") are centred too, since you asked for all text in the card. Say if you'd rather have those left-aligned. Nothing has been committed to git yet.
 -------------------------------------------
+
+[2026-09-23 14:15] Task: Admin screens for sessions, terms, classes & sections, subjects
+Files changed/added: src/components/AdminLayout.jsx (new), src/components/ConfirmDialog.jsx (new), src/components/DeleteAction.jsx (new), src/pages/admin/Sessions.jsx (new), src/pages/admin/Terms.jsx (new), src/pages/admin/ClassesSections.jsx (new), src/pages/admin/Subjects.jsx (new), src/pages/AdminDashboard.jsx, src/hooks/useAsyncData.js (new), src/lib/db.js (new), src/lib/format.js (new), src/App.jsx, src/index.css
+What was done: Admins (both super and limited) now get an admin area with a left-hand menu: Overview, Sessions, Terms, Classes & Sections, Subjects. On a phone the menu moves to the top. Each page lists what exists and lets you create, edit and delete; sessions and terms can also be marked "current". Before anything is deleted, the page first checks whether other records still use it (enrollments, terms, sections, timetable slots, scores, fees and so on). If so, it explains what is in the way instead of failing with a database error; if not, it asks "Delete ...? This cannot be undone." All changes go through the normal database security rules. No special keys are used in the browser.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - Browser (your running dev server): /admin/sessions and /admin/classes while signed out -> sent to /login. No console errors.
+  - Database test on a temporary local copy of the schema, signed in as a LIMITED admin, doing exactly what the screens do: 33 checks, 33 passed, 0 failed. It covered: create/edit/delete sessions, terms, classes, sections and subjects; "make current" for sessions and terms; duplicate names, levels and term numbers rejected; each delete check counting the right records; deleting unused items; a teacher being blocked (and a blocked edit being reported, not silently ignored). No admin action was unexpectedly blocked by the security rules, so there is nothing to flag there.
+  - The two SQL snippets below were also run on that test copy and worked.
+  - NOT tested by me: clicking through the screens while signed in, because I don't have an admin login for your project. Please follow the steps below.
+How to test manually:
+  BEFORE YOU START
+    1. You need an ADMIN login. If you made the test user from the previous task and switched it to a teacher, switch it back in Supabase > SQL Editor:
+         update public.users set role = 'admin', admin_level = 'limited_admin' where auth_id = 'PASTE-USER-UID-HERE';
+       (limited_admin is on purpose: it proves these screens work for both admin levels.)
+    2. Run "npm run dev", open http://localhost:5180/login and sign in. Expected: "Admin overview", with the menu on the left (Overview, Sessions, Terms, Classes & Sections, Subjects) and your name and "(limited admin)" at the top right.
+  CREATE A SESSION AND MARK IT CURRENT
+    3. Click "Sessions". Expected, if you have none yet: "No sessions yet — create one above to get started."
+    4. Fill in Name 2026/2027, Start date 07/09/2026, End date 23/07/2027, then click "Create session". Expected: it appears in the table.
+    5. Also create 2025/2026 (08/09/2025 to 24/07/2026). Expected: the list is newest first, so 2026/2027 is above 2025/2026.
+    6. Click "Make current" on 2026/2027. Expected: a green "Current" badge. Then click "Make current" on 2025/2026. Expected: the badge MOVES to 2025/2026, so only one session is ever current. Set 2026/2027 back to current.
+    7. Try saving a session whose end date is before its start date. Expected: red "The end date must be after the start date." Try a second session named 2026/2027. Expected: "A session with that name already exists."
+  CREATE A TERM UNDER IT
+    8. Click "Terms". Expected: the Session box shows "2026/2027 (current)".
+    9. Leave Term number 1 (the name fills in as "First Term"), set Start 07/09/2026 and End 18/12/2026, then click "Create term". Expected: it appears in the table.
+    10. Click "Make current" on First Term. Expected: "Current" badge, and the line at the top says "(now: First Term, 2026/2027)".
+    11. Try a term dated outside the session (e.g. start 01/08/2026). Expected: red "The term must fall within the session (...)".
+  CREATE A CLASS WITH TWO SECTIONS
+    12. Click "Classes & Sections". Enter Name JSS1, Level 1, then click "Create class". Expected: a "JSS1 level 1 — 0 sections" row.
+    13. Click the JSS1 row to open it. Type A and click "Add section", then type B and click "Add section". Expected: "JSS1 A" and "JSS1 B" listed, and the row now says "2 sections".
+    14. Try adding another section called A. Expected: "This class already has a section with that name."
+  CREATE A SUBJECT
+    15. Click "Subjects". Enter Name Mathematics, Code mth, then click "Create subject". Expected: "Mathematics | MTH" (the code is capitalised automatically). Click "Edit", change the name to "Mathematics (General)" and click "Save changes". Expected: the table updates.
+  DELETE WITH WARNING (existing data tied to something)
+    16. Create a test pupil enrolled in JSS1 A. In Supabase > SQL Editor, paste and click Run:
+          with new_user as (
+            insert into public.users (role, first_name, last_name)
+            values ('student', 'Test', 'Pupil')
+            returning id
+          ), new_student as (
+            insert into public.students (user_id, admission_session_id)
+            select new_user.id, (select id from public.sessions where name = '2026/2027') from new_user
+            returning id
+          )
+          insert into public.enrollments (student_id, session_id, class_id, section_id)
+          select new_student.id, sess.id, sec.class_id, sec.id
+          from new_student
+          cross join public.sessions sess
+          cross join public.sections sec
+          join public.classes c on c.id = sec.class_id
+          where sess.name = '2026/2027' and c.name = 'JSS1' and sec.name = 'A';
+        Expected: "Success. No rows returned".
+    17. Back in the app (refresh the page), go to Classes & Sections, open JSS1, and click "Delete" next to JSS1 A. Expected: a box "Can't delete section JSS1 A — It is still being used by: 1 enrollment". Click OK. Nothing is deleted.
+    18. Click "Delete class" (the Delete next to "Edit class"). Expected: "Can't delete class JSS1" listing "2 sections (delete them first)" and "1 enrollment".
+    19. Go to Sessions and click "Delete" on 2026/2027. Expected: "Can't delete session 2026/2027" listing "1 term", "1 enrollment" and "1 student admitted in it".
+    20. Now a delete that IS allowed: on Classes & Sections, click "Delete" next to JSS1 B. Expected: "Delete section JSS1 B? This cannot be undone." Click "Cancel" first (nothing happens), then "Delete" and confirm. Expected: JSS1 B disappears.
+    21. Delete 2025/2026 on the Sessions page (it has no terms). Expected: the confirmation box, then it disappears.
+  CLEAN UP (optional)
+    22. Remove the test pupil. SQL Editor:
+          delete from public.enrollments
+          where student_id in (
+            select s.id from public.students s join public.users u on u.id = s.user_id
+            where u.first_name = 'Test' and u.last_name = 'Pupil' and u.role = 'student'
+          );
+          delete from public.users where first_name = 'Test' and last_name = 'Pupil' and role = 'student';
+        After that, JSS1 A and then JSS1 can be deleted in the app. The 2026/2027 session is still blocked by its term, and the "student admitted in it" record keeps the admission number counter.
+Known issues / follow-ups:
+  DIFFERENCE FROM THE TASK TO CONFIRM: the task asked for "only one current term, scoped within a session". The database (migration 2) allows only ONE current term across the WHOLE school. So "Make current" on a term clears whichever term was current, even one in another session. The Terms page states this and shows which term is current. If you really want one current term per session, the database rule needs changing in a new migration. My view: one school-wide current term is the more sensible rule.
+  ASSUMPTIONS / NOTES:
+  1. Marking a term current does NOT automatically make its session current (or the other way round). Admins should keep them matching; this could be automated later.
+  2. "Make current" is two steps (clear the old one, then set the new one). If the connection drops between them, nothing is current. Just click "Make current" again.
+  3. A class can only be deleted once its sections are deleted. It does not delete them for you, to avoid accidents.
+  4. Deleting a class is also blocked if announcements target it. (The database would otherwise silently delete those announcements along with the class.)
+  5. Term dates must fall inside their session's dates. The screen checks this; the database does not. Changing a session's dates later doesn't re-check its terms.
+  6. Delete checks look at everything that links to the item, not just enrollments: e.g. timetable slots, scores, fee items, assignments, ID cards.
+  7. Section rename is done in place ("Rename" next to the section). Class and subject edits load into the form at the top of the page (the row being edited is highlighted yellow).
+  8. Code is optional for subjects and is saved in capitals.
+  FOLLOW-UPS: Periods (lesson times) are also org structure but weren't in this task; add them when building the timetable. Nothing has been committed to git yet.
+-------------------------------------------
+
+[2026-09-23 14:53] Task: Admin account creation (invite teachers, students, parents)
+Files changed/added: supabase/functions/invite-user/index.ts (new, the server-side Edge Function), supabase/migrations/20260923000010_account_creation.sql (new), supabase/config.toml (function settings), src/pages/admin/Staff.jsx (new), src/pages/admin/Students.jsx (new), src/pages/admin/Parents.jsx (new), src/lib/functions.js (new), src/lib/people.js (new), src/components/AdminLayout.jsx, src/pages/AdminDashboard.jsx, src/App.jsx, src/index.css
+What was done: Admins can now add teachers (Staff page), students (Students page) and parents (Parents page). Super admins can also add other admins. Each new person gets an email invite; clicking it opens the existing "Set your password" page, and after that they sign in and land on their own dashboard. Adding a student also gives them an admission number (STU/2026/0001...), enrolls them in the chosen session/class/section and records their subjects, all in one go. The Parents page can link a parent to their children (search by name or admission number) and unlink them. The secret service role key is used ONLY inside the Supabase Edge Function on Supabase's servers; it is not in .env.local, not in git and not in the browser code (I searched the built app to confirm).
+HOW ACCOUNTS ARE CREATED: Edge Function, not a database trigger. Here is how it works:
+  1. The admin's browser calls the "invite-user" Edge Function with the form details. Supabase sends the admin's login token along automatically.
+  2. The function checks the token belongs to a signed-in, active admin. If the new account is an admin, the caller must be a super admin. Otherwise it refuses with a clear message.
+  3. It calls one new database function, admin_create_account(). This creates the users row and the teachers/students/parents row. For students it also creates the admission number (through the existing generate_admission_number function), the enrollment and the subject rows. All of this happens in ONE transaction: if anything is wrong (duplicate staff ID, email already used, section not in that class...), NOTHING is created and NO email is sent.
+  4. Only then does it send the Supabase invite email (full_name and role go into the login's metadata), and link the new login to the users row.
+  5. If the invite fails (e.g. that email already has a login), it undoes step 3 with admin_discard_account(). That also gives back the admission number, so there are no gaps.
+  Why not a trigger on auth.users: a trigger would only see what's stored in the login's metadata. So class, section and subject choices would have to travel through Supabase Auth, and a mistake there would surface as a vague "error sending invite". A trigger also can't check who the calling admin is. Doing it in the function means we validate first, invite second, and report exact errors. Both new database functions can ONLY be run with the service role key: the test confirmed that even a signed-in super admin gets "permission denied" calling them from the browser.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - Edge Function type-checked with Deno ("npx deno check"): no errors.
+  - Database test on a temporary local copy of the schema (all 10 migrations): 23 checks, 23 passed, 0 failed. It covered:
+    - Browser and signed-out users cannot call the functions.
+    - Teacher, student and parent rows are created correctly (email lower-cased).
+    - The student gets STU/2026/0001, an active enrollment, 2 subjects, and an automatic invoice for an existing fee item. A student without email gets STU/2026/0002.
+    - Duplicate staff ID, duplicate email (any capitalisation) and wrong section are rejected with NOTHING half-created and no admission number used up.
+    - The audit log credits the admin.
+    - Undo removes everything and gives the admission number back (the next student reuses it).
+    - An invited parent, once linked, can read their own profile (what login needs).
+  - Re-ran the earlier database test suites with the new migration: 62/62 and 33/33 passed.
+  - Checked against your live Supabase project (read-only) that all the data lookups the three new pages use are valid.
+  - NOT tested by me: the deployed function, real invite emails, and clicking through the pages. The function isn't deployed yet (you'll do that below with your own credentials), and I have no admin login.
+How to test manually:
+  A) DEPLOY (run these yourself, in a terminal in C:\Users\HP\School-Management-System)
+    The Supabase CLI still isn't installed globally, so these use npx as before. You must already be logged in and linked (npx supabase login / npx supabase link --project-ref YOUR_PROJECT_REF) from the schema task.
+    1. Apply the new database migration:
+         npx supabase db push --dry-run      (expected: lists 20260923000010_account_creation.sql)
+         npx supabase db push                (type Y)
+    2. Tell the function where your app runs, so invite links point to it:
+         npx supabase secrets set APP_URL=http://localhost:5180
+       (When the site goes live, run it again with the live address.)
+    3. THE SERVICE ROLE KEY: you do NOT need to set it. Supabase automatically gives every Edge Function its own project's service role key (as SUPABASE_SERVICE_ROLE_KEY), and it never leaves Supabase's servers. Supabase actually refuses secret names that start with SUPABASE_. If you ever do need to set one by hand (e.g. after rotating keys), the function also accepts a secret named SERVICE_ROLE_KEY:
+         npx supabase secrets set SERVICE_ROLE_KEY=paste-the-key-here
+       Take the key from Dashboard > Project Settings > API Keys. Type it ONLY into this command, never into .env.local or any project file. Note: the command will stay in your terminal history.
+    4. Deploy the function:
+         npx supabase functions deploy invite-user
+       Expected: "Deployed Functions on project ...: invite-user". If it complains about Docker, run it again with  --use-api  on the end.
+    5. Check:  npx supabase secrets list  (expected: APP_URL in the list, plus the automatic SUPABASE_ ones; values are hidden)
+  B) EMAIL DELIVERY (important before testing invites)
+    Supabase's built-in email only delivers to addresses that are members of your Supabase organisation's team, and only a few per hour. Your own email is already used by your test admin, and one email = one login. So to receive a teacher/student/parent invite you need either:
+      - another email address that you add as a member of your Supabase organisation (Dashboard > Organization > Team > Invite), or
+      - a proper email provider (README suggests Resend) set up under Authentication > Emails > SMTP Settings. After that, invites go to any address.
+    Without either, the account is still created and Supabase reports the invite as sent, but the email never arrives.
+  C) BEFORE THE TESTS
+    6. Sign in as your test admin. You need a current session with at least one class + section and a few subjects (from the previous task).
+       Use a SUPER admin for step 12:  update public.users set admin_level = 'super_admin' where auth_id = 'PASTE-USER-UID-HERE';
+    7. The menu should now also show Staff, Students and Parents.
+  D) CREATE A TEACHER
+    8. Staff > Account type "Teacher", Full name "Musa Bello", Email = an address that can receive mail (see B), Staff ID STF/001, then click "Add and send invite".
+       Expected: green "Musa Bello was added. An invite email has been sent to ...", and he appears in the Teachers table. In Supabase > Authentication > Users the address appears as invited / waiting for verification.
+    9. Try the same Staff ID again with another email. Expected: red "Another teacher already has that staff ID." Try Musa's email again. Expected: red "Someone in the system already uses that email address." Nothing new appears in either case.
+  E) CREATE A STUDENT (class, section, subjects, admission number)
+    10. Students > Full name "Ada Grace Okafor", an email that can receive mail, a date of birth, Gender Female, Session 2026/2027, Class JSS1, Section A. Tick 2–3 subjects, then click "Add and send invite".
+        Expected: green "Ada Grace Okafor was added with admission number STU/2026/0001 ... invite email has been sent ...". The list shows her with class "JSS1 A", status "active" and her admission number.
+        To check her subjects: SQL Editor:  select * from public.student_subjects;  (one row per ticked subject).
+    11. Add a second student and tick "Student has no email". Expected: a blue note that no login will be created. Clicking "Add student" shows "... added with admission number STU/2026/0002. No invite was sent (no email)", and the list shows "no login" in the Email column.
+        Try the filters (Class, Section, Status) and "Sort by: Admission number". Expected: the list narrows and reorders accordingly.
+  F) ADMIN ACCOUNTS (the super admin rule)
+    12. As a SUPER admin: Staff > Account type now offers "Admin (limited)" and "Admin (super)". Add one; it appears under Admins.
+        Then make yourself limited (update public.users set admin_level = 'limited_admin' where auth_id = 'PASTE-USER-UID-HERE';) and refresh. Expected: only "Teacher" is offered, with the note "Only super admins can add admin accounts". The server refuses anyway if someone tries ("Only a super admin can create admin accounts.").
+  G) CREATE A PARENT AND LINK
+    13. Parents > Full name "Paul Okafor", an email that can receive mail, then click "Add and send invite". Expected: green message, and a card for Paul saying "Not linked to any students yet".
+    14. Click "Link student", type "Ada" (or "STU/2026/0001"), choose "father", then click "Link as father". Expected: Ada appears under Paul. Click "Unlink", then confirm. Expected: she is removed (only the link, nothing else). Link her again for the next step.
+  H) THE INVITED PERSON SIGNS UP
+    15. Sign out of the admin (or use a private/incognito window). Open the invite email "You have been invited" and click "Accept the invite".
+        Expected: the app opens on "Set your password — Choose a password for ...".
+    16. Enter a password twice (8+ characters), then click "Save password". Expected: the login page with "Your password has been set...".
+    17. Sign in with that email and password. Expected: Musa lands on /teacher ("Teacher Dashboard ... (teacher)"), Ada on /student, Paul on /parent.
+  I) IF SOMETHING GOES WRONG
+    - "The "invite-user" server function is not deployed yet": do step 4.
+    - "The invite service is not configured yet (missing APP_URL secret...)": do step 2, then deploy again (step 4).
+    - "Your session has expired" on every attempt even though you just signed in: Supabase's gateway may be rejecting the login token (this can happen with the newer JWT signing keys). Redeploy with  npx supabase functions deploy invite-user --no-verify-jwt . That is safe here because the function itself checks the caller is an admin.
+    - The invite link opens the wrong address (e.g. localhost:3000): check Authentication > URL Configuration (from the auth task) and the APP_URL secret.
+    - Errors from the function are shown word-for-word in the red box on the page, and server-side details appear in Dashboard > Edge Functions > invite-user > Logs.
+Known issues / follow-ups:
+  OPEN QUESTION (not solved, as requested): sending a STUDENT's invite to a PARENT's email. Supabase allows ONE login per email address:
+    - If the parent already has an account, Supabase will refuse to create a second login with the same email.
+    - If the parent has NO account yet, inviting the student at the parent's email would make that email the STUDENT's login. The parent could then never get their own account with it. The same applies to siblings sharing a parent's email.
+  Every version of this option collides with the one-login-per-email rule, so I did NOT build it. For now a student without an email is created with no login (clearly shown in the form and in the list). The parent can still be linked to them. Options to decide between: students without email have no login and parents see everything; school-issued emails/usernames for students; or email "+aliases" (not supported by every email provider).
+  ASSUMPTIONS:
+  1. Full name is split automatically: first word = first name, last word = last name, anything in between = middle name(s). Single-word names are rejected ("Please enter both a first name and a last name").
+  2. The subject checklist covers ALL of a student's subjects (core and electives). The database stores one list per student per session and doesn't mark which are electives.
+  3. The Students list shows students ENROLLED in the chosen session. Someone admitted but not enrolled that session won't appear under it.
+  4. Email is required for teachers, parents and admins. It is optional only for students.
+  5. The Staff page lists admins as well as teachers, and super admins can add admins there. The task mentioned super-admin-only admin creation, so the UI needed somewhere to do it.
+  6. The audit log records the ADMIN as the one who created each account.
+  7. If an invite fails AFTER Supabase created the login (rare, e.g. an email server hiccup), our rows are removed but a stray invited login might remain. Check Authentication > Users and delete it if you see one.
+  FOLLOW-UPS (not built yet): re-sending an invite (invite links expire, 24 hours by default); editing/deactivating people; showing whether an invite has been accepted; changing a student's class or subjects after creation; giving a no-email student a login later. Nothing has been committed to git yet.
+-------------------------------------------
+
+[2026-09-23 15:06] Task: Email now required for students (no-email option removed)
+Files changed/added: src/pages/admin/Students.jsx, supabase/functions/invite-user/index.ts, supabase/migrations/20260923000010_account_creation.sql, src/index.css
+What was done: Every account, students included, now needs an email address, which becomes their login. The "Student has no email" checkbox and its note are gone from the Students page, and the Edge Function and the database function both refuse an account without an email. A student also can't be given an email that already belongs to a parent: the admin sees "This email is already registered as a parent account — students need their own email address" and nothing is created. Migration 010 wasn't on your Supabase project yet (I checked), so I changed it directly rather than adding a new migration.
+THIS ENTRY REPLACES these parts of the [2026-09-23 14:53] entry (earlier entries are left as they were, per this file's rules):
+  - Step 11 ("tick Student has no email ... no login"): no longer applies. Use the new step 11 below.
+  - The "OPEN QUESTION" about sending a student's invite to a parent's email, and assumption 4 ("email optional only for students"): now decided. Students need their own email address, so a parent's email can never be used for a student. The same open question in the [2026-09-22/23] auth entries is settled the same way.
+  - Follow-up "giving a no-email student a login later": no longer needed.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully. Built app searched again: no service role key in it.
+  - Edge Function type-checked with Deno: no errors.
+  - Database test (temporary local copy, all 10 migrations): 28 checks, 28 passed, 0 failed. New checks:
+    - A student with no email, or only spaces, is rejected ("An email address is required"); so is a parent with no email.
+    - A student using a parent's email, in any capitalisation, is rejected with the exact message above.
+    - None of these rejections use up an admission number.
+  - Earlier suites re-run: 62/62 and 33/33 passed.
+  - Still NOT tested by me: the deployed function and clicking through the page (no deploy / admin login on my side).
+How to test manually (after deploying as in the 14:53 entry, section A):
+  1. Students page: the form has no "Student has no email" checkbox. Under the email box it says "Students need their own email address: it becomes their login. A parent's email can't be used."
+  2. Leave the email empty and click "Add and send invite". Expected: the browser stops you ("Please fill in this field") and nothing is sent.
+  3. On the Parents page, add a parent (e.g. Paul Okafor, paul.test@...). Then on the Students page, add a student using that SAME email (try different capitals, e.g. Paul.Test@...). Expected: red "This email is already registered as a parent account — students need their own email address". The student list is unchanged, and the next student added still gets the next admission number in sequence (no gap).
+  11. (replaces step 11 of the 14:53 entry) Add a second student with their own email. Expected: "... added with admission number STU/2026/0002. An invite email has been sent to ...". Then try the filters and "Sort by: Admission number" as before.
+Known issues / follow-ups:
+  - A student's email that belongs to a TEACHER or ADMIN is also refused, but with the general message "Someone in the system already uses that email address." Only parent emails get the specific wording you asked for.
+  - Consequence to be aware of: every student now needs a real email address before they can be added at all.
+  - Other follow-ups from the 14:53 entry (re-sending invites, editing/deactivating people, etc.) still stand.
+-------------------------------------------

@@ -413,3 +413,9 @@ enabled = true
 # formatted with uppercase keywords, indent 2, max width 180, trailing commas,
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
+
+# Admin account creation (see supabase/functions/invite-user/index.ts).
+# verify_jwt: only signed-in users reach the function; it then checks they are an admin.
+[functions.invite-user]
+enabled = true
+verify_jwt = true

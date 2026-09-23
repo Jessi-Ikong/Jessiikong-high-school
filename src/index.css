@@ -138,3 +138,409 @@ button:disabled {
 .dashboard-header h1 {
   margin: 0;
 }
+
+/* ---------- Shared bits for admin pages ---------- */
+select {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.button-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #1f4e8c;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.button-link.danger {
+  color: #b91c1c;
+}
+
+.button-danger {
+  background: #b91c1c;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #def7ec;
+  color: #03543f;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.empty-state {
+  padding: 1.5rem;
+  border: 1px dashed #cbd2d9;
+  border-radius: 8px;
+  color: #616e7c;
+  text-align: center;
+}
+
+.link-list li {
+  margin-bottom: 0.5rem;
+}
+
+/* ---------- Admin layout ---------- */
+.admin-shell {
+  display: flex;
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+.admin-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  padding: 1.25rem 1rem;
+  background: #ffffff;
+  border-right: 1px solid #e4e7eb;
+}
+
+.admin-brand {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+}
+
+.admin-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-nav a {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  color: #1f2933;
+  text-decoration: none;
+}
+
+.admin-nav a:hover {
+  background: #f0f4f8;
+}
+
+.admin-nav a.active {
+  background: #e3ebf6;
+  color: #1f4e8c;
+  font-weight: 600;
+}
+
+.admin-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-topbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: #ffffff;
+  border-bottom: 1px solid #e4e7eb;
+}
+
+.admin-content {
+  padding: 1.5rem;
+  max-width: 1000px;
+  width: 100%;
+}
+
+.admin-content h1 {
+  margin: 0 0 0.25rem;
+}
+
+/* Phones: sidebar becomes a top bar. */
+@media (max-width: 700px) {
+  .admin-shell {
+    flex-direction: column;
+  }
+
+  .admin-sidebar {
+    width: auto;
+    border-right: none;
+    border-bottom: 1px solid #e4e7eb;
+  }
+
+  .admin-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .admin-content {
+    padding: 1rem;
+  }
+}
+
+/* ---------- Forms, tables, lists ---------- */
+.panel {
+  margin: 1rem 0 1.5rem;
+  padding: 1.25rem;
+  background: #ffffff;
+  border: 1px solid #e4e7eb;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.panel h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem 1rem;
+  align-items: end;
+}
+
+.form-grid h2,
+.form-grid .alert,
+.form-grid .form-actions {
+  grid-column: 1 / -1;
+}
+
+.form-grid label,
+.inline-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 500;
+}
+
+.inline-field {
+  max-width: 280px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  background: #ffffff;
+  border: 1px solid #e4e7eb;
+  border-radius: 8px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+  border-bottom: 1px solid #e4e7eb;
+  white-space: nowrap;
+}
+
+.data-table th {
+  font-size: 0.85rem;
+  color: #616e7c;
+  background: #f9fafb;
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.row-editing,
+.data-table tr.row-editing td {
+  background: #fffbea;
+}
+
+.row-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+.class-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.class-item {
+  background: #ffffff;
+  border: 1px solid #e4e7eb;
+  border-radius: 8px;
+}
+
+.class-item summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+}
+
+.class-title {
+  font-weight: 600;
+}
+
+.class-body {
+  padding: 0 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.class-body > .row-actions {
+  justify-content: flex-start;
+}
+
+.section-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #e4e7eb;
+  border-radius: 6px;
+}
+
+.section-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e4e7eb;
+}
+
+.section-list li:last-child {
+  border-bottom: none;
+}
+
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ---------- Dialog ---------- */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 100;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 440px;
+  padding: 1.5rem;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.dialog h2 {
+  margin-top: 0;
+  font-size: 1.2rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+/* ---------- People pages (staff, students, parents) ---------- */
+.admin-content h2 {
+  font-size: 1.15rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.form-note {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.checkbox-field {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+  font-weight: 400 !important;
+}
+
+.subject-checklist {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.25rem 1rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e4e7eb;
+  border-radius: 6px;
+}
+
+.subject-checklist legend {
+  font-weight: 500;
+  padding: 0 0.25rem;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin: 1.5rem 0 1rem;
+}
+
+.filter-bar .inline-field {
+  min-width: 160px;
+}
+
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.card-list .panel {
+  margin: 0;
+}
+
+.parent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.parent-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.link-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border-radius: 6px;
+}
+
+.link-form .inline-form input {
+  flex: 1;
+  min-width: 200px;
+}
