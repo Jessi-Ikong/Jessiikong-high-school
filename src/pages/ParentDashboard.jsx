@@ -1,8 +1,5 @@
+import DashboardPlaceholder from '../components/DashboardPlaceholder'
+
 export default function ParentDashboard() {
-  return (
-    <main>
-      <h1>Parent Dashboard</h1>
-      <p>Placeholder page.</p>
-    </main>
-  )
+  return <DashboardPlaceholder title="Parent Dashboard" />
 }

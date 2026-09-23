@@ -31,25 +31,205 @@ Known issues / follow-ups: <or "none">
 LOG ENTRIES BELOW
 =======================
 
-[2026-09-22 18:18] Task: Initial project scaffold (Vite + React + Supabase + routing)
-Files changed/added: package.json, package-lock.json, index.html, vite.config.js, .oxlintrc.json, .gitignore, .env.local (not committed), README.md (Vite default), public/favicon.svg, src/main.jsx, src/App.jsx, src/index.css, src/lib/supabaseClient.js, src/lib/roles.js, src/context/AuthContext.js, src/context/AuthProvider.jsx, src/hooks/useAuth.js, src/components/ProtectedRoute.jsx, src/pages/Login.jsx, src/pages/AdminDashboard.jsx, src/pages/TeacherDashboard.jsx, src/pages/StudentDashboard.jsx, src/pages/ParentDashboard.jsx, src/pages/NotFound.jsx, test.txt
-What was done: Created a React (JavaScript) project with Vite and installed Supabase and React Router. Set up the src/ folders (components, pages, lib, hooks, context), a Supabase connection file that reads the keys from .env.local, and placeholder pages for login and the four role dashboards. The dashboard pages are already "guarded": anyone not signed in with the right role is sent back to /login. Because sign-in is not built yet, nobody is signed in, so for now every dashboard link redirects to the login page — this is expected. Git was initialised and everything was committed as "Initial scaffold".
-Automated tests run: No test suite exists yet. Checks run: "npm run lint" (0 problems), "npm run build" (built successfully), "npm run dev" (server started, page title "Jessiikong High School" served, all source files compiled with no errors).
+[2026-09-22 18:41] Task: Temporary Supabase connection test on Login page
+Files changed/added: src/pages/Login.jsx, .env.local (your Supabase URL corrected — see Known issues; this file is never committed)
+What was done: When the Login page opens, it now asks Supabase for the current sign-in session and prints the answer, plus any error, in the browser's developer console. Nothing changes on the screen itself. This is temporary and will be removed when real sign-in is built. While checking, I found that your Supabase URL in .env.local had "/rest/v1/" on the end, which would have made every real Supabase request fail. I removed that ending and left your key unchanged.
+Automated tests run: "npm run lint" (0 problems); "npm run build" (built successfully). I also checked your keys against your Supabase project from the terminal: with the corrected URL, the project responded "200 OK" (keys accepted). A deliberately wrong key got "401 Invalid API key", which proves the check can tell a good key from a bad one.
 How to test manually:
-  1. Open a terminal in the project folder (C:\Users\HP\School-Management-System) and run:  npm run dev
-  2. The terminal should print "VITE ... ready" and a Local address such as http://localhost:5173/. Open that exact address in your browser.
-     (If another project is already running on 5173, Vite will pick the next free port, e.g. 5174 — use whichever address the terminal prints.)
-  3. Expected: the browser tab title reads "Jessiikong High School" and the page shows the heading "Jessiikong High School — Sign in" with the text "Placeholder page." The address bar will show /login.
-  4. In the address bar, change the ending to /admin (then /teacher, /student, /parent) and press Enter. Expected: each one sends you straight back to /login, because no one is signed in yet. This proves the role guards work.
-  5. Change the ending to /something-random and press Enter. Expected: a "Page not found" heading.
-  6. Press F12 and open the Console tab. Expected: no red errors.
-  7. In File Explorer, open the src folder. Expected folders: components, context, hooks, lib, pages. Inside lib you should see supabaseClient.js.
-  8. Open .env.local in the project root. Expected: two lines, VITE_SUPABASE_URL= and VITE_SUPABASE_ANON_KEY=. Paste your Supabase values after the = signs and save.
-  9. In the terminal run:  git log --oneline   Expected: one commit named "Initial scaffold". Run:  git status   Expected: .env.local is NOT listed (it is ignored, so your keys never get committed).
-  10. Stop the server with Ctrl + C in the terminal.
+  1. If "npm run dev" is already running, stop it with Ctrl + C first. It only reads .env.local when it starts, and the URL in that file was just corrected.
+  2. In a terminal in C:\Users\HP\School-Management-System run:  npm run dev
+  3. Open the Local address the terminal prints (e.g. http://localhost:5173/). You should land on /login and see "Jessiikong High School — Sign in".
+  4. Press F12 (or right-click the page > Inspect), click the "Console" tab, then press F5 to reload the page so you see the messages from the start.
+  5. SUCCESS looks like these two lines. In development each line may appear twice; that is normal.
+       [Supabase test] getSession result: {session: null}
+       [Supabase test] getSession error: null
+     "session: null" is correct: it means "nobody is signed in", because there is no sign-in yet. "error: null" means no error.
+  6. FAILURE looks like one of these:
+       - A blank white page and a red message "Missing Supabase env vars..." -> one or both values in .env.local are empty. Fill them in and restart npm run dev.
+       - A blank white page and a red message "Invalid supabaseUrl..." -> the URL in .env.local is not a proper web address (it must start with https://).
+       - "[Supabase test] getSession error:" followed by anything other than null -> copy the full red text and send it to the planning chat.
+  7. IMPORTANT extra check: getSession does NOT contact Supabase when nobody is signed in. It only looks for a saved session in your browser. So step 5 will show "success" even if the URL or key were wrong. To really confirm Supabase accepts your keys, open this address in a new browser tab. Build it from your two .env.local values, with no spaces:
+       <your VITE_SUPABASE_URL>/auth/v1/settings?apikey=<your VITE_SUPABASE_ANON_KEY>
+     SUCCESS: a page of text starting with {"external":{"anonymous_users":false,...
+     FAILURE: {"message":"Invalid API key",...}  (wrong key)  or a "not found" / 404 message (wrong URL, e.g. an extra /rest/v1/ on the end).
 Known issues / follow-ups:
-  - Supabase connection was NOT tested live because .env.local has no real keys yet. Nothing loads supabaseClient.js yet, so the app runs without keys; once the auth task starts using it, the app will show a clear "Missing Supabase env vars" error until .env.local is filled in. Restart "npm run dev" after editing .env.local.
-  - The dashboards can't be seen until sign-in and roles are built (next tasks). Only the login page is visible for now.
-  - README.md is currently Vite's default; replace it with your project README.
-  - During testing, port 5173 was already used by another project on this computer (SettleNG), so the check used port 5180.
+  - Your VITE_SUPABASE_URL was "https://<project>.supabase.co/rest/v1/". Supabase needs just "https://<project>.supabase.co", so I removed the "/rest/v1/" ending. If you copy the URL from the dashboard again, use the "Project URL" value, not the REST endpoint.
+  - I did not open the browser myself to read the console. The code compiles, and your keys were verified from the terminal, but you still need to do steps 4–5 in a browser.
+  - This console test is temporary and should be removed when the real login task is built.
+-------------------------------------------
+
+[2026-09-22 18:47] Task: Move dev server to a fixed port (5180)
+Files changed/added: vite.config.js
+What was done: Another project on this computer (SettleNG) already uses port 5173, Vite's default. This project's dev server is now fixed to port 5180. If something else is ever using 5180, the server will stop with a clear "Port 5180 is already in use" message instead of quietly moving to another port.
+Automated tests run: Started "npm run dev". The terminal showed "Local: http://localhost:5180/", and that address served the page titled "Jessiikong High School". SettleNG was still running on 5173, unaffected.
+How to test manually:
+  1. If "npm run dev" is running, stop it with Ctrl + C.
+  2. In a terminal in C:\Users\HP\School-Management-System run:  npm run dev
+  3. Expected: the terminal shows  Local:   http://localhost:5180/
+  4. Open http://localhost:5180/ in your browser. Expected: you land on /login and see "Jessiikong High School — Sign in".
+  5. Open http://localhost:5173/ in another tab. Expected: your other project (SettleNG) still loads there as before.
+Known issues / follow-ups: From now on, bookmark http://localhost:5180/ for this project. The earlier log entry's steps that mention 5173/5174 should now use 5180.
+-------------------------------------------
+
+[2026-09-23 12:14] Task: Database schema + RLS policies (Supabase migrations)
+Files changed/added: supabase/config.toml (created by "supabase init"), supabase/.gitignore, supabase/migrations/20260923000001_types.sql, 20260923000002_org_structure.sql, 20260923000003_people.sql, 20260923000004_enrollment_timetable.sql, 20260923000005_attendance_grading.sql, 20260923000006_assignments_fees.sql, 20260923000007_communication_audit.sql, 20260923000008_functions_views.sql, 20260923000009_rls_policies.sql, supabase/manual_checks/rls_check.sql
+What was done: Wrote the whole database as 9 migration files, run in order: types, school structure, people, enrollment/timetable, attendance/grading, assignments/fees, messaging/audit/ID cards, functions, security rules. That is 27 tables, and every one has Row-Level Security switched on, with 88 rules controlling who can see or change what. The database also does some work automatically: it creates admission numbers (STU/2026/0001...), creates invoices when a fee is set up, updates an invoice when a payment succeeds, calculates class positions live from the scores, and records changes to important data in an audit log. A student's class is stored ONLY in "enrollments" (one row per session), and there is no report_cards table: report cards will be built from scores when requested.
+Automated tests run:
+  - No Supabase CLI or Docker is installed, so I tested on a temporary, separate PostgreSQL 15 database created just for this and then shut down (your existing local PostgreSQL was not touched). I added stand-ins for the parts Supabase normally provides (the login roles and auth.uid()), applied all 9 migrations: no errors.
+  - An RLS test script loaded sample data (super admin, limited admin, 2 teachers, 3 students, 2 parents) and then signed in as each of them: 62 checks, 62 passed, 0 failed. Examples: a limited admin is blocked from fee structures and from creating or promoting admins; a teacher sees only students in sections they teach and can't mark another teacher's attendance or enter scores for a subject they don't teach; parents see only their own child's scores/attendance/invoices; parents can't read other families' messages or mark a payment as "successful"; signed-out visitors see nothing except the ID-card verification lookup; class ranking gives the right positions (85 -> 1st, 70 -> 2nd) and shows a parent only their own child's row.
+  - The manual check script below was also run on that test database: 4 of 4 passed, and nothing was left behind.
+  - NOT tested against your real Supabase project. You apply the migrations yourself (below). Supabase runs PostgreSQL 17; nothing used here is version-specific, but the first "db push" is the real proof.
+How to test manually:
+  A) APPLY THE MIGRATIONS
+  The Supabase CLI is NOT installed on this computer, but it works through npx with nothing to install (I checked: version 2.117.0). Every command below starts with "npx"; if you install the CLI yourself later, you can drop the "npx".
+    1. Open a terminal in C:\Users\HP\School-Management-System
+    2. Run:  npx supabase login
+       A browser tab opens. Approve it, then return to the terminal. Expected: "You are now logged in."
+    3. Find your project ref: it is the part of VITE_SUPABASE_URL (in .env.local) between "https://" and ".supabase.co".
+       Run:  npx supabase link --project-ref YOUR_PROJECT_REF
+       It asks for your DATABASE password (Supabase dashboard > Project Settings > Database; you can reset it there if you've forgotten it). Expected: "Finished supabase link."
+    4. Preview without changing anything:  npx supabase db push --dry-run
+       Expected: a list of the 9 files, 20260923000001_types.sql through 20260923000009_rls_policies.sql.
+    5. Apply:  npx supabase db push     (type Y when asked)
+       Expected: each file named as it is applied, then "Finished supabase db push."
+       If you see "already exists" errors, tables were created in the dashboard earlier. Stop and send the error to the planning chat.
+  B) CHECK THE TABLES IN THE DASHBOARD
+    6. Open Table Editor (schema "public" at the top). Expected: 27 tables: announcements, assessment_components, assignments, attendance_records, audit_log, classes, enrollments, fee_structures, id_cards, invoices, message_threads, messages, parent_students, parents, payments, periods, scores, sections, sessions, student_subjects, students, subjects, submissions, teachers, terms, timetable_slots, users. There is NO report_cards table.
+    7. Click "students". Expected: columns like admission_number and admission_session_id, and NO class or section column. Click "enrollments". Expected: student_id, session_id, class_id, section_id, status.
+    8. Open Database > Schema Visualizer. Expected: lines connecting enrollments to students/sessions/classes/sections, scores to students and assessment_components, payments to invoices, and message_threads to parents and teachers.
+    9. Open Authentication > Policies. Expected: every table listed with "RLS enabled" and its own rules. For example, fee_structures has "super admins can insert/update/delete".
+    10. Open Database > Functions (schema "public"). Expected: generate_admission_number, get_class_rankings, verify_id_card, mark_overdue_invoices. Switch the schema to "private" to see the helper functions.
+  C) TEST THE SECURITY RULES YOURSELF (nothing is saved)
+    11. Go to Authentication > Users > Add user > Create new user. Use any throwaway email and password, tick "Auto Confirm User", and click Create. Click the new user and copy its "User UID".
+    12. Open supabase/manual_checks/rls_check.sql in Notepad and copy everything. In the dashboard open SQL Editor > New query and paste. Replace PASTE-USER-UID-HERE with the UID you copied, keeping the quote marks around it.
+    13. Click Run. The result appears in a RED error box. THAT IS EXPECTED: the script ends with a deliberate error so that nothing it did is saved. Read the text inside. Success looks like:
+          RLS CHECK FINISHED — 4 of 4 passed. Nothing was saved.
+          1) Limited admin adds a fee structure -> expected BLOCKED, got BLOCKED (new row violates row-level security policy ...)  PASS
+          2) Limited admin creates an admin account -> expected BLOCKED, got BLOCKED (...)  PASS
+          3) Super admin adds a fee structure -> expected ALLOWED, got ALLOWED  PASS
+          4) Signed-out visitor counts rows in users -> expected 0, got 0  PASS
+       Any line ending in FAIL means a rule isn't working. Send the whole text to the planning chat.
+       "invalid input syntax for type uuid" = the UID wasn't pasted in. "violates foreign key constraint users_auth_id_fkey" = the UID doesn't match a user from step 11.
+    14. Afterwards you can delete the throwaway user in Authentication > Users.
+Known issues / follow-ups:
+  ASSUMPTIONS TO CHECK AGAINST README.md (tell the planning chat which to change):
+  1. Students without their own email: README says their invite goes to the parent's email, but Supabase needs every login to have a unique email, and the parent's email is already the parent's login. So I made the login link (users.auth_id) optional: such a student has a profile but no login of their own. Decide how they should sign in.
+  2. One role per person. Someone who is both a teacher and an admin needs two accounts.
+  3. Admission number: given once, when the student record is created, using the start year of the session they were admitted in (STU/2026/0001). Numbering restarts each session. Existing students can be imported with their old numbers.
+  4. Class position: each subject's % = sum of (score / max x weight) / total weight. The student's average = the mean of their subjects' %, so electives mean students can have different numbers of subjects. A component only counts once at least one score has been entered for it in that section; a missing score for a counted component = 0. Tied students share a position (1, 1, 3), and withdrawn students are left out. Weights don't have to add up to 100 (they're scaled).
+  5. Scores can only be entered for a student who is enrolled that session AND has that subject in student_subjects, so admins must assign subjects before teachers can grade.
+  6. Attendance must fall on the slot's weekday and inside the term's dates. Attendance changes are NOT in the audit log (too many rows); they keep marked_by instead.
+  7. Visibility: teacher names/emails/phones are visible to all signed-in users. A teacher sees every student in any section they teach, plus those students' parents. You may want to hide teacher phone/email from students.
+  8. Admins can NOT read parent–teacher messages (the task said only the two participants). Consider whether admins need to read them for safeguarding.
+  9. A parent–teacher thread can only be opened if that teacher teaches (or taught) one of the parent's children; either of them can open it.
+  10. Fees: invoices are created for students ACTIVELY enrolled in that class for the session, including students enrolled later. Changing a fee's amount updates all of its invoices, even partly-paid ones. I also made invoice edits (e.g. discounts) and payment edits/deletes super-admin only, which goes beyond README (which only mentions fee structures). Limited admins CAN record cash ("manual") payments.
+  11. Only admins can post announcements and set up assessment components. "specific_class" announcements reach this session's students, parents and teachers of that class.
+  12. Timetable slots may have no teacher yet; that is how "unfilled slots" are represented. Each class level (JSS1, JSS2...) exists once; parallel groups are sections (A, B).
+  13. ID cards get a number like JHS-000001. The QR code should use the card's random verification_token, not the card number, so strangers can't guess other cards. One active card per person per session.
+  14. Deactivating a user (is_active = false) removes all their access immediately.
+  FOLLOW-UPS:
+  - The "overdue" invoice status only updates when mark_overdue_invoices() runs, so it needs a daily schedule (pg_cron). Not set up yet.
+  - Parents can only create "pending" payments. Marking a payment successful must be done by server code that checks with Paystack/Flutterwave (a future Edge Function). This can't be tested without live payment keys.
+  - Creating accounts and sending invites also needs server code (a future task).
+  - The temporary Supabase test in the Login page is still in place.
+  - Nothing has been committed to git yet.
+-------------------------------------------
+
+[2026-09-23 12:46] Task: Real authentication + role-based routing
+Files changed/added: src/context/AuthContext.jsx (new; replaces context/AuthContext.js and context/AuthProvider.jsx, now deleted), src/hooks/useAuth.js, src/components/ProtectedRoute.jsx, src/components/SignOutButton.jsx (new), src/components/DashboardPlaceholder.jsx (new), src/pages/Login.jsx, src/pages/ForgotPassword.jsx (new), src/pages/SetPassword.jsx (new), src/pages/AdminDashboard.jsx, TeacherDashboard.jsx, StudentDashboard.jsx, ParentDashboard.jsx, src/lib/authErrors.js (new), src/lib/supabaseClient.js, src/App.jsx, src/main.jsx, src/index.css, supabase/config.toml (local-only auth settings)
+What was done: The login page now really signs people in with email and password. The app then reads the person's row in the "users" table and sends them to their own dashboard (/admin, /teacher, /student or /parent). Each dashboard is guarded: signed-out visitors go to the login page, and signed-in users who open someone else's dashboard are sent back to their own. Every dashboard has a "Log out" button, and there are new "Forgot password" and "Set password" pages (the Set password page is used for both reset links and future invite links). Error messages are in plain language. The temporary console test from the Login page has been removed.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - Browser checks in Chrome against the running app (no real account needed):
+      /admin and /teacher while signed out -> sent to /login (PASS)
+      Sign in with a made-up email/password -> "Incorrect email or password." (PASS)
+      "Forgot password?" link -> Forgot password page with email box (PASS; I did NOT submit it, to avoid using up your email allowance)
+      /set-password with no link -> "This link is not valid or has expired..." with "Request a new link" (PASS)
+      /set-password with an expired-link error in the address -> "This link has expired or has already been used..." (PASS)
+      Browser console: no errors.
+  - Confirmed your Supabase project already has the "users" table (the migrations have been applied).
+  - NOT tested by me, because it needs a real account in your Supabase project: successful login and redirect, wrong-role redirects, logout, the reset email, and saving a new password. The steps below cover these.
+How to test manually:
+  BEFORE YOU START (one-time settings in the Supabase dashboard)
+    1. Authentication > URL Configuration:
+         Site URL: http://localhost:5180
+         Redirect URLs: click "Add URL" and add  http://localhost:5180/set-password
+       Save. Without this, reset links send you to the wrong address.
+    2. (Recommended) Authentication > Sign In / Providers > Email: set the minimum password length to 8, to match the app.
+    3. Email limit: Supabase's built-in email sender only delivers to email addresses of members of your Supabase team (e.g. the email you use to log in to Supabase), and only a few emails per hour. Use THAT email for the test user below, or the reset email won't arrive.
+  CREATE A TEST USER
+    4. Authentication > Users > "Add user" > "Create new user". Email = your Supabase login email, pick a password, tick "Auto Confirm User", click Create. Click the new user and copy its "User UID".
+    5. SQL Editor > New query. Paste this, replace BOTH placeholders, and click Run:
+         insert into public.users (auth_id, role, admin_level, first_name, last_name, email)
+         values ('PASTE-USER-UID-HERE', 'admin', 'super_admin', 'Test', 'Admin', 'your-email@example.com');
+       Expected: "Success. No rows returned".
+  LOGIN AND REDIRECT
+    6. In a terminal in the project folder run:  npm run dev   then open http://localhost:5180/
+    7. Sign in with the email and password from step 4. Expected: you land on /admin, see "Admin Dashboard" and "Signed in as Test Admin (super admin)".
+    8. Press F5 to refresh. Expected: you stay on the Admin Dashboard. A "Loading…" flash is fine, but you should NOT be sent to the login page.
+  WRONG-ROLE ACCESS
+    9. In the address bar go to http://localhost:5180/teacher. Expected: you are put straight back on /admin (not the login page). Do the same for /student and /parent.
+    10. Switch the test user to a teacher. In the SQL Editor run:
+         update public.users set role = 'teacher', admin_level = null where auth_id = 'PASTE-USER-UID-HERE';
+        Back in the app, click "Log out" and sign in again. Expected: you land on /teacher ("Signed in as Test Admin (teacher)"). Now go to /admin. Expected: sent back to /teacher.
+        (Optional: repeat with role = 'student' -> /student and role = 'parent' -> /parent.)
+  LOGOUT
+    11. Click "Log out". Expected: the login page with a green "You have been logged out." Then go to http://localhost:5180/teacher. Expected: sent to the login page.
+  ERROR MESSAGES
+    12. Sign in with the right email but a wrong password. Expected: red "Incorrect email or password."
+    13. Deactivated account: in the SQL Editor run  update public.users set is_active = false where auth_id = 'PASTE-USER-UID-HERE';  then sign in. Expected: red "Your account has been deactivated. Please contact the school office." and you are NOT let in. Undo it with the same statement using  is_active = true
+  FORGOT PASSWORD / SET PASSWORD
+    14. On the login page click "Forgot password?", enter the test user's email, click "Send reset link". Expected: "Check your email / If an account exists for ... we have sent a link".
+        (Entering an email that doesn't exist shows the SAME message. That's deliberate, so strangers can't find out who has an account.)
+    15. Open the email "Reset Your Password" and click the link. Expected: the app opens at /set-password showing "Choose a password for your-email...".
+    16. Enter a new password twice (8+ characters) and click "Save password". Expected: the login page with a green "Your password has been set. Please sign in with your new password." Sign in with the NEW password. Expected: it works.
+        Also try: two passwords that don't match -> "The two passwords do not match."; clicking the same email link a second time -> "This link has expired or has already been used."
+  CLEAN UP (optional)
+    17. SQL Editor:  delete from public.users where auth_id = 'PASTE-USER-UID-HERE';   then delete the user in Authentication > Users.
+Known issues / follow-ups:
+  OPEN DESIGN QUESTION (not solved; needs a decision): the schema assumes each person has one Supabase Auth account with one email. README.md says students without their own email get their invite sent to a parent's email. Supabase Auth allows only ONE account per email. If the parent already has their own account under that email, or manages several children, the invite can't create a separate student account with that same email: it would clash with the parent's account or with each sibling's. Options to discuss: students without email have no login (parents see everything for them); giving each student a school-issued email or username-style login; or email "aliases" like parent+child1@... (which not every email provider supports). Please decide before the invite/account-creation task.
+  ASSUMPTIONS:
+  1. After saving a new password (reset OR invite), the user is signed out and must sign in with it, which proves the new password works. The task asked for "redirect to login with a success message", so they aren't left signed in.
+  2. The app requires passwords of at least 8 characters. Supabase's own minimum is 6 unless you change it (step 2 above).
+  3. Someone who can sign in but has no row in "users", or whose row has is_active = false, is signed out straight away with a plain explanation. If their details fail to load (e.g. network problem), they are also signed out and asked to try again.
+  4. Both admin levels (super_admin and limited_admin) land on /admin. What each can do is enforced by the database rules from the previous task.
+  5. Role and name are read once when someone signs in (and on page refresh). If an admin changes someone's role, it takes effect the next time they sign in or refresh.
+  6. Visiting /login while already signed in takes you straight to your dashboard.
+  7. /set-password works for anyone who is signed in, so it can double as a "change password" page later.
+  8. Forgot password only reports "no internet" or "too many attempts" errors. Everything else shows the same confirmation, so it doesn't reveal whether an email is registered.
+  9. Invite emails will be sent by a future admin task. They must use http://localhost:5180/set-password (and later the live site address) as the link destination, just like reset emails.
+  FOLLOW-UPS:
+  - When the site goes live, add the live address to Site URL / Redirect URLs as in step 1.
+  - Supabase's built-in email is for testing only (team addresses, few per hour). A proper email provider (README suggests Resend) is needed before real users get invites or resets.
+  - Tip: on this computer, the dev server sometimes misses file changes and shows a blank page. If that happens after an update, stop it (Ctrl + C) and run "npm run dev" again.
+  - Nothing has been committed to git yet.
+-------------------------------------------
+
+[2026-09-23 12:56] Task: Center the login / forgot-password / set-password cards
+Files changed/added: src/index.css
+What was done: The three sign-in pages share one layout: a white card, at most 400px wide with padding, sitting in the middle of the screen both across and up-and-down, on a light grey background. The pages already used this layout; this update widened the card to 400px, made the inputs and buttons fill the card's width, added a faint shadow, and made the full-height centring also work on phones (where the browser's address bar changes the screen height). No UI library; plain CSS flexbox.
+Automated tests run: "npm run lint" (0 problems), "npm run build" (built successfully). In Chrome I measured the card's position with a script:
+  - Desktop (1280 wide): /login, /forgot-password and /set-password all have a 400px card with exactly equal space on the left and right (440px each) and equal space above and below. No scrolling.
+  - Phone (390x800 and 320x480): the card shrinks to fit with a 16px margin on each side, stays vertically centred, and never scrolls sideways.
+  Not checked: the Set password form as seen with a valid link (that needs a real reset email). It uses exactly the same card, so it will look the same.
+How to test manually:
+  1. Make sure "npm run dev" is running, then open http://localhost:5180/login
+  2. Expected: the sign-in card sits in the middle of the page, with equal grey space on the left and right and roughly equal space above and below. It is NOT stretched across the page and NOT stuck to the left.
+  3. Click "Forgot password?". Expected: the same centred card. Then open http://localhost:5180/set-password. Expected: the same centred card, showing the "link is not valid" message.
+  4. Make the browser window narrow (or press F12, then the phone/tablet icon at the top-left of the developer panel, and pick a phone such as "iPhone 12 Pro"). Expected: the card fills the width with a small margin each side, still centred, with no sideways scrolling.
+  5. If a page looks unstyled or out of date, stop the dev server (Ctrl + C), run "npm run dev" again and refresh. On this computer Vite sometimes misses file changes.
+Known issues / follow-ups: Styling is deliberately plain; proper visual design comes with the frontend-design work. Nothing has been committed to git yet.
+-------------------------------------------
+
+[2026-09-23 13:47] Task: Center-align text inside the sign-in cards
+Files changed/added: src/index.css
+What was done: All text inside the Login, Forgot password and Set password cards is now centred: headings, the grey subtext, the field labels ("Email", "Password" and so on), the links ("Forgot password?", "Back to sign in", "Request a new link") and the red/green message boxes. The input boxes still fill the card's width, and what you type in them stays left-aligned so it's easy to read. Card size, page position and button style are unchanged.
+Automated tests run: "npm run lint" (0 problems), "npm run build" (built successfully). In Chrome (on your running dev server) I measured how far each piece of text sits from the card's centre line: 0px for every heading, subtext, label and link on /login, /forgot-password and /set-password. The inputs are still full-width (335px inside the 400px card) and their typed text is left-aligned.
+How to test manually:
+  1. With "npm run dev" running, open http://localhost:5180/login (press F5 if it was already open).
+  2. Expected: "Jessiikong High School", "Sign in to your account", "Email", "Password" and "Forgot password?" are all centred in the card. The two input boxes span the card's width and the blue "Sign in" button looks the same as before.
+  3. Click in the Email box and type something. Expected: the typed text starts at the left of the box.
+  4. Click "Forgot password?". Expected: the heading, the explanation, "Email" and "Back to sign in" are centred.
+  5. Open http://localhost:5180/set-password. Expected: the heading, the red message and both links are centred.
+Known issues / follow-ups: The message boxes (e.g. "Incorrect email or password.") are centred too, since you asked for all text in the card. Say if you'd rather have those left-aligned. Nothing has been committed to git yet.
 -------------------------------------------

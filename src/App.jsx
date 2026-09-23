@@ -2,6 +2,8 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import { ROLES } from './lib/roles'
 import Login from './pages/Login'
+import ForgotPassword from './pages/ForgotPassword'
+import SetPassword from './pages/SetPassword'
 import AdminDashboard from './pages/AdminDashboard'
 import TeacherDashboard from './pages/TeacherDashboard'
 import StudentDashboard from './pages/StudentDashboard'
@@ -13,6 +15,8 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/set-password" element={<SetPassword />} />
 
       <Route element={<ProtectedRoute allowedRoles={[ROLES.ADMIN]} />}>
         <Route path="/admin/*" element={<AdminDashboard />} />

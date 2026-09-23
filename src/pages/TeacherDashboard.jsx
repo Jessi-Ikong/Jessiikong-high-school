@@ -1,8 +1,5 @@
+import DashboardPlaceholder from '../components/DashboardPlaceholder'
+
 export default function TeacherDashboard() {
-  return (
-    <main>
-      <h1>Teacher Dashboard</h1>
-      <p>Placeholder page.</p>
-    </main>
-  )
+  return <DashboardPlaceholder title="Teacher Dashboard" />
 }
