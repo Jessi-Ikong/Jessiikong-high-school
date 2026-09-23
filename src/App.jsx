@@ -10,6 +10,8 @@ import Sessions from './pages/admin/Sessions'
 import Terms from './pages/admin/Terms'
 import ClassesSections from './pages/admin/ClassesSections'
 import Subjects from './pages/admin/Subjects'
+import Periods from './pages/admin/Periods'
+import Timetable from './pages/admin/Timetable'
 import Staff from './pages/admin/Staff'
 import Students from './pages/admin/Students'
 import Parents from './pages/admin/Parents'
@@ -33,6 +35,8 @@ export default function App() {
           <Route path="terms" element={<Terms />} />
           <Route path="classes" element={<ClassesSections />} />
           <Route path="subjects" element={<Subjects />} />
+          <Route path="periods" element={<Periods />} />
+          <Route path="timetable" element={<Timetable />} />
           <Route path="staff" element={<Staff />} />
           <Route path="students" element={<Students />} />
           <Route path="parents" element={<Parents />} />

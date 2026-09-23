@@ -11,3 +11,8 @@ export function formatDate(isoDate) {
   if (!isoDate) return ''
   return dateFormatter.format(new Date(`${isoDate}T00:00:00Z`))
 }
+
+// '08:00:00' -> '08:00' (times from the database include seconds).
+export function formatTime(time) {
+  return time ? time.slice(0, 5) : ''
+}

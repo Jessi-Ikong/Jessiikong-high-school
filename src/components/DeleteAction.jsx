@@ -5,7 +5,14 @@ import { findDependents, friendlyDbError } from '../lib/db'
 // "Delete" button with a safety check: first counts records that still use
 // the item (`dependencyChecks`, see findDependents). If any exist, explains
 // why it can't be deleted; otherwise asks for confirmation, then deletes.
-export default function DeleteAction({ itemName, dependencyChecks, onDelete, onDeleted }) {
+export default function DeleteAction({
+  itemName,
+  dependencyChecks,
+  onDelete,
+  onDeleted,
+  buttonLabel = 'Delete',
+  buttonClassName = 'button-link danger',
+}) {
   // null | 'checking' | 'blocked' | 'confirm' | 'deleting'
   const [step, setStep] = useState(null)
   const [dependents, setDependents] = useState([])
@@ -44,8 +51,15 @@ export default function DeleteAction({ itemName, dependencyChecks, onDelete, onD
 
   return (
     <>
-      <button type="button" className="button-link danger" onClick={handleClick} disabled={step === 'checking'}>
-        {step === 'checking' ? 'Checking…' : 'Delete'}
+      <button
+        type="button"
+        className={buttonClassName}
+        onClick={handleClick}
+        disabled={step === 'checking'}
+        aria-label={`Delete ${itemName}`}
+        title={`Delete ${itemName}`}
+      >
+        {step === 'checking' ? (buttonLabel === 'Delete' ? 'Checking…' : '…') : buttonLabel}
       </button>
 
       {step === 'blocked' && (

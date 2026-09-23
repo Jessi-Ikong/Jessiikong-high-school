@@ -9,6 +9,8 @@ const NAV_LINKS = [
   { to: '/admin/terms', label: 'Terms' },
   { to: '/admin/classes', label: 'Classes & Sections' },
   { to: '/admin/subjects', label: 'Subjects' },
+  { to: '/admin/periods', label: 'Periods' },
+  { to: '/admin/timetable', label: 'Timetable' },
   { to: '/admin/staff', label: 'Staff' },
   { to: '/admin/students', label: 'Students' },
   { to: '/admin/parents', label: 'Parents' },

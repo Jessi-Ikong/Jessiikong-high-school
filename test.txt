@@ -498,3 +498,70 @@ Known issues / follow-ups:
   - Minor: the audit log shows the login-linking step (users row update) with no author, because the server does it. The creation itself is credited to the admin.
   - The function change is deployed but NOT committed to git yet (supabase/functions/invite-user/index.ts and test.txt are modified).
 -------------------------------------------
+
+[2026-09-23 20:09] Task: Admin timetable module (periods + timetable builder)
+Files changed/added: supabase/migrations/20260923000011_parallel_timetable_slots.sql (new), src/pages/admin/Periods.jsx (new), src/pages/admin/Timetable.jsx (new), src/components/DeleteAction.jsx (can now show as a small "×"), src/components/AdminLayout.jsx, src/pages/AdminDashboard.jsx, src/App.jsx, src/lib/format.js, src/index.css
+What was done: Two new admin pages (both admin levels), in the menu under Subjects:
+  - Periods: create, edit and delete the times of the school day, listed by start time. A period can be marked as a break, so no lessons can go in it.
+  - Timetable: pick a term, class and section. A grid appears with periods down the side and Monday–Friday across the top. Each cell shows its classes as small chips ("Biology — Musa Bello") with an "×" to remove, and "+ Add class" (choose subject and teacher). Empty cells say "No class scheduled", break periods show as a "Break" row, and a cell with more than one class is labelled "Parallel classes".
+  IMPORTANT DATABASE CHANGE: the original schema (migration 004) allowed only ONE class per section per period. That would have blocked parallel electives. The new migration 011 replaces that rule with "the same subject can't be in the same cell twice", which is exactly the duplicate rule you asked for, now enforced by the database too. The rule that a teacher can't teach two classes at once already existed and applies across all sections.
+  How the two checks work when you click Save:
+    - Same subject twice in one cell: subjects already in the cell show as "(already here)" and can't be picked. If it happens anyway, the save is refused with "<Subject> is already scheduled for <section> on <day>, <period>."
+    - Teacher double-booking: before saving, the page looks up that teacher's classes at the same day + period in the same term across EVERY section. If one exists, it refuses with "<Teacher> is already teaching <Subject> to <Class Section> on <Day>, <Period>. A teacher can't be in two classes at the same time." The database rule backs this up, e.g. if two admins save at the same moment.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - Database test on a temporary local copy with all 11 migrations, as a LIMITED admin: 17 checks, 17 passed, 0 failed. It covered:
+    - Creating periods; end-before-start and duplicate names rejected.
+    - A single slot saves. Biology AND Literature both save in the same cell (parallel). The same subject twice in a cell is rejected. A slot with no teacher yet is allowed.
+    - The same teacher in a DIFFERENT section at the same day + period is rejected, and the page's lookup correctly names the clashing class ("SS1 A, Mathematics"). The same teacher on a different day, or in a different term, is allowed. A third class in a parallel cell whose teacher already teaches in that cell is rejected.
+    - Removing a slot works. A period still used by the timetable can't be deleted.
+    - A teacher can read but not edit the timetable.
+  - All earlier test suites re-run with migration 011 added: 62/62, 33/33, 28/28 passed.
+  - Checked against your live Supabase project (read-only) that every data lookup the two pages use is valid.
+  - NOT tested by me in the browser: you were signed out of the app in Chrome, and I don't sign in with anyone's password. Migration 011 is also not on your project yet (step 1). Please follow the steps below.
+How to test manually:
+  1. Apply the new migration (in a terminal in C:\Users\HP\School-Management-System):
+       npx supabase db push --dry-run     (expected: lists only 20260923000011_parallel_timetable_slots.sql)
+       npx supabase db push               (type Y)
+     Or ask me to run it. If you skip this step, adding a SECOND class to a cell will fail with "The database setup is incomplete — migration 011 (parallel classes) hasn't been applied...".
+  2. Run "npm run dev", sign in as your admin, and make sure you have:
+       - a current term (Terms page);
+       - a class with TWO sections, e.g. JSS1 A and JSS1 B (Classes & Sections);
+       - subjects Mathematics, Biology and Literature (Subjects page);
+       - at least one teacher. You have "Test Teacher". For the parallel-class step a second teacher helps: add one on the Staff page with another Gmail alias, e.g. jessiikong11+jhs-teacher2@gmail.com.
+  CREATE PERIODS
+  3. Click "Periods" in the menu. Create:
+       Period 1, 08:00–08:40
+       Period 2, 08:40–09:20
+       Short break, 09:20–09:40, tick "This is a break (no lessons)"
+       Period 3, 09:40–10:20
+     Expected: listed in time order, with the break marked "Break". Try an end time before the start time. Expected: "The end time must be after the start time."
+  BUILD A TIMETABLE
+  4. Click "Timetable". Choose your current term, class JSS1, section A. Expected: a grid with Period 1, Period 2, a greyed "Break" row and Period 3 down the side, and Monday–Friday across. Every cell says "No class scheduled".
+  5. Normal single class: in Monday / Period 1 click "+ Add class", choose Mathematics and Test Teacher, then click Save. Expected: the chip "Mathematics — Test Teacher" appears in that cell.
+  6. Two parallel classes: in Tuesday / Period 2 add Biology (Test Teacher) and click Save. Then click "+ Add class" in the SAME cell again and add Literature (your second teacher, or "No teacher yet"), then click Save.
+     Expected: BOTH chips show in that one cell, with "Parallel classes" underneath. Refresh the page (F5). Expected: both are still there.
+  7. Duplicate check: click "+ Add class" in Tuesday / Period 2 again and open the Subject list. Expected: Biology and Literature show "(already here)" and can't be chosen. Click Cancel.
+  TEACHER DOUBLE-BOOKING
+  8. Switch Section to B (same term). In Monday / Period 1 click "+ Add class", choose any subject (e.g. Mathematics) and Test Teacher, then click Save.
+     Expected: nothing is added, and a red message appears: "Test Teacher is already teaching Mathematics to JSS1 A on Monday, Period 1. A teacher can't be in two classes at the same time."
+  9. Check that it's specific to that day and period: in section B, add Mathematics with Test Teacher on Monday / Period 2. Expected: it saves (Test Teacher is free then).
+  10. Same-cell clash: back in section A, Tuesday / Period 2, try adding a third class (e.g. Mathematics) with Test Teacher. Expected: refused, "...is already teaching Biology to this section (JSS1 A) on Tuesday, Period 2...".
+  REMOVING
+  11. Click the "×" on a chip. Expected: "Delete Mathematics (JSS1 B, Monday Period 2)? This cannot be undone." Click Delete. Expected: the chip disappears and the cell reads "No class scheduled" again.
+  12. On the Periods page, click "Delete" on Period 1. Expected: "Can't delete Period 1 — It is still being used by: N timetable slots."
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. Double-booking is checked within one TERM. The same teacher in the same day/period in a different term is not a clash, because each term has its own timetable.
+  2. A teacher is optional ("No teacher yet") so the timetable can be planned before staff are assigned. Unassigned classes can't clash.
+  3. The page does not check that anyone in the section actually takes a subject you add (e.g. Literature with no students registered for it). You can add any subject.
+  4. Changing a class = remove the chip and add it again (no "edit" on a chip).
+  5. Periods can't overlap in real life, but the Periods page doesn't check for that yet. Only "end after start" and unique names are enforced.
+  6. A chip can't be removed once attendance has been taken for it. You're told how many attendance records use it.
+  7. Only active teachers appear in the teacher list. Days are Monday–Friday (as set up in the database).
+  FOLLOW-UPS (worth planning with the attendance task):
+  - With parallel classes, attendance for e.g. the Literature slot should list ONLY the section's students who take Literature (from student_subjects). The attendance rules added earlier check the student is in the right section, but not that they take that subject. This should be added when attendance marking is built.
+  - Likewise, a parallel-class teacher can currently see every student in that section, not just the ones taking their subject.
+  - "Copy last term's timetable" and a whole-school teacher view would save admins time later.
+  - Nothing has been committed to git yet.
+-------------------------------------------

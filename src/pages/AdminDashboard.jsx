@@ -19,6 +19,12 @@ export default function AdminDashboard() {
           <Link to="/admin/subjects">Subjects</Link> — e.g. Mathematics (MTH)
         </li>
         <li>
+          <Link to="/admin/periods">Periods</Link> — the times of the school day
+        </li>
+        <li>
+          <Link to="/admin/timetable">Timetable</Link> — who teaches what, when, for each section
+        </li>
+        <li>
           <Link to="/admin/staff">Staff</Link> — add teachers (and, for super admins, other admins)
         </li>
         <li>
