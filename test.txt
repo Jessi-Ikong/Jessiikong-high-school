@@ -723,3 +723,42 @@ Known issues / follow-ups:
   - Only messaging changed. Which students (and their parents) a teacher can SEE is still based on any session they taught them (migration 012). So a teacher can still view last year's students' records but can't message their parents. Say if visibility should also be current-session only.
   - Nothing has been committed to git yet (attendance, messaging and this change).
 -------------------------------------------
+
+[2026-09-23 21:58] Task: Teacher visibility of students limited to the CURRENT session
+Files changed/added: supabase/migrations/20260923000014_teacher_visibility_current_session.sql (new; 012 is already live, so this is a new migration rather than an edit)
+What was done: A teacher can now see a student only if, in the session currently marked as CURRENT, they teach that student a subject the student takes. Before, having taught them in ANY session was enough (migration 012). This rule (teacher_can_see_student) is what lets a teacher read a student's record, profile (name, email, photo), enrollments, subjects, scores, parent links and parent details. So once a teacher no longer teaches a student this session, they lose live access to all of those. It now matches the messaging rule from migration 013.
+  NOTHING IS DELETED OR CHANGED in the stored data:
+    - Attendance and scores a teacher entered while teaching the student stay in the database exactly as they were, still showing who entered them (marked_by / entered_by).
+    - Admins, the student and the student's parents can still see them.
+    - The former teacher can still see the attendance rows of THEIR OWN past classes (a separate rule: "you are this class's teacher"), but no longer the student's name or profile behind them.
+Automated tests run:
+  - New visibility test on a temporary local copy (all 14 migrations): 18 checks, 18 passed, 0 failed. Scenario: Chidi taught Ada Chemistry in 2025/2026; in 2026/2027 only Bola teaches her (Biology).
+      While 2025/2026 was current: Chidi could see Ada, marked her attendance and entered a score (27/30). Bola could not see her yet.
+      After making 2026/2027 current:
+        Chidi can NO LONGER see Ada's student record, profile, enrollments (current class), subjects, scores, parent or parent link.
+        He still sees the attendance row of his own past class, but can't connect it to Ada's profile. Bola can now see Ada.
+      History intact: in the database, Chidi's attendance entry still exists (present, marked_by = Chidi) and so does his score (27, entered_by = Chidi). Ada's parent and Ada herself still see both.
+      With NO session marked current, teachers see no students at all.
+  - The same test WITHOUT migration 014: 9 of those checks FAIL. That confirms the former teacher really could see all of that before, and that 014 is what changes it.
+  - FULL SUITE re-run with migration 014: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25 passed. That includes attendance rosters for the current session and the messaging rules. "npm run build" still OK; no app code changed.
+How to test manually:
+  1. Apply the migration (it is NOT on your project yet):
+       npx supabase db push --dry-run    (expected: only 20260923000014_teacher_visibility_current_session.sql)
+       npx supabase db push              (type Y)
+     Or ask me to run it.
+  2. Using the test data from the 20:44 attendance entry: sign in as Test Teacher, open the Biology class, and note that Ada is listed. If you haven't already, mark her attendance for today and save.
+  3. As admin, on the Sessions page, click "Make current" on a DIFFERENT session (create a dummy one, e.g. "2099/2100", if needed).
+     Warning: this changes which session the whole app treats as current. Only do it with test data, and switch back in step 6.
+  4. Sign in as Test Teacher again. Expected: "Today's classes" shows no classes (the current term's classes aren't current any more). If you open the old address of the Biology class directly, it lists no students ("No students ... take Biology this session"). Test Teacher can no longer see Ada.
+  5. Check the history is still there. Supabase > SQL Editor:
+       select ar.date, ar.status, u.first_name || ' ' || u.last_name as marked_by
+         from public.attendance_records ar join public.users u on u.id = ar.marked_by
+        order by ar.date desc;
+     Expected: the attendance you saved in step 2 is still listed, marked by Test Teacher.
+  6. Switch the current session back on the Sessions page, and Test Teacher sees Ada again. Delete the dummy session if you made one.
+Known issues / follow-ups:
+  - This replaces the note in the [2026-09-23 21:42] entry that "a teacher can still view last year's students' records". Visibility is now current-session only as well.
+  - Timing: at the start of a new school year, once an admin marks the new session as current, teachers see no students until that session's enrollments, subjects and timetable are set up.
+  - NOT changed, flagged for a decision: at the database level a teacher can still EDIT attendance on their OWN past-session classes (the attendance insert/update rules check "is this your class", not "is it the current session"). The app doesn't offer this: the list for such a class is empty and the dashboard only shows the current term. The test above records this as current behaviour. If you want past sessions locked for teachers (only admins could correct them), that's a small follow-up change.
+  - Nothing has been committed to git yet.
+-------------------------------------------
