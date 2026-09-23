@@ -19,9 +19,13 @@
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 
+// Sent on EVERY response (preflight, success, errors). Without them the
+// browser hides the real response and reports a CORS error instead.
+// Allowed headers match what supabase-js sends (see @supabase/supabase-js/cors).
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-retry-count, traceparent, tracestate, baggage',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
@@ -137,8 +141,9 @@ async function requireAdmin(req: Request, admin: SupabaseClient) {
   return { authId: authData.user.id, adminLevel: caller.admin_level as string }
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+// Everything except the preflight. Any error thrown in here, including
+// config problems, is turned into a JSON response by the wrapper below.
+async function handleInvite(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
@@ -191,6 +196,11 @@ Deno.serve(async (req) => {
       p_subject_ids: body.role === 'student' ? (body.subject_ids ?? []) : [],
     })
     if (createError) {
+      // admin_create_account() doesn't exist: migration 010 was never applied.
+      if (createError.code === 'PGRST202' || createError.code === '42883') {
+        console.error('admin_create_account() is missing - apply the database migrations', createError)
+        throw new HttpError(500, "The database setup is incomplete — a migration hasn't been applied.")
+      }
       const message = dbErrorMessage(createError)
       if (message) throw new HttpError(400, message)
       throw createError
@@ -228,11 +238,32 @@ Deno.serve(async (req) => {
     })
   } catch (err) {
     if (createdUserId) {
-      const { error: undoError } = await admin.rpc('admin_discard_account', { p_user_id: createdUserId })
-      if (undoError) console.error('Could not undo account creation', createdUserId, undoError)
+      try {
+        const { error: undoError } = await admin.rpc('admin_discard_account', { p_user_id: createdUserId })
+        if (undoError) console.error('Could not undo account creation', createdUserId, undoError)
+      } catch (undoErr) {
+        console.error('Could not undo account creation', createdUserId, undoErr)
+      }
     }
     if (err instanceof HttpError) return json({ error: err.message }, err.status)
     console.error(err)
     return json({ error: 'Something went wrong on the server while creating the account. Nothing was saved.' }, 500)
+  }
+}
+
+Deno.serve(async (req) => {
+  // 1) CORS preflight: answered first, before reading secrets or anything
+  //    else that could fail.
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { status: 200, headers: corsHeaders })
+  }
+
+  // 2) Everything else. The catch-all guarantees even an unexpected crash
+  //    returns JSON WITH CORS headers, so the browser shows the real error.
+  try {
+    return await handleInvite(req)
+  } catch (err) {
+    console.error('Unhandled error in invite-user', err)
+    return json({ error: 'The invite service hit an unexpected error. Nothing was saved. Please try again.' }, 500)
   }
 })

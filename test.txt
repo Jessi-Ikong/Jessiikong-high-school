@@ -431,3 +431,70 @@ Known issues / follow-ups:
   - Consequence to be aware of: every student now needs a real email address before they can be added at all.
   - Other follow-ups from the 14:53 entry (re-sending invites, editing/deactivating people, etc.) still stand.
 -------------------------------------------
+
+[2026-09-23 19:04] Task: Fix invite-user CORS / 500 errors (hardening + redeploy)
+Files changed/added: supabase/functions/invite-user/index.ts (redeployed to Supabase as version 3)
+What was done: The Edge Function now (1) answers the browser's CORS "preflight" (OPTIONS) request first, before reading any secrets or doing anything that could fail, and (2) wraps everything else in a catch-all. So EVERY response carries the CORS headers: success, validation errors, missing secrets and unexpected crashes alike. The list of allowed request headers now matches exactly what the Supabase browser library can send. The function is redeployed (version 3).
+WHAT WAS WRONG (root cause, as far as can be proven):
+  1. A real bug, now fixed: part of the function's setup (reading secrets, creating the Supabase client) ran OUTSIDE the error handling. If anything there threw, Deno returned a bare "500 Internal Server Error" with NO CORS headers. The browser then hides the real error and reports a CORS failure instead. I reproduced this by running the OLD code locally with a broken setting: POST returned plain "Internal Server Error" and no Access-Control headers.
+  2. A smaller gap, now fixed: the allowed headers list lacked four headers supabase-js can send (x-retry-count, traceparent, tracestate, baggage). A request carrying one of them would have been blocked at the preflight.
+  3. What I could NOT pin down: the exact event behind YOUR error message (a preflight answered with 500). The code on Supabase when I started (version 2, deployed today at 18:42) was identical to the repo, and it already answered OPTIONS first. When I tested it, the preflight returned 200 with correct headers. With that code, a 500 on the preflight can only come from Supabase's side: the function failing to start (a boot/worker error) or an earlier deployment (version 1). Those produce platform error pages without CORS headers, which is exactly the message you saw. I could not read the logs to confirm: the CLI's login is stored in Windows Credential Manager, and I didn't extract a saved credential. To confirm, see "Logs to check" below.
+Automated tests run:
+  - Deno type check: no errors.
+  - Old vs new code, run locally with Deno:
+      OLD code, unexpected crash during setup -> 500 "Internal Server Error", NO CORS headers (the bug).
+      NEW code, NO secrets at all -> OPTIONS 200 with CORS; POST 500 JSON {"error":"The invite service is not configured yet ..."} WITH CORS.
+      NEW code, unexpected crash during setup -> OPTIONS 200 with CORS; POST 500 JSON {"error":"The invite service hit an unexpected error. Nothing was saved..."} WITH CORS (the crash is still logged on the server); GET 405 JSON with CORS.
+  - LIVE deployed version 3 (checked from the terminal):
+      OPTIONS preflight, including all 8 headers the SDK can send -> 200 + Access-Control-Allow-Origin/Headers/Methods.
+      POST as a non-admin -> 401 JSON "Your session has expired..." with CORS.
+      GET -> 405 JSON with CORS.
+      POST with no login token (rejected by Supabase's gateway before our code) -> 401 with CORS.
+  - LIVE, from a real browser page on http://localhost:5180 (Chrome, your signed-in admin session): the preflight passed, the request reached the function, and its error message came back readable. Browser console: NO CORS errors. Only deliberately invalid requests were sent (empty / no name), which the function rejects BEFORE touching the database. Nothing was created.
+  - Not tested by me: successfully creating a real account after this fix (that sends a real invite email).
+How to test manually:
+  1. Make sure "npm run dev" is running and you're signed in as an admin. Open Staff and press F12 > Console.
+  2. Add a teacher with a real email you can receive (see the 14:53 entry, section B, about email delivery).
+     Expected: green "... was added. An invite email has been sent to ...". The Console shows NO red "blocked by CORS policy" message.
+  3. Error path: submit the same Staff ID again with another email. Expected: red "Another teacher already has that staff ID." (the function's own words), and still no CORS message in the Console. Before this fix, a server-side crash showed up only as a CORS error with no explanation.
+  4. Logs to check (to confirm what caused your original error): Supabase Dashboard > Edge Functions > invite-user.
+     - "Invocations" tab: look for OPTIONS requests with status 500 around the time you saw the error.
+     - "Logs" tab: look for lines containing BOOT_ERROR, "worker boot error", InvalidWorkerCreation, "event loop error", or "Unhandled error in invite-user".
+     Paste those lines into the planning chat. If they show a boot error on an earlier version, that confirms point 3 above.
+Known issues / follow-ups:
+  - If the preflight 500 ever comes back with version 3, it would be Supabase failing to start the function. The logs in step 4 will show why; our code now can't cause it.
+  - The fix is deployed but NOT committed to git yet (supabase/functions/invite-user/index.ts is modified). Ask me to commit/push when you're happy.
+-------------------------------------------
+
+[2026-09-23 19:31] Task: Fix "Something went wrong on the server" when creating accounts
+Files changed/added: supabase/functions/invite-user/index.ts (redeployed as version 4). Database: migration 20260923000010_account_creation.sql applied to your Supabase project.
+What was done: The real cause of "Something went wrong on the server while creating the account. Nothing was saved" was that migration 010, which adds the database functions account creation uses (admin_create_account / admin_discard_account), had never been applied to your Supabase project. "npx supabase migration list" showed 001–009 on the project but 010 only on this computer. So the Edge Function asked the database for a function that didn't exist, and it had no plain message for that error, so it showed its generic one. I applied the migration with "npx supabase db push" (the dry run first showed only 010 would be applied), and changed the Edge Function so this specific problem now says "The database setup is incomplete — a migration hasn't been applied." instead of the generic message. Redeployed (version 4).
+Automated tests run:
+  - "npx supabase db push --dry-run": would push only 20260923000010_account_creation.sql. Then "npx supabase db push": applied it.
+  - "npx supabase migration list": 010 now shows on both this computer and the project.
+  - Checked from outside that both new database functions exist AND are locked: a signed-out call gets "permission denied" for each.
+  - Deployed function: version 4, ACTIVE; the browser preflight check still returns 200.
+  - END-TO-END TEST in your browser, signed in as your super admin (Ikong Jessi), on the Staff page:
+      Created teacher "Test Teacher", email jessiikong11+jhs-teacher@gmail.com (a "+" alias of your own Gmail, so it lands in your inbox), Staff ID TEST-T001.
+      Result: green "Test Teacher was added. An invite email has been sent to jessiikong11+jhs-teacher@gmail.com." The teacher appears in the Teachers table.
+      Database check (with your admin session): users row = role teacher, active, LINKED to a new Supabase login. That link only exists if Supabase accepted the invite. teachers row TEST-T001 points at that user. The audit log credits the creation to you.
+      Error path: tried the SAME staff ID with another email -> red "Another teacher already has that staff ID." (the function's own message). 0 rows created for that email, still exactly 1 teacher, no email sent. No CORS or other errors in the browser console for either attempt.
+  - NOT verified by me (I can't open your email): that the invite email actually ARRIVED, and the invited teacher completing sign-up. Steps below.
+  - Not run this time: the local Deno type check. I had said I'd ask before using Deno again. Supabase's server-side bundling accepted the code when deploying.
+How to test manually:
+  1. Open the Gmail inbox for jessiikong11@gmail.com and look for an email from Supabase (subject like "You have been invited"), addressed to jessiikong11+jhs-teacher@gmail.com. Check Spam/Promotions too.
+     - If it's there: continue with step 2.
+     - If it never arrives: Supabase accepted the invite but the built-in sender may not deliver to "+" addresses. Supabase's built-in email only reliably delivers to team members' exact addresses. Set up an email provider (Authentication > Emails > SMTP Settings, e.g. Resend) or invite an address that is a member of your Supabase team. See the 14:53 entry, section B.
+  2. Sign out of the admin, or use an incognito window, then click "Accept the invite" in the email. Expected: the app opens at "Set your password — Choose a password for jessiikong11+jhs-teacher@gmail.com".
+  3. Enter a password twice (8+ characters), then click "Save password". Expected: the login page with "Your password has been set...".
+  4. Sign in with jessiikong11+jhs-teacher@gmail.com and that password. Expected: you land on /teacher with "Teacher Dashboard" and "Signed in as Test Teacher (teacher)".
+  5. Clean up when done (optional):
+       - In the app you can't delete staff yet. In Supabase > SQL Editor:
+           delete from public.users where email = 'jessiikong11+jhs-teacher@gmail.com';
+         (this also removes the teachers row).
+       - Then Authentication > Users > delete jessiikong11+jhs-teacher@gmail.com.
+Known issues / follow-ups:
+  - Why this was missed: the deploy steps in the 14:53 entry started with "npx supabase db push", but the function was deployed without that step having been run. The new message now names this exact problem if it ever happens again, e.g. on a new Supabase project.
+  - Minor: the audit log shows the login-linking step (users row update) with no author, because the server does it. The creation itself is credited to the admin.
+  - The function change is deployed but NOT committed to git yet (supabase/functions/invite-user/index.ts and test.txt are modified).
+-------------------------------------------
