@@ -25,6 +25,12 @@ export default function AdminDashboard() {
           <Link to="/admin/timetable">Timetable</Link> — who teaches what, when, for each section
         </li>
         <li>
+          <Link to="/admin/assessment">Assessment</Link> — how each subject is graded per term (e.g. CA 30%, Exam 70%)
+        </li>
+        <li>
+          <Link to="/admin/ranking">Class Ranking</Link> — students' positions in their section for a term
+        </li>
+        <li>
           <Link to="/admin/staff">Staff</Link> — add teachers (and, for super admins, other admins)
         </li>
         <li>

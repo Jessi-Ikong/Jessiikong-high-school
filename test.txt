@@ -849,3 +849,83 @@ Known issues / follow-ups:
   - This replaces the note in the 22:15 entry that "the original teacher's name isn't kept anywhere": it is now kept in the audit log whenever someone else corrects the record.
   - Nothing has been committed to git yet (the 7-day window work and this).
 -------------------------------------------
+
+[2026-09-23 23:00] Task: Grading — assessment components (admin), gradebook (teacher), class ranking
+Files changed/added: supabase/migrations/20260923000017_grading.sql (new), src/pages/admin/AssessmentComponents.jsx (new), src/pages/teacher/Gradebook.jsx (new), src/pages/admin/ClassRanking.jsx (new), src/lib/grading.js (new), src/components/AdminLayout.jsx, src/components/TeacherLayout.jsx, src/pages/AdminDashboard.jsx, src/App.jsx, src/index.css
+What was done:
+  - ADMIN > ASSESSMENT (both admin levels):
+    - Pick a term and a subject to see, add, edit and delete its components (name, max score, weight %).
+    - A running "Total weight" shows green when it's exactly 100%. Otherwise it shows amber, explaining that teachers can't enter scores and the subject won't count in the ranking until it's 100%. Saving a single component is NOT blocked, so you can be mid-edit.
+    - Below that, every subject for the term is listed as Complete / Incomplete / Not set up.
+    - The "Apply default (CA 30%, Exam 70%) to all subjects for this term" button adds CA (max 30, 30%) + Exam (max 70, 70%) to every subject that has NO components yet. Subjects already set up are never changed.
+  - TEACHER > GRADEBOOK:
+    - Pick a term of the CURRENT session and one of YOUR classes (subject + section, from your timetable).
+    - If that subject's components don't add up to 100%: "Grading isn't fully configured for this subject yet — ask an admin to complete the assessment components", and no grid.
+    - Otherwise a grid appears: one row per student who TAKES that subject in that section (the same rule as attendance), one column per component, and a "Total / 100". Scores outside 0–max turn red and the save is refused, naming each problem. Saving writes only the changed cells; saving again updates rather than duplicates.
+  - ADMIN > CLASS RANKING (admin-only for now):
+    - Pick a term, class and section to see position ("1st of 3"), name, admission number, subjects counted and average %. It's worked out live by the database each time; nothing is stored.
+    - Subjects left out because their components don't add up to 100% are listed above the table.
+  DATABASE CHANGES (migration 017):
+    1. A score can only be saved when that term + subject's weights add up to exactly 100%. This applies to everyone, admins included (it's "downstream" of the setup). Message: "Grading isn't fully configured for this subject yet (the assessment component weights must add up to 100%). Ask an admin to complete the assessment components."
+    2. Score entry now uses the SAME scoping as attendance (teacher_can_score updated). A teacher can enter scores only for students in a section they teach that subject to, who take the subject, in the CURRENT session. Before, it didn't check the current session, and "takes the subject" was only checked by a separate rule.
+    3. A component's max score can't be lowered below scores already entered, and a component with scores can't be deleted. Admins are told why.
+    4. Ranking: kept the existing live calculation (rank within section + term by overall average across all subjects; ties share a position). It now leaves out subjects whose components don't add up to 100%. The ranking function also returns each student's name and admission number, and each person still only sees rows they're allowed to see (e.g. a parent sees only their child, with their true position).
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - New grading test on a temporary local copy (all 17 migrations): 24 checks, 24 passed, 0 failed. Scenario: SS1 A with Maths (Musa) for all, and parallel Biology (Bola) / Literature (Lara). Ada takes Maths + Biology, Ben takes Maths + Literature, Chi takes Maths + Biology. Dan is in SS1 B (Maths taught by someone else).
+      Components: an admin saves Biology at only 40% (allowed). The bulk default adds CA/Exam to exactly the 3 subjects with nothing and leaves Maths and Biology alone.
+      Scores: Musa enters Maths for Ada, Ben and Chi; re-saving UPDATES in place (no duplicates). Musa can NOT score Dan (other section) or Ada in last session's term. A CA of 31 when the max is 30 is refused.
+      Incomplete set-up: Bola's Biology score is refused with the message while Biology is at 40%, and an admin's is refused too.
+      After an admin completes Biology (adds Exam 60%): Bola can score Ada, but NOT Ben (Literature). Bola's student list = Ada and Chi only (same as attendance).
+      Ranking while Biology was incomplete: Ada 85 and Chi 85 share 1st, Ben 71 is 3rd.
+      Ranking after Biology was completed: Ada 80 (1st), Ben 71 (2nd), Chi 42.5 (3rd). Ada's parent sees only Ada, "1 of 3". Lara sees only Ben, with his true position 2.
+      Lowering a component's max below existing scores, and deleting a component with scores, are both refused. Teachers can't edit components.
+  - FULL SUITE re-run with migration 017: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18, 15/15, 20/20 passed, plus 24/24 grading. Total 262 checks.
+    (One test's setup was adjusted: its Chemistry components were CA 30% only, which now correctly blocks scores. I added Exam 70%.)
+  - Checked against your live Supabase project (read-only) that every query the three new pages use is valid.
+  - NOT tested by me in the browser (needs admin and teacher logins, and migration 017 applied). Please follow the steps below.
+How to test manually:
+  A) APPLY THE MIGRATION (or ask me to)
+    1. npx supabase db push --dry-run    (expected: only 20260923000017_grading.sql)
+       npx supabase db push              (type Y)
+  B) ASSESSMENT COMPONENTS AND THE 100% RULE (as admin)
+    You need the test data from the 20:44 entry: JSS1 A with Mathematics taught by Second Teacher and Biology by Test Teacher; Ada Biology (Maths + Biology), Ben Literature (Maths + Literature), Chi Maths (Maths only).
+    2. Admin > Assessment. Choose the current term and subject Biology. Add a component: Name "CA", Max score 40, Weight 40, then click "Add component".
+       Expected: the amber box "Total weight: 40% — must be exactly 100%...". In the list below, Biology shows "Incomplete".
+    3. (Check the block) Sign in as Test Teacher > Gradebook, choose "Biology — JSS1 A". Expected: the red message "Grading isn't fully configured for this subject yet — ask an admin to complete the assessment components", and no grid.
+    4. Back as admin, add "Exam", Max 60, Weight 60. Expected: green "Total weight: 100% — complete...", and Biology shows "Complete".
+       Try editing CA's weight to 50. Expected: it saves, and the total shows 110% in amber. Set it back to 40.
+    5. Click "Apply default (CA 30%, Exam 70%) to all subjects for this term". The dialog names only the subjects that have nothing yet. Click "Apply default".
+       Expected: "Default CA 30% / Exam 70% added to N subjects". Mathematics, Literature etc. now show "Complete". Biology keeps its own 40/60 (not overwritten). The button is greyed out once every subject has components.
+  C) SCORE ENTRY AND STUDENT SCOPING (as teachers)
+    6. As Test Teacher > Gradebook > "Biology — JSS1 A". Expected rows: ONLY Ada Biology (not Ben or Chi), the same list as her Biology attendance. Columns: "CA / 40 · 40%", "Exam / 60 · 60%", "Total / 100".
+       Enter CA 30 and click "Save scores (1 changed)". Expected: "Saved 1 score." and Total 30.0.
+    7. As Second Teacher > Gradebook > "Mathematics — JSS1 A". Expected rows: Ada, Ben and Chi. Enter:
+         Ada CA 25, Exam 60 | Ben CA 20, Exam 50 | Chi CA 25, Exam 60
+       Save. Expected: "Saved 6 scores." Totals: Ada 85.0, Ben 70.0, Chi 85.0.
+    8. Re-open the Gradebook and change Ben's CA to 21. Expected: the button says "(1 changed)", and saving says "Saved 1 score.". In the SQL Editor, "select count(*) from public.scores;" still gives 7 (no duplicates).
+  D) SCORES CAN'T EXCEED THE MAXIMUM
+    9. In Mathematics, type 31 in a CA box (max 30). Expected: the box turns red, and Save shows "Fix these before saving: ... – CA: above 30". Nothing is saved.
+       (The database refuses it too: "Score 31 is above the maximum of 30 for this component", as shown in the automated test.)
+    10. Clear a score that was already saved, then click Save. Expected: refused, "a saved score can't be cleared (ask an admin)".
+  E) CLASS RANKING (as admin)
+    11. Admin > Class Ranking > current term, JSS1, A. With the scores from steps 6–8, expected:
+          1st of 3  Chi Maths        (1 subject: Maths 85)                      85.00%
+          2nd of 3  Ada Biology      (2 subjects: Maths 85, Biology 75)         80.00%
+          3rd of 3  Ben Literature   (1 subject: Maths 71; Literature not graded yet)  71.00%
+        Why Ada's Biology is 75: only CA has been graded in Biology so far, so Biology = 30/40 = 75%. The Exam counts once any Exam score is entered in that section.
+    12. Change Ada's Maths Exam to 70 (Second Teacher's Gradebook) and refresh the ranking. Expected: Ada's Maths becomes 95, her average (95+75)/2 = 85.00%, and she ties with Chi. Both show "1st of 3" and Ben stays "3rd of 3".
+    13. As admin, change Biology's Exam weight to 50 (so Biology totals 90%) and refresh the ranking. Expected: a blue note "Not counted this term... Biology (90%)", and Ada's average is Maths only. Set it back to 60.
+Known issues / follow-ups:
+  EDIT WINDOW FOR SCORES (flagged, as you asked; NOT implemented): scores have no time limit. A teacher can enter or change scores for any term of the CURRENT session, at any time, including earlier terms (e.g. fixing First Term scores during Second Term). They can't touch past sessions (migration 017). Attendance's 7-day rule doesn't fit scores well, because exams are marked in bulk at term end. A more natural rule would be "locked once the term's results are published" (e.g. when report cards are issued), or "locked N days after the term ends", with admins exempt as for attendance. I'd treat this as a separate decision, best made together with the report-card task. The audit log already records every score change (who and what) for scores, unlike attendance before migration 016.
+  ASSUMPTIONS:
+  1. "Complete" means the weights add up to exactly 100 (to 2 decimal places). Max score and weight are separate: a component can be marked out of 40 and be worth 40%, or out of 100 and be worth 30%.
+  2. The block is enforced in the database for everyone, admins included. If an admin changes weights mid-term so they no longer add up to 100, NO scores for that subject can be entered or changed until it's fixed.
+  3. The bulk default only fills subjects with NO components that term. It covers every subject in the Subjects list, even ones not on any timetable.
+  4. The Gradebook "Total / 100" is the running total (blank scores count as 0). The ranking instead only counts components that have been graded in that section so far. So mid-term the two differ: e.g. with only CA entered, the Gradebook shows 25/100 but the ranking treats the subject as 25/30 = 83%. At the end of term, with everything entered, they match.
+  5. Teachers can't clear a saved score (only admins can delete scores, and there's no admin screen for that yet). They can change it to 0 instead.
+  6. The ranking leaves out withdrawn students and subjects that are incomplete or have no scores yet in that section. A student's average is the plain mean of their counted subjects (not weighted by subject).
+  7. The Class Ranking page is admin-only for now. The same function already returns the right single row to a parent or student, ready for their dashboards later.
+  OTHER: README.md currently has some text at the end that looks like an instruction pasted into the file by mistake. It starts "Add this section to README.md, right before '## Next Steps'..." and ends "Confirm once added.". I left README.md exactly as it is. See my message in the chat.
+  Nothing has been committed to git yet.
+-------------------------------------------

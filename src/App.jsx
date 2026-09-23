@@ -12,12 +12,15 @@ import ClassesSections from './pages/admin/ClassesSections'
 import Subjects from './pages/admin/Subjects'
 import Periods from './pages/admin/Periods'
 import Timetable from './pages/admin/Timetable'
+import AssessmentComponents from './pages/admin/AssessmentComponents'
+import ClassRanking from './pages/admin/ClassRanking'
 import Staff from './pages/admin/Staff'
 import Students from './pages/admin/Students'
 import Parents from './pages/admin/Parents'
 import TeacherLayout from './components/TeacherLayout'
 import TeacherDashboard from './pages/TeacherDashboard'
 import MarkAttendance from './pages/teacher/MarkAttendance'
+import Gradebook from './pages/teacher/Gradebook'
 import StudentDashboard from './pages/StudentDashboard'
 import ParentDashboard from './pages/ParentDashboard'
 import NotFound from './pages/NotFound'
@@ -39,6 +42,8 @@ export default function App() {
           <Route path="subjects" element={<Subjects />} />
           <Route path="periods" element={<Periods />} />
           <Route path="timetable" element={<Timetable />} />
+          <Route path="assessment" element={<AssessmentComponents />} />
+          <Route path="ranking" element={<ClassRanking />} />
           <Route path="staff" element={<Staff />} />
           <Route path="students" element={<Students />} />
           <Route path="parents" element={<Parents />} />
@@ -49,6 +54,7 @@ export default function App() {
         <Route path="/teacher" element={<TeacherLayout />}>
           <Route index element={<TeacherDashboard />} />
           <Route path="attendance/:slotId" element={<MarkAttendance />} />
+          <Route path="gradebook" element={<Gradebook />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
