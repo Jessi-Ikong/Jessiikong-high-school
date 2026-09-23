@@ -17,6 +17,16 @@ const STATUSES = [
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // How far back a teacher can pick: this many past occurrences of the class.
 const RECENT_WEEKS = 4
+// Teachers can only record or change attendance this many days back (the
+// database enforces the same rule; admins are exempt). Older dates are view-only.
+const EDIT_WINDOW_DAYS = 7
+const OLD_ATTENDANCE_MESSAGE = 'Attendance older than 7 days can only be corrected by an admin.'
+
+function isEditable(isoDate) {
+  const earliest = new Date()
+  earliest.setDate(earliest.getDate() - EDIT_WINDOW_DAYS)
+  return isoDate >= toIsoDate(earliest)
+}
 
 // Loads the slot ONLY if the signed-in teacher teaches it. A slot ID typed
 // into the URL for someone else's class returns nothing. (Saving is also
@@ -119,7 +129,7 @@ function AttendanceForSlot({ slot }) {
               {dates.map((d) => (
                 <option key={d} value={d}>
                   {formatDate(d)}
-                  {d === toIsoDate(new Date()) ? ' (today)' : ''}
+                  {d === toIsoDate(new Date()) ? ' (today)' : isEditable(d) ? '' : ' (view only)'}
                 </option>
               ))}
             </select>
@@ -173,6 +183,7 @@ function Roster({ slot, date }) {
 }
 
 function RosterForm({ slot, date, students, existing, savedMessage, onSaved, onEdit }) {
+  const editable = isEditable(date)
   // Nothing pre-selected unless this date was already marked.
   const [statuses, setStatuses] = useState(() => ({ ...existing }))
   const [error, setError] = useState(null)
@@ -233,7 +244,13 @@ function RosterForm({ slot, date, students, existing, savedMessage, onSaved, onE
   return (
     <form onSubmit={handleSave}>
       {savedMessage && <p className="alert alert-success" role="status">{savedMessage}</p>}
-      {isEditing && !savedMessage && (
+      {!editable && (
+        <p className="alert alert-info-plain">
+          {OLD_ATTENDANCE_MESSAGE}
+          {!isEditing && ' Nothing was recorded for this date.'}
+        </p>
+      )}
+      {editable && isEditing && !savedMessage && (
         <p className="alert alert-info-plain">
           Attendance was already marked for {formatDate(date)}. Change anything below and save to update it.
         </p>
@@ -245,14 +262,16 @@ function RosterForm({ slot, date, students, existing, savedMessage, onSaved, onE
           {counts.absent} · Late {counts.late} · Excused {counts.excused}
           {unset.length > 0 && ` · Not marked ${unset.length}`}
         </span>
-        <button type="button" className="button-secondary" onClick={markAllPresent}>
-          Mark all present
-        </button>
+        {editable && (
+          <button type="button" className="button-secondary" onClick={markAllPresent}>
+            Mark all present
+          </button>
+        )}
       </div>
 
       <ul className="roster">
         {students.map((student) => (
-          <li key={student.enrollmentId} className={statuses[student.enrollmentId] ? '' : 'is-unset'}>
+          <li key={student.enrollmentId} className={statuses[student.enrollmentId] || !editable ? '' : 'is-unset'}>
             <span className="roster-name">
               {fullName(student)} <span className="muted small">{student.admissionNumber}</span>
             </span>
@@ -265,6 +284,7 @@ function RosterForm({ slot, date, students, existing, savedMessage, onSaved, onE
                     name={`status-${student.enrollmentId}`}
                     value={s.value}
                     checked={statuses[student.enrollmentId] === s.value}
+                    disabled={!editable}
                     onChange={() => setStatus(student.enrollmentId, s.value)}
                   />
                   {s.label}
@@ -276,11 +296,13 @@ function RosterForm({ slot, date, students, existing, savedMessage, onSaved, onE
       </ul>
 
       {error && <p className="alert alert-error" role="alert">{error}</p>}
-      <div className="form-actions">
-        <button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : isEditing ? 'Save changes' : 'Save attendance'}
-        </button>
-      </div>
+      {editable && (
+        <div className="form-actions">
+          <button type="submit" disabled={saving}>
+            {saving ? 'Saving…' : isEditing ? 'Save changes' : 'Save attendance'}
+          </button>
+        </div>
+      )}
     </form>
   )
 }

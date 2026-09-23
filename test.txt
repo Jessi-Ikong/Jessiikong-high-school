@@ -762,3 +762,90 @@ Known issues / follow-ups:
   - NOT changed, flagged for a decision: at the database level a teacher can still EDIT attendance on their OWN past-session classes (the attendance insert/update rules check "is this your class", not "is it the current session"). The app doesn't offer this: the list for such a class is empty and the dashboard only shows the current term. The test above records this as current behaviour. If you want past sessions locked for teachers (only admins could correct them), that's a small follow-up change.
   - Nothing has been committed to git yet.
 -------------------------------------------
+
+[2026-09-23 22:15] Task: 7-day edit window for attendance (admins exempt)
+Files changed/added: supabase/migrations/20260923000015_attendance_edit_window.sql (new), supabase/manual_checks/attendance_window_check.sql (new), src/pages/teacher/MarkAttendance.jsx
+What was done: Teachers can now only record or change attendance for dates within the last 7 days: today and the 7 days before it, in Nigerian time, so something 7 days old is still allowed but 8 days is not. This is on top of the existing rules (own class, students who take the subject, right weekday, inside the term, not in the future). Anything older is refused with: "Attendance older than 7 days can only be corrected by an admin." Admins (super AND limited) are exempt and can still correct old records.
+  HOW IT'S ENFORCED (two layers in the database; admins exempt in both):
+    1. The attendance check (validate_attendance) refuses with the message above. For an edit it checks BOTH the date stored on the record and the new date, so an old record can't be changed, and a record can't be moved into or out of the window.
+    2. The RLS policies for adding and changing attendance also require the date to be inside the window for anyone who isn't an admin (a hard backstop). The "change" policy still lets a teacher reach their own old records, so they get the clear message rather than the edit silently doing nothing.
+    Server-side code (service role) is not affected.
+  In the app: the marking screen still lists the last 4 class dates, but dates older than 7 days are marked "(view only)". Choosing one shows the saved attendance greyed out, with the same message and no Save / "Mark all present" buttons.
+  Side effect worth knowing: this also closes the gap noted in the 21:58 entry. A teacher can no longer edit attendance on their own classes from a past session (anything that old is outside the window).
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - New 7-day-window test on a temporary local copy (all 15 migrations): 15 checks, 15 passed, 0 failed. Its dates are relative to the day it runs. Today (Wed 23 Sep) the "about 3 days old" date landed on Fri 18 Sep (5 days old), because 3 days ago was a Sunday.
+      Teacher, RECENT record: can ADD it, EDIT it, and re-save it the way the app does, and it stays ONE record. Exactly 7 days old is still allowed.
+      Teacher, 8-DAY-OLD record: adding, editing, and re-saving the way the app does are all REFUSED with "Attendance older than 7 days can only be corrected by an admin.", and the record is left unchanged. Moving a recent record back to an old date is refused, and so is moving the old record into the window.
+      ADMINS: a LIMITED admin CAN correct the 8-day-old record with a direct query (what the future admin screen will do), and marked_by then shows that admin. A SUPER admin CAN add a missing 8-day-old record. Admins still can't record a future date (the other rules still apply to them).
+  - The same test WITHOUT migration 015: the teacher COULD add and edit the 8-day-old record. That confirms the gap, and that 015 closes it.
+  - FULL SUITE re-run with all 15 migrations: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18 (visibility; its former "known gap" check is now "closed") and 15/15. Total 218 checks.
+    Note: the original security suite used a hard-coded attendance date (14 Sep) that is now more than 7 days old, and it was correctly refused. I moved those test dates to this week. The earlier suites use fixed dates, so they will need their dates refreshing if re-run in future weeks; the new window test doesn't.
+  - The new manual check script was run locally: the teacher's edit of a 12-day-old record was REFUSED with the message, the admin's correction was ALLOWED, and nothing was left behind.
+How to test manually:
+  1. Apply the migration (it is NOT on your project yet):
+       npx supabase db push --dry-run    (expected: only 20260923000015_attendance_edit_window.sql)
+       npx supabase db push              (type Y)
+     Or ask me to run it.
+  2. In the app, as Test Teacher: open one of your classes and open the Date list. Dates within the last 7 days look normal; older ones say "(view only)".
+     Pick a recent date, change something, and click Save. Expected: it saves as before.
+     Pick a "(view only)" date. Expected: a blue box "Attendance older than 7 days can only be corrected by an admin.", greyed-out choices, and no Save button.
+     (Your term may be too new to have a class date more than 7 days ago; if so, every date is editable for now.)
+  3. Prove the database enforces it (not just the screen): open supabase/manual_checks/attendance_window_check.sql, copy it into Supabase > SQL Editor, check the teacher and admin emails at the top, and click Run. Expected red box (deliberate; nothing is saved):
+       1) Teacher edits attendance from <date> (N days old, ...): expected REFUSED, got REFUSED (Attendance older than 7 days can only be corrected by an admin.)  PASS
+       2) Admin corrects the same record: expected ALLOWED, got ALLOWED  PASS
+     "SKIPPED ..." means that teacher has no class date more than 7 days ago inside the term yet.
+Known issues / follow-ups:
+  - FOLLOW-UP (needed): there is NO "Admin: Correct Attendance" screen yet. Admins are ALLOWED by the database to fix old records, but for now the only way to do it is Supabase's Table Editor (Dashboard > Table Editor > attendance_records): find the row by timetable_slot_id / enrollment_id / date, then edit its status.
+    Be aware that edits made in the Table Editor run as the database owner. That skips these checks (and doesn't record who made the change), so be careful there. A proper admin screen, working through the normal rules and recording the admin in marked_by, should be built.
+  - When an admin corrects a record, marked_by changes to that admin (it means "last saved by"). The original teacher's name isn't kept anywhere, because attendance isn't in the audit log. If you want the original marker preserved, a small change could add attendance changes to the audit log.
+  - "7 days" is counted in calendar days including weekends, in Nigerian time. A class from 8 days ago can't be edited by its teacher even if a weekend fell in between.
+  - Nothing has been committed to git yet.
+-------------------------------------------
+
+[2026-09-23 22:27] Task: Log attendance corrections to the audit log
+Files changed/added: supabase/migrations/20260923000016_audit_attendance_corrections.sql (new), supabase/manual_checks/attendance_correction_audit_check.sql (new)
+What was done: When an existing attendance record is saved by someone OTHER than the person who last marked it, a row is now written to audit_log. That covers an admin correcting a teacher's record, or a teacher changing a record an admin corrected. It's done with a database trigger on attendance_records (not app code), so it catches corrections however they're made. The row contains:
+    user_id  = the person making the correction
+    action   = 'correct_attendance'
+    entity   = 'attendance_records', entity_id = the record's id
+    changes  = { "status": {"old": ..., "new": ...},
+                 "original_marked_by": <the previous marker's user id>,
+                 "original_marked_by_name": "<their name>",
+                 "other_changes": {...}   <- only if anything else (e.g. the date) changed }
+  So the original teacher's identity is preserved even though the record's own marked_by now shows the admin. A teacher saving or re-saving their OWN record creates NO audit entry. New records (first-time marking) aren't logged by this either.
+  How "someone else" is detected: every save by a signed-in user sets marked_by to that user (the existing attendance check does this). The trigger logs whenever marked_by is about to CHANGE.
+  TABLE EDITOR (you asked me to flag this): YES, edits made in Supabase's Table Editor (or SQL Editor) as the database owner BYPASS this log. With nobody signed in, marked_by isn't touched, so a status change there is NOT logged, and marked_by keeps the previous person. They also bypass the 7-day window and the other attendance rules. The one exception: if someone edits the marked_by column itself by hand there, that IS logged, but with no user_id (the database can't tell who did it). The test below confirms both.
+Automated tests run:
+  - New correction-audit test on a temporary local copy (all 16 migrations): 20 checks, 20 passed, 0 failed. Dates are relative to today.
+      TEACHER re-saving their own record (marking, re-saving the way the app does, editing directly): NO audit entries. Teachers can't read the audit log.
+      ADMIN corrects the teacher's record (absent -> excused): exactly ONE entry. user_id = the admin, entity = attendance_records, entity_id = the record's id, changes.status = {old: absent, new: excused}, original_marked_by = the teacher's id, name "Bola Bio". The record's own marked_by now shows the admin, and admins can read the entry.
+      An admin correcting an 8-day-old teacher record is logged the same way.
+      The SAME admin editing it again is NOT logged again (they are now the last marker). A DIFFERENT admin editing it IS logged, with the previous admin as "original_marked_by".
+      A teacher changing a record an admin corrected IS logged.
+      Table Editor (database owner): a status edit is NOT logged (flagged above); hand-editing marked_by IS logged with no user_id.
+    Example of a stored entry:
+      user_id = <admin> | correct_attendance | attendance_records | entity_id = <record id>
+      { "status": {"old": "absent", "new": "excused"}, "original_marked_by": "<teacher id>", "original_marked_by_name": "Bola Bio" }
+  - FULL SUITE re-run with all 16 migrations: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18, 15/15, 20/20. Total 238 checks, all passing. "npm run build" still OK (no app code changed).
+  - The new manual check script was run locally: the teacher re-save made no entry, the admin correction made one correct entry, and nothing was left behind.
+How to test manually:
+  1. Apply the migration (it is NOT on your project yet):
+       npx supabase db push --dry-run    (expected: only 20260923000016_audit_attendance_corrections.sql)
+       npx supabase db push              (type Y)
+     Or ask me to run it.
+  2. Open supabase/manual_checks/attendance_correction_audit_check.sql, copy it into Supabase > SQL Editor, check the teacher and admin emails at the top, and click Run. Expected red box (deliberate; nothing is saved):
+       1) Teacher re-saves their own record (present -> late): expected NO audit entry, got none  PASS
+       2) Admin corrects it (late -> excused): expected ONE entry by the admin keeping the teacher as original marker, got user_id=..., changes={"status": {"new": "excused", "old": "late"}, "original_marked_by": "...", "original_marked_by_name": "Test Teacher"}  PASS
+     "SKIPPED ..." means that teacher has no class this week with a student taking its subject (or attendance is already saved for it).
+  3. To see real corrections later (once an admin screen exists, or after a correction made through the app's normal rules), run in the SQL Editor:
+       select created_at, changes ->> 'original_marked_by_name' as originally_marked_by,
+              changes -> 'status' ->> 'old' as old_status, changes -> 'status' ->> 'new' as new_status, user_id as corrected_by
+         from public.audit_log where action = 'correct_attendance' order by created_at desc;
+Known issues / follow-ups:
+  - FLAGGED: Table Editor / SQL Editor edits as the database owner are not logged and skip all attendance rules. This makes the missing "Admin: Correct Attendance" screen (see the 22:15 entry) more important. Once it exists, corrections go through the normal rules and are logged automatically, with no extra work. Until then, avoid correcting attendance in the Table Editor if you want an audit trail. If you do, note the change somewhere yourself.
+    (Possible follow-up: also log ANY change made with no signed-in user, with no user_id. That would catch Table Editor status edits too, though it still couldn't say who made them.)
+  - Only a change of marker is logged. Repeated edits by the same admin after their first correction aren't logged again. The first correction entry keeps the original teacher.
+  - This replaces the note in the 22:15 entry that "the original teacher's name isn't kept anywhere": it is now kept in the audit log whenever someone else corrects the record.
+  - Nothing has been committed to git yet (the 7-day window work and this).
+-------------------------------------------
