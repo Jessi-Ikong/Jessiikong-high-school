@@ -1199,3 +1199,15 @@ select {
 .assignment-group h3 .muted {
   font-weight: normal;
 }
+
+/* ---------- Fees ---------- */
+.fee-table td,
+.fee-table th {
+  vertical-align: top;
+}
+
+.fee-table tfoot th,
+.fee-table tfoot td {
+  border-top: 2px solid #e4e7eb;
+  font-weight: 600;
+}

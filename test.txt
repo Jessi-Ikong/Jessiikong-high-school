@@ -1614,3 +1614,145 @@ Known issues / follow-ups:
   7. Admins still have no screen for grading. They can grade offline work (including in locked terms) only through the database.
   Nothing has been committed to git yet, and migration 025 is not applied yet.
 -------------------------------------------
+
+[2026-09-24 20:28] Task: Fee structures page + automatic invoice generation (no payments / Paystack yet)
+Files changed/added: supabase/migrations/20260924000026_fee_invoicing.sql (new), src/pages/admin/FeeStructures.jsx (new), src/lib/format.js, src/App.jsx, src/components/AdminLayout.jsx, src/index.css
+What was done:
+  - WHAT ALREADY EXISTED (migration 006, live since the start): database triggers that invoice every active student in a class when a fee structure is added, invoice a NEW enrollment for existing fee structures, and never create duplicates (the database allows only ONE invoice per student per fee structure, and the triggers skip any that already exist). Invoices start "unpaid". Their status (unpaid / partial / paid / overdue) is kept up to date by the database as payments come in, and amount or due-date changes are copied to the invoices.
+  - MIGRATION 026 tightens that:
+      ONE SHARED GENERATOR. "Create the missing invoices" is now a single database function, used by both triggers (new fee structure, and new/changed enrollment), so the rule of who gets invoiced lives in exactly one place:
+        every ACTIVE enrollment in the fee's class (any section) for the term's session; any invoice that already exists is skipped (never a duplicate).
+      LATE JOINERS. A student is invoiced when their enrollment is created as active, becomes active later (e.g. withdrawn -> re-admitted), or moves to another class. Before, only brand-new enrollments were covered. They're invoiced only for terms that HAVEN'T ENDED yet, so someone who joins in the second term isn't billed for first-term fees (agreed). A new fee structure, however, invoices its class even for a past term, since the admin chose that term on purpose.
+      DUE DATE. An invoice is due on the fee's own due date or, if it has none, on the TERM'S END DATE. Before, it had no due date and so could never become "overdue". The end of term is the natural deadline for a term's fees, and it follows the term automatically if the term's dates change. Existing invoices without a due date were given one.
+      PROTECTING PAYMENT RECORDS. Once ANY payment (pending, successful or failed) exists against a fee's invoices:
+        * the fee can't be deleted: '"Tuition" (JSS1, Second Term 2026/2027) can't be deleted: payments have been recorded against 1 of its invoices, and payment records must be kept. You can still rename it or change its description.'
+        * its amount can't be changed ("If the fee really changed, add a separate fee item for the difference").
+      A fee's class or term can't be changed once it has invoices at all (they'd belong to the wrong students or term). Name, description and due date stay editable. A fee with NO payments can still be deleted, and its unpaid invoices go with it.
+      COLLECTION OVERVIEW. A new database function returns, per fee structure, the number of invoices paid / partial / unpaid / overdue, the total due and the total collected. It runs with the viewer's own permissions.
+  - FEES PAGE (Admin > Fees; super admins only: the menu link and the page are hidden from limited admins, and the database already restricts fee changes to super admins):
+      Pick a term, then a class. The table lists each fee with its amount, due date ("End of term (date)" if none), invoice counts by status (e.g. "5 · 1 paid · 1 partial · 3 unpaid"), collected and outstanding, plus a Total row. You can add, edit and delete fees.
+      Adding a fee says how many invoices were created, e.g. '"Tuition" was added and 34 invoices were created for JSS1 students.' Protection refusals show the database's message.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - New test on a temporary local copy (all 26 migrations): 35 checks, 35 passed, 0 failed. Setup: current session with First Term (ENDED) and Second Term (current); JSS1 (sections A and B) and JSS2. Ada (JSS1 A) and Ben (JSS1 B) are active; Chi (JSS2 A) is active; Dan (JSS1 A) is withdrawn; Eve was in JSS1 LAST session only; Fay joins later.
+      RIGHT STUDENTS ONLY: "Tuition" for JSS1 / Second Term invoiced Ada and Ben (both sections), not Chi, Dan or Eve. Amount 50,000, unpaid, due on the term's end date. "Books" (with its own due date) uses that date. A First Term fee still invoices JSS1; a JSS2 fee invoices only Chi.
+      NO DUPLICATES: re-running the generator for Tuition, and for everything, creates 0 invoices. There are still exactly 7, with no student+fee pair twice, and a direct duplicate insert is refused.
+      LATE JOINERS: Fay enrolls in JSS1 mid-session and gets the Tuition and Books invoices but NOT First Term Tuition. Dan re-activated gets the current term's fees only. Chi moving JSS2 -> JSS1 gains the JSS1 invoices and keeps his JSS2 one. An unrelated enrollment edit creates nothing.
+      EDITS: a Books amount change (no payments) updates every Books invoice. A Tuition due date is set, then cleared (back to the end of term). Moving the term's end date moves the Tuition invoices but not Books (own date).
+      PROTECTION: after a 20,000 cash payment on Ada's Tuition (-> "partial"), deleting Tuition is refused with the message above, and the fee, its 5 invoices and the payment remain. Changing its amount is refused. Renaming, description and due date are fine. Moving Books to another class is refused. A PENDING online payment also protects a fee from deletion. Books (no payments) deletes, with its 5 invoices.
+      OVERVIEW: School fees shows 5 invoices (1 partial, 4 unpaid), 250,000 due, 20,000 collected. After Ben pays in full it shows 1 paid, 1 partial, 3 unpaid, 80,000 collected. Another term shows only its own fees.
+      PERMISSIONS: a limited admin still can't create fees (unchanged).
+      AUDIT: all 13 auto-created invoices are logged (insert_invoices). The refused deletions left no entries, and the allowed Books deletion is logged by the super admin.
+  - The same test WITHOUT migration 026 (minus the 5 checks that call its new functions): 13 checks FAIL. Without it: no due date, late joiners are billed for ended terms and re-activated or moved students aren't invoiced, amounts can be changed after payments, a paid fee can be moved, a pending payment doesn't protect, and deleting a paid fee only fails with a raw technical error. That confirms 026 is what makes the difference.
+  - FULL SUITE with migration 026, each file on a fresh database: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18, 15/15, 21/21, 24/24, 18/18, 29/29, 13/13, 11/11, 47/47, 28/28, 31/31, 29/29, plus 35/35 new. Total 504 checks, all passing. No existing test needed changing.
+  - NOT tested by me in the browser (needs migration 026 applied).
+How to test manually:
+  1. Apply the migration (or ask me to):
+       npx supabase db push --dry-run    (expected: only 20260924000026_fee_invoicing.sql)
+       npx supabase db push              (type Y)
+  2. CREATE A FEE, CHECK THE RIGHT STUDENTS ARE INVOICED: as the SUPER admin > Fees (the menu link is under Parents). Pick First Term (current) and the class your test student (jessiikong404@gmail.com) is in.
+       Add "Tuition", 50000, no due date > "Add fee and create invoices".
+       Expected: '"Tuition" was added and N invoices were created...', where N = the number of ACTIVE students in that class this session, across ALL its sections. The row shows "End of term (18 Dec 2026)" and "N · N unpaid".
+     Check exactly who was invoiced in Supabase > SQL Editor:
+       select u.first_name, u.last_name, c.name as class, se.name as section, e.status, i.amount_due, i.status as invoice, i.due_date
+         from public.invoices i join public.fee_structures fs on fs.id = i.fee_structure_id
+         join public.students s on s.id = i.student_id join public.users u on u.id = s.user_id
+         join public.terms t on t.id = fs.term_id
+         join public.enrollments e on e.student_id = s.id and e.session_id = t.session_id
+         join public.classes c on c.id = e.class_id join public.sections se on se.id = e.section_id
+        where fs.name = 'Tuition';
+       Expected: only students in that class, all "active", each owing 50000, "unpaid", due 2026-12-18. Students in other classes, or not active, are absent.
+     As a LIMITED admin: there's no "Fees" link, and /admin/fees says "Only super admins can manage fees."
+  3. A STUDENT WHO ENROLLS AFTERWARDS STILL GETS AN INVOICE: as super admin > Students, add a new student to the SAME class (any section) for the current session. Back on Fees, the Tuition row now shows N+1 invoices. The SQL above lists the new student too.
+  4. NO DUPLICATES: edit Tuition's description and save, and refresh a few times. Expected: the invoice count stays N+1. Database check (should return no rows):
+       select student_id, fee_structure_id, count(*) from public.invoices group by 1, 2 having count(*) > 1;
+     Optionally, as a stronger check, ask me to re-run the invoice generator against live for every fee (rolled back, like the 17:05 check). Expected: 0 new invoices.
+  5. DELETION PROTECTION:
+       a) Add a second fee "Test fee", 1000 > then Delete it. Expected: it's deleted (no payments), and its invoices go with it.
+       b) Record a payment against one Tuition invoice. There's no payments screen yet (next task), so use Supabase > SQL Editor:
+            insert into public.payments (invoice_id, amount, provider, provider_ref, status, paid_at)
+            select i.id, 20000, 'manual', 'TEST-RCPT-1', 'successful', now()
+              from public.invoices i join public.fee_structures fs on fs.id = i.fee_structure_id where fs.name = 'Tuition' limit 1;
+          Refresh Fees. Expected: Tuition shows "1 partial" and ₦20,000.00 collected.
+       c) Delete Tuition. Expected: refused with '"Tuition" (<class>, First Term 2026/2027) can't be deleted: payments have been recorded against 1 of its invoices...'. It's still listed.
+       d) Edit Tuition's amount to 60000 > Save. Expected: 'The amount of "Tuition" ... can't be changed...'. Change only its name or due date instead. Expected: saved.
+       e) Clean up the test payment if you want (payments are protected records, so this is done by hand):  delete from public.payments where provider_ref = 'TEST-RCPT-1';
+          Tuition can then be deleted again.
+Known issues / follow-ups:
+  ASSUMPTIONS / DECISIONS:
+  1. DUE DATE DEFAULT: the term's end date (agreed default). The fee's own due date wins when set. It follows the term's end date if the term is changed later.
+  2. LATE JOINERS: invoiced for fees in terms that haven't ended yet (agreed). A fee added for a PAST term still invoices everyone then in the class.
+  3. ONE GENERATOR, TWO TRIGGERS: both "new fee structure" and "new/changed enrollment" call the same database function, so the rule can't drift between the two. Duplicates are impossible: the database allows only one invoice per student + fee, and the generator skips existing ones.
+  4. DELETE / AMOUNT LOCKED BY ANY PAYMENT, including pending and failed ones. They're still payment records (a failed Paystack attempt is useful history), and payments must always point to an invoice. Deleting a fee with NO payments deletes its unpaid invoices: nothing financial is lost. These rules apply to super admins too; they protect data, not permissions.
+  5. STUDENTS WHO MOVE CLASS keep their old class's invoices (agreed), because those may have payments. Tidying them up is an admin job; there's no screen for cancelling a single invoice yet.
+  6. Students who are withdrawn keep their invoices (they may owe the money). Nothing is removed automatically.
+  7. "Overdue" replaces "unpaid" / "partial" once the due date has passed. It's recalculated when an invoice changes, or by the daily overdue job (public.mark_overdue_invoices, from migration 006), which still needs scheduling (e.g. pg_cron) before go-live. Without it, an untouched invoice won't flip to overdue on its own.
+  8. Amounts are Naira (₦); there's no multi-currency support.
+  9. No payments screen, receipts or Paystack yet: that's the next task. The overview already counts payments recorded directly in the database.
+  Nothing has been committed to git yet, and migration 026 is not applied yet.
+-------------------------------------------
+
+[2026-09-24 20:40] Task: Daily scheduled job to mark overdue invoices (pg_cron)
+Files changed/added: supabase/migrations/20260924000027_schedule_overdue_invoices.sql (new)
+What was done:
+  public.mark_overdue_invoices() (from migration 006) re-checks every unpaid / partial invoice whose due date has passed, so its status becomes "overdue". It existed but never ran on its own. Migration 027 schedules it:
+    - Enables pg_cron, Supabase's built-in scheduler, the way Supabase recommends ("with schema pg_catalog"). It was available on the live project (version 1.6.4) but not yet enabled.
+    - Registers ONE named job, "mark-overdue-invoices", that runs "select public.mark_overdue_invoices()" every day at 00:00 UTC = 01:00 Nigerian time. Nigeria (WAT) is UTC+1 all year with no daylight saving, so it's always 1am; pg_cron on Supabase works in UTC.
+    - Re-running the migration replaces the job instead of adding a second one.
+  CAN IT BE DONE ENTIRELY BY MIGRATION? Yes. pg_cron jobs are stored in the database itself (the cron.job table), and Supabase lets the postgres role, which "db push" uses, enable pg_cron and schedule jobs with SQL. No dashboard step is needed. Fallback, only if "db push" ever refuses the extension on a project: switch on Database > Extensions > pg_cron in the Supabase dashboard, then run "db push" again.
+  The job also shows in the dashboard under Integrations > Cron (or Database > Cron Jobs, depending on the dashboard version).
+Automated tests run:
+  - No app code changed, so lint/build were not needed.
+  - New test on a temporary local copy (all 27 migrations): 16 checks, 16 passed, 0 failed. My local Postgres doesn't have pg_cron, so a small stand-in "cron" schema (job table + schedule/unschedule by name) was used, and the one "create extension" line was skipped locally. That line only takes effect on Supabase (checked there after applying; see step 2).
+      SCHEDULE: exactly one active job "mark-overdue-invoices", schedule "0 0 * * *", command "select public.mark_overdue_invoices()". Re-running the migration still leaves ONE job.
+      THE FUNCTION: 4 invoices due tomorrow (Ada unpaid, Ben part-paid, Chi paid, Dan unpaid). Running it now changes 0.
+        Then "time passes": the due dates were moved into the past without touching the status, exactly the stale situation the job exists for, and Dan's is still in the future.
+        Running it reports 2 changed: Ada unpaid -> overdue, Ben partial -> overdue. Chi stays paid; Dan (not due yet) stays unpaid.
+        Running it again changes 0 (safe to run any number of times). The flip is in the audit log as update_invoices with no user (the system).
+      PERMISSIONS: signed-in users, admins included, can't call the function through the app/API. Only the scheduled job and the SQL Editor can (unchanged from 006).
+  - The same test WITHOUT migration 027: the 4 "job is registered" checks FAIL; the function checks still pass (the function itself dates from 006). That confirms 027 adds the schedule and nothing else changed.
+  - FULL SUITE with migration 027, each file on a fresh database: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18, 15/15, 21/21, 24/24, 18/18, 29/29, 13/13, 11/11, 47/47, 28/28, 31/31, 29/29, 35/35, plus 16/16 new. Total 520 checks, all passing.
+How to test manually:
+  1. Apply the migration (or ask me to):
+       npx supabase db push --dry-run    (expected: only 20260924000027_schedule_overdue_invoices.sql)
+       npx supabase db push              (type Y)
+  2. RIGHT AWAY, confirm the job is registered. Supabase > SQL Editor (or ask me to run it):
+       select jobid, jobname, schedule, command, active from cron.job;
+     Expected: one row: mark-overdue-invoices | 0 0 * * * | select public.mark_overdue_invoices() | true
+  3. RIGHT AWAY, prove the function works by running it once by hand:
+       select public.mark_overdue_invoices() as invoices_marked_overdue;
+     Expected: a number, namely how many unpaid/partial invoices were past their due date. As of this entry the live database has 0 invoices, so expect 0. It's safe to run any time and as often as you like; it only recalculates statuses.
+     To SEE an invoice flip (optional, once you have fees):
+       a) Admin > Fees: add a fee with a due date of YESTERDAY. It starts straight away as "overdue", because new invoices are checked when created.
+       b) The job exists for invoices that were fine when created and become overdue later. To simulate that now: edit an existing fee's due date to yesterday. Its invoices update and show "overdue" immediately. Then run step 3: it returns 0, which means nothing was left stale.
+       c) The real test is overnight: an unpaid invoice due TODAY will show "unpaid" today, and should show "overdue" tomorrow morning without anyone touching it.
+  4. TOMORROW (after 01:00 Nigerian time on 25 Sep 2026, i.e. 00:00 UTC), check it actually ran:
+       select j.jobname, d.status, d.return_message, d.start_time at time zone 'Africa/Lagos' as started_lagos, d.end_time - d.start_time as took
+         from cron.job_run_details d join cron.job j on j.jobid = d.jobid
+        where j.jobname = 'mark-overdue-invoices'
+        order by d.start_time desc limit 5;
+     Expected: a row with status "succeeded", started around 01:00, and a short return_message such as "1 row" or "SELECT 1" (the query returned one row, the count; the exact wording depends on the pg_cron version). One new row appears each day. A status of "failed" shows the error in return_message. Ask me and I'll check it for you.
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. 1am Nigerian time is quiet (nobody paying fees), and every invoice due "yesterday" has become overdue by the time the school day starts.
+  2. "Overdue" is judged by UTC's date inside the function (current_date), as it was in 006. At 01:00 in Nigeria it's 00:00 UTC on the SAME date, so the daily run sees the right day. The only difference is between 00:00 and 01:00 Nigerian time, when an invoice changed by hand is judged against the previous date. That's harmless; I left the 006 function unchanged.
+  3. The job runs as the database owner (postgres), so it isn't limited by the app's access rules. The function stays blocked for signed-in users (it isn't meant to be triggered from the app).
+  4. pg_cron keeps a row per run in cron.job_run_details. That's tiny for one job a day; no clean-up job is needed for now.
+  5. Each flip is logged in the audit log as update_invoices with no user (the system). With many invoices, a busy day adds that many audit rows, which is expected.
+  Nothing has been committed to git yet, and migration 027 is not applied yet.
+-------------------------------------------
+
+[2026-09-24 20:52] Task: Applied migrations 026 (fee invoicing) and 027 (daily overdue job) to the live database; live checks
+Files changed/added: test.txt only
+What was done:
+  "npx supabase db push" applied 20260924000026_fee_invoicing.sql and 20260924000027_schedule_overdue_invoices.sql (the dry run listed exactly those two). "migration list" shows 001-027 on both local and remote.
+Automated tests run (against LIVE, via "npx supabase db query --linked"):
+  - pg_cron is now enabled (version 1.6.4). The migration enabled it with no dashboard step.
+  - Job registered (step 2 of the 20:40 entry): jobid 1 | mark-overdue-invoices | 0 0 * * * | select public.mark_overdue_invoices() | active = true. Matches expected.
+  - Manual run (step 3 of the 20:40 entry): select public.mark_overdue_invoices() returned 0. Expected, since there are no invoices yet; the function runs fine on live.
+How to test manually:
+  TOMORROW after 01:00 Nigerian time (25 Sep 2026): run step 4 of the 20:40 entry (cron.job_run_details). Expect a "succeeded" run at about 01:00. Or ask me to check.
+  The Fees page checks are in the 20:28 entry.
+Known issues / follow-ups:
+  None new.
+-------------------------------------------

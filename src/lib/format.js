@@ -16,3 +16,10 @@ export function formatDate(isoDate) {
 export function formatTime(time) {
   return time ? time.slice(0, 5) : ''
 }
+
+const nairaFormatter = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' })
+
+// 50000 -> '₦50,000.00'
+export function formatNaira(amount) {
+  return nairaFormatter.format(Number(amount ?? 0))
+}
