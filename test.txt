@@ -963,3 +963,71 @@ How to test manually:
      Expected: only the 5 added lines of the new section show as additions (plus a note about the file's last line ending).
 Known issues / follow-ups: The commit before this one (348b99a) still contains the README with the stray text. This clean-up and this test.txt entry are NOT committed yet.
 -------------------------------------------
+
+[2026-09-24 10:34] Task: Grade scale (letter grades) in Gradebook and Class Ranking
+Files changed/added: supabase/migrations/20260924000018_grading_scale.sql (new), src/pages/admin/GradeScale.jsx (new), src/lib/grading.js, src/lib/db.js, src/pages/teacher/Gradebook.jsx, src/pages/admin/ClassRanking.jsx, src/components/AdminLayout.jsx, src/pages/AdminDashboard.jsx, src/App.jsx, src/index.css
+What was done:
+  - New school-wide grade scale (table grading_scale: grade, min_score, max_score, optional remark). It's the same for every term and subject. Nothing in the schema needed it scoped more narrowly, and the README lists it simply as "grading scale".
+  - Default scale added so grades show from day one: A 70–100 (Excellent), B 60–69 (Very good), C 50–59 (Good), D 45–49 (Fair), E 40–44 (Poor), F 0–39 (Fail). Admins can edit or completely replace it.
+  - ADMIN > GRADE SCALE (both admin levels):
+    - The bands are listed highest to lowest. Add a band ("+ Add band"), edit any cell, or Delete a row, then click "Save grade scale". The whole scale is saved at once, so you can rearrange several bands, e.g. split one in two, without it being "broken" halfway through. "Discard changes" undoes unsaved edits.
+    - Problems are listed live in red, and Save stays disabled until they're fixed. Examples: "Gap: no grade covers 50 to 54 (between D and C).", "C (50–62) and B (60–69) overlap.", "The scale must start at 0...", "The scale must reach 100...", duplicate letters, and a lowest score above the highest.
+    - Live preview: "e.g. a score of [72] % would currently be graded: A (Excellent)". It uses the SAVED scale; with unsaved edits, a second line shows what it would be after saving.
+  - TEACHER > GRADEBOOK: new "Grade" column next to "Total / 100", showing the letter for that student's total in that subject.
+  - ADMIN > CLASS RANKING: new "Grade" column next to each student's overall Average, showing the letter and its remark.
+  - If a score falls outside every band (it shouldn't, given the rules) or there's no score yet, "—" is shown instead of guessing.
+  DATABASE RULES (migration 018), enforced by the database and not just the page:
+    1. Scores in a band are whole numbers 0–100, lowest <= highest, and each grade letter is used once.
+    2. Bands never overlap (a database overlap rule), and together they cover 0–100 with NO gaps. The whole-scale check runs when a save completes, so several changes inside one save are allowed if the end result is valid.
+    3. The scale can't be emptied.
+    4. Everyone signed in can READ the scale (teachers need it; later students and parents too). Only admins can change it. Signed-out visitors see nothing.
+    5. Changes to the scale are recorded in the audit log.
+    New function replace_grading_scale() swaps the whole scale in one save. The page uses it, and it's admin-only through the normal security rules.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - Grade-lookup checks: 72 -> A, 69.5 -> A (rounds to 70), 69.4 -> B, 100 -> A, 0 -> F, 44.6 -> D (rounds to 45), no score -> "—", 101 -> "—", and a score in a gap -> "—" (not a wrong grade). The page's gap/overlap/empty/duplicate messages were also checked. All passed.
+  - New grade-scale test on a temporary local copy (all 18 migrations): 18 checks, 18 passed, 0 failed.
+      The default scale is seeded as listed above. A LIMITED admin replaces the whole scale in one save (A1 75–100, B2 70–74, C4 50–69, F9 0–49).
+      REFUSED, with plain messages:
+        a gap ("There is a gap in the grading scale: no grade covers 50 to 54 (between F9 and C4).")
+        an overlap
+        not starting at 0 / not reaching 100
+        deleting every band
+        a whole replacement that contains a gap
+        lowest above highest
+        a duplicate letter
+        a score above 100
+      After all those refusals the scale was unchanged.
+      A split done in two steps inside ONE save is accepted. Teachers can read but not change or replace the scale; signed-out visitors see nothing; changes are in the audit log.
+  - FULL SUITE re-run with migration 018: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18, 15/15, 20/20, 24/24, plus 18/18 grade scale. Total 280 checks.
+  - NOT tested by me: the pages in the browser (needs admin and teacher logins), and the live project (migration 018 isn't applied there yet).
+How to test manually:
+  A) APPLY THE MIGRATION (or ask me to)
+    1. npx supabase db push --dry-run    (expected: only 20260924000018_grading_scale.sql)
+       npx supabase db push              (type Y)
+  B) EDIT THE SCALE AND CHECK THE VALIDATION (as admin)
+    2. Admin > Grade Scale. Expected: A 70–100, B 60–69, C 50–59, D 45–49, E 40–44, F 0–39 (highest first), and the preview "e.g. a score of 72 % would currently be graded: A (Excellent)". Type 69.5 in the preview: A. Type 69.4: B. Type 38: F.
+    3. GAP: change C's "From" to 55. Expected: red "Gap: no grade covers 50 to 54 (between D and C)." and "Save grade scale" greyed out. Change it back to 50; the message disappears.
+    4. OVERLAP: change C's "To" to 62. Expected: "C (50–62) and B (60–69) overlap." and Save disabled. Change it back to 59.
+    5. Other checks: set A's "To" to 99 -> "The scale must reach 100..."; set F's "From" to 5 -> "The scale must start at 0..."; type "B" as the letter of another row -> 'Grade "B" is used more than once.'; set a row's From above its To -> "...the lowest score (…) is above the highest (…)". Click "Discard changes" afterwards.
+    6. A VALID change: make B 60–64, then "+ Add band" with letter B+, From 65, To 69, Remark "Very good". Expected: no red messages, and a note "With your unsaved changes it would be: …" under the preview. Click "Save grade scale". Expected: "Grade scale saved.", and the table now has B+ 65–69.
+       (Optional) Put it back to the default afterwards: delete B+, set B back to 60–69, then save.
+    7. (Optional, proves the database enforces it too) In the SQL Editor run:
+         update public.grading_scale set min_score = 55 where grade = 'C';
+       Expected: an error "There is a gap in the grading scale: no grade covers 50 to 54 (between D and C)." and nothing changes.
+  C) GRADES IN THE GRADEBOOK AND CLASS RANKING
+    Using the scores from the 23:00 entry (default scale):
+    8. As Second Teacher > Gradebook > "Mathematics — JSS1 A". Expected Grade column: Ada total 85.0 -> A, Ben 71.0 -> A, Chi 85.0 -> A. Change Ben's Exam to 35 (total 21+35 = 56.0) and save. Expected: Ben -> C. Then 40 (61.0) -> B.
+    9. As Test Teacher > Gradebook > "Biology — JSS1 A". Ada total 30.0 (only CA 30/40 entered) -> F. That's expected: the Gradebook total counts blank components as 0, so the grade only becomes meaningful once all components are entered (see assumption 3).
+    10. Admin > Class Ranking > current term, JSS1 A. Expected: each average has a matching grade with its remark, e.g. 85.00% -> "A Excellent", 71.00% -> "A Excellent", 61.00% -> "B Very good".
+    11. Change the scale (e.g. make A start at 80 and B 60–79) and refresh both pages. Expected: the grades change straight away (e.g. 71.00% becomes B), with no re-saving of scores needed. Put the scale back afterwards.
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. One school-wide scale, not per term/subject, and not versioned. If the scale is changed mid-year, past terms' grades are shown with the NEW scale too (grades are calculated when shown, not stored). If report cards later need "the scale that applied at the time", the scale would need to be stored per session.
+  2. Bands are whole numbers. A percentage is rounded to the nearest whole number (.5 rounds up) before looking up its grade, so 69.5% = A and 69.4% = B with the default scale.
+  3. Gradebook "Grade" is for the running "Total / 100" (blank components count as 0). So mid-term, before exams are entered, most students show a low grade (often F). The Class Ranking grade is for the ranking average, which only counts components already graded in that section, so it's more meaningful mid-term. If you'd rather hide the Gradebook grade until every component has a score, that's a small change.
+  4. The Class Ranking grade is for the OVERALL average across subjects. Subject-by-subject grades appear in the Gradebook (and later on report cards).
+  5. Remarks are optional and shown in Class Ranking and the Grade Scale preview. The Gradebook shows just the letter, to keep the grid narrow.
+  6. Admin-only changes (both admin levels). Tell me if only super admins should be allowed to change the scale.
+  Nothing has been committed to git yet, and migration 018 is not applied yet.
+-------------------------------------------

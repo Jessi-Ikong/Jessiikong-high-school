@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { friendlyDbError, run } from '../../lib/db'
 import { fullName, byName } from '../../lib/people'
-import { weightTotal, weightedTotal } from '../../lib/grading'
+import { gradeFor, weightTotal, weightedTotal } from '../../lib/grading'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -46,7 +46,7 @@ async function fetchTeacherClasses(userId) {
 // Components, students who TAKE the subject in that section (same rule as
 // attendance), and their saved scores.
 async function fetchGradebook(cls, term) {
-  const [components, enrollments] = await Promise.all([
+  const [components, enrollments, scale] = await Promise.all([
     run(
       supabase
         .from('assessment_components')
@@ -65,6 +65,7 @@ async function fetchGradebook(cls, term) {
         .eq('status', 'active')
         .eq('student_subjects.subject_id', cls.subjectId),
     ),
+    run(supabase.from('grading_scale').select('grade, min_score, max_score, remark')),
   ])
   const students = enrollments
     .map((e) => ({ studentId: e.student_id, admissionNumber: e.students.admission_number, ...e.students.users }))
@@ -80,7 +81,7 @@ async function fetchGradebook(cls, term) {
       )
     : []
   const saved = Object.fromEntries(scores.map((s) => [`${s.student_id}:${s.component_id}`, String(Number(s.score_obtained))]))
-  return { components, students, saved }
+  return { components, students, saved, scale }
 }
 
 export default function Gradebook() {
@@ -161,7 +162,7 @@ function GradebookForClass({ cls, term }) {
   if (query.loading) return <p className="muted">Loading gradebook…</p>
   if (query.error) return <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
 
-  const { components, students, saved } = query.data
+  const { components, students, saved, scale } = query.data
   const total = weightTotal(components)
 
   if (total !== 100) {
@@ -187,6 +188,7 @@ function GradebookForClass({ cls, term }) {
       components={components}
       students={students}
       saved={saved}
+      scale={scale}
       savedMessage={savedMessage}
       onSaved={(message) => {
         setSavedMessage(message)
@@ -197,7 +199,7 @@ function GradebookForClass({ cls, term }) {
   )
 }
 
-function ScoreGrid({ cls, components, students, saved, savedMessage, onSaved, onEdit }) {
+function ScoreGrid({ cls, components, students, saved, scale, savedMessage, onSaved, onEdit }) {
   const [values, setValues] = useState(() => ({ ...saved }))
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -287,6 +289,7 @@ function ScoreGrid({ cls, components, students, saved, savedMessage, onSaved, on
                 </th>
               ))}
               <th>Total / 100</th>
+              <th>Grade</th>
             </tr>
           </thead>
           <tbody>
@@ -323,6 +326,7 @@ function ScoreGrid({ cls, components, students, saved, savedMessage, onSaved, on
                     )
                   })}
                   <td className="total-cell">{anyScore ? total.toFixed(1) : <span className="muted">—</span>}</td>
+                  <td className="grade-cell">{anyScore ? (gradeFor(total, scale)?.grade ?? '—') : <span className="muted">—</span>}</td>
                 </tr>
               )
             })}
@@ -331,7 +335,8 @@ function ScoreGrid({ cls, components, students, saved, savedMessage, onSaved, on
       </div>
       <p className="muted small">
         Total = each score divided by its maximum, times its weight, added up. Blank scores count as 0, so the total
-        grows as more components are entered.
+        (and the grade) grows as more components are entered. The grade uses the school's grade scale, with the total
+        rounded to the nearest whole number.
       </p>
       {error && <p className="alert alert-error" role="alert">{error}</p>}
       <div className="form-actions">

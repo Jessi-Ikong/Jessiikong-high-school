@@ -30,6 +30,8 @@ export function friendlyDbError(error, messages = {}) {
   switch (error.code) {
     case '23505': // unique_violation
       return messages.unique ?? 'Something with those details already exists.'
+    case '23P01': // exclusion_violation (e.g. overlapping ranges)
+      return messages.exclusion ?? 'Some of these ranges overlap.'
     case '23514': // check_violation
       return messages.check ?? 'Some of the values are not allowed. Check the dates and numbers.'
     case '23503': // foreign_key_violation

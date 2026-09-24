@@ -12,6 +12,7 @@ const NAV_LINKS = [
   { to: '/admin/periods', label: 'Periods' },
   { to: '/admin/timetable', label: 'Timetable' },
   { to: '/admin/assessment', label: 'Assessment' },
+  { to: '/admin/grade-scale', label: 'Grade Scale' },
   { to: '/admin/ranking', label: 'Class Ranking' },
   { to: '/admin/staff', label: 'Staff' },
   { to: '/admin/students', label: 'Students' },

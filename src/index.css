@@ -931,3 +931,37 @@ select {
 .total-cell {
   font-weight: 600;
 }
+
+/* ---------- Grade scale ---------- */
+.preview-panel {
+  margin-top: 0.5rem;
+}
+
+.preview-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.preview-line input {
+  width: 5.5rem;
+}
+
+.preview-grade {
+  font-size: 1.2rem;
+}
+
+.scale-table input {
+  width: 100%;
+  min-width: 4.5rem;
+}
+
+.grade-cell {
+  font-weight: 700;
+}
+
+.alert ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.25rem;
+}

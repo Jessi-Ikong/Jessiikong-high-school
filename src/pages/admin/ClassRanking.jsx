@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabaseClient'
 import { friendlyDbError, run } from '../../lib/db'
-import { weightTotal } from '../../lib/grading'
+import { gradeFor, weightTotal } from '../../lib/grading'
 import { useAsyncData } from '../../hooks/useAsyncData'
 
 async function fetchSetup() {
@@ -17,9 +17,10 @@ async function fetchSetup() {
 // Ranking rows (computed live by the database) + which subjects are left out
 // because their components don't add up to 100%.
 async function fetchRanking(termId, sectionId) {
-  const [rows, components] = await Promise.all([
+  const [rows, components, scale] = await Promise.all([
     run(supabase.rpc('get_class_rankings', { p_term_id: termId, p_section_id: sectionId })),
     run(supabase.from('assessment_components').select('subject_id, weight, subjects(name)').eq('term_id', termId)),
+    run(supabase.from('grading_scale').select('grade, min_score, max_score, remark')),
   ])
   const bySubject = new Map()
   for (const c of components) {
@@ -30,7 +31,7 @@ async function fetchRanking(termId, sectionId) {
     .map((s) => ({ name: s.name, total: weightTotal(s.components) }))
     .filter((s) => s.total !== 100)
     .sort((a, b) => a.name.localeCompare(b.name))
-  return { rows, incomplete }
+  return { rows, incomplete, scale }
 }
 
 export default function ClassRanking() {
@@ -142,6 +143,7 @@ function RankingView({ terms, classes, sections }) {
                     <th>Admission no.</th>
                     <th>Subjects counted</th>
                     <th>Average</th>
+                    <th>Grade</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -154,6 +156,19 @@ function RankingView({ terms, classes, sections }) {
                       <td>{r.admission_number}</td>
                       <td>{r.subjects_counted}</td>
                       <td>{Number(r.average_score).toFixed(2)}%</td>
+                      <td className="grade-cell">
+                        {(() => {
+                          const band = gradeFor(r.average_score, query.data.scale)
+                          return band ? (
+                            <>
+                              {band.grade}
+                              {band.remark && <span className="muted small"> {band.remark}</span>}
+                            </>
+                          ) : (
+                            '—'
+                          )
+                        })()}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -164,7 +179,8 @@ function RankingView({ terms, classes, sections }) {
             How it&apos;s worked out: for each subject, each assessment component counts once at least one score has been
             entered for it in this section (a student missing that score gets 0 for it). The subject % is the weighted
             share of those components. A student&apos;s average is the mean of their subject %s. Students with equal
-            averages share a position (1st, 1st, 3rd).
+            averages share a position (1st, 1st, 3rd). The grade is the school grade scale applied to the average, rounded to
+            the nearest whole number (<Link to="/admin/grade-scale">edit the grade scale</Link>).
           </p>
         </>
       )}

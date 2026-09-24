@@ -14,6 +14,7 @@ import Periods from './pages/admin/Periods'
 import Timetable from './pages/admin/Timetable'
 import AssessmentComponents from './pages/admin/AssessmentComponents'
 import ClassRanking from './pages/admin/ClassRanking'
+import GradeScale from './pages/admin/GradeScale'
 import Staff from './pages/admin/Staff'
 import Students from './pages/admin/Students'
 import Parents from './pages/admin/Parents'
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="periods" element={<Periods />} />
           <Route path="timetable" element={<Timetable />} />
           <Route path="assessment" element={<AssessmentComponents />} />
+          <Route path="grade-scale" element={<GradeScale />} />
           <Route path="ranking" element={<ClassRanking />} />
           <Route path="staff" element={<Staff />} />
           <Route path="students" element={<Students />} />
