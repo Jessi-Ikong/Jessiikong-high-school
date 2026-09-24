@@ -1174,3 +1174,56 @@ Known issues / follow-ups:
   5. Server-side account creation is credited to the admin who asked for it, so a limited admin sees the accounts they created themselves, and not ones created by other admins.
   Nothing has been committed to git yet, and migration 020 is not applied yet.
 -------------------------------------------
+
+[2026-09-24 14:57] Task: Limited admins only see their OWN admin account (Staff page)
+Files changed/added: supabase/migrations/20260924000021_limited_admin_user_visibility.sql (new), src/pages/admin/Staff.jsx
+What was done: This matches the audit log rule. A limited admin now sees only THEMSELVES among admin accounts, and super admins still see every admin. Teachers, students and parents are visible exactly as before.
+  - DATABASE (migration 021): the read rule (RLS) on the users table was changed. The Staff page reads admins straight from users, and it's the only table involved. Before, any admin could see every user; now:
+      super admin -> every user (unchanged)
+      limited admin -> every NON-admin user (teachers, students, parents, as before) + their OWN account; NOT other admins (super or limited)
+      teachers / students / parents -> unchanged (their own account, all teachers, and the students/parents they're allowed to see; never admins)
+    Only the "who can see" part changed. Who can create or edit accounts is untouched: creating admins is still super-admin-only (Edge Function), and a limited admin still can't edit another admin.
+  - STAFF PAGE (Admins section):
+      A note under "Admins": for a limited admin "As a limited admin you can only see your own admin account here. Other admins are managed by super admins."; for a super admin "As a super admin you see every admin account."
+      Your own row is marked "(you)", and deactivated admins show "(deactivated)" (as teachers already did).
+      If the list is ever empty it says "No admin accounts to show." instead of an empty table.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - New test on a temporary local copy (all 21 migrations): 11 checks, 11 passed, 0 failed. People: Sade (super), Lola (limited A), Kemi (limited B), two teachers, a student and a parent.
+      Lola: the Staff page's admin query returns ONLY Lola. Asking the database directly for Sade's row or Kemi's row gives 0 rows. She still sees BOTH teachers (also through the teachers -> users link the Staff page uses), and students and parents. She still can't edit another admin, and can still edit a teacher.
+      Kemi: sees only herself among admins.
+      Sade: sees all three admins and every user.
+      A teacher: still sees no admins, and all teachers.
+  - The same test WITHOUT migration 021: 4 checks FAIL (Lola and Kemi could see every admin). That confirms 021 is what makes the difference.
+  - FULL SUITE re-run with migration 021: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18, 15/15, 21/21, 24/24, 18/18, 29/29, 13/13, plus 11/11 new. Total 347 checks, all passing.
+  - The database check in step 5 below was run locally: "Admins visible to that limited admin: 1 (Lola LimitedA). Admin accounts that really exist: 3."
+  - NOT tested by me in the browser (needs admin logins, and migration 021 applied).
+How to test manually:
+  1. Apply the migration (or ask me to):
+       npx supabase db push --dry-run    (expected: only 20260924000021_limited_admin_user_visibility.sql)
+       npx supabase db push              (type Y)
+  2. LIMITED ADMIN (e.g. "Limited One" from the 14:21 entry): Admin > Staff.
+       Expected under "Admins": the note "As a limited admin you can only see your own admin account here...", and ONE row, your own, marked "(you)". The super admin (Ikong Jessi) and "Limited Two" are NOT listed.
+       Expected under "Teachers": every teacher, the same list as before (Test Teacher, Second Teacher...).
+  3. SUPER ADMIN (your own account): Admin > Staff.
+       Expected: the note "As a super admin you see every admin account." and ALL admins listed (you "(you)", Limited One, Limited Two), plus every teacher.
+  4. TEACHERS UNAFFECTED: as the limited admin, Timetable > "+ Add class" still lists every teacher, and Staff still shows them all. As Test Teacher, nothing changed.
+  5. DATABASE CHECK (proves it's RLS, not just the page). In Supabase > SQL Editor, put a limited admin's email in and click Run:
+       do $$ declare v_me uuid; n bigint; v_names text; begin
+         select auth_id into v_me from public.users where lower(email) = lower('LIMITED-ADMIN-EMAIL');
+         perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
+         execute 'set local role authenticated';
+         select count(*), string_agg(first_name || ' ' || last_name, ', ') into n, v_names from public.users where role = 'admin';
+         execute 'reset role';
+         raise exception 'Admins visible to that limited admin: % (%). Admin accounts that really exist: %.',
+           n, v_names, (select count(*) from public.users where role = 'admin');
+       end $$;
+     Expected red box (deliberate, nothing is changed): "Admins visible to that limited admin: 1 (<their own name>). Admin accounts that really exist: 3." (or however many admins you have).
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. The rule uses each person's CURRENT role, like the audit log rule.
+  2. It applies everywhere the app reads user accounts, not just the Staff page, because it's a database rule. For example, if a future screen shows "created by" or "announcement author" names, a limited admin will see a blank/id instead of another admin's name. Today no page relies on that: the Audit Log already hides other admins' entries from limited admins.
+  3. A limited admin can still see a DIFFERENT admin's name if it's embedded in data they're allowed to see, e.g. the "Originally marked by" name stored inside an attendance correction entry. That's a copy of the name in the record, not access to the account.
+  4. "Done by" in the Audit Log was already limited to non-admins + yourself for limited admins (14:21 entry), so it's consistent with this.
+  Nothing has been committed to git yet, and migration 021 is not applied yet.
+-------------------------------------------

@@ -138,26 +138,41 @@ export default function Staff() {
           )}
 
           <h2>Admins</h2>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Email</th>
-                  <th>Level</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.admins.map((a) => (
-                  <tr key={a.id}>
-                    <td>{fullName(a)}</td>
-                    <td>{a.email ?? <span className="muted">—</span>}</td>
-                    <td>{a.admin_level === 'super_admin' ? 'Super admin' : 'Limited admin'}</td>
+          {/* What's listed is decided by the database (RLS, migration 021):
+              super admins see every admin; limited admins only themselves. */}
+          <p className="muted small">
+            {isSuperAdmin
+              ? 'As a super admin you see every admin account.'
+              : 'As a limited admin you can only see your own admin account here. Other admins are managed by super admins.'}
+          </p>
+          {data.admins.length === 0 ? (
+            <p className="empty-state">No admin accounts to show.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Level</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {data.admins.map((a) => (
+                    <tr key={a.id}>
+                      <td>
+                        {fullName(a)}
+                        {a.id === profile.id && <span className="muted small"> (you)</span>}
+                        {!a.is_active && <span className="muted small"> (deactivated)</span>}
+                      </td>
+                      <td>{a.email ?? <span className="muted">—</span>}</td>
+                      <td>{a.admin_level === 'super_admin' ? 'Super admin' : 'Limited admin'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </>
