@@ -152,7 +152,7 @@ function ClassAssignments({ cls, term, teacherId }) {
     <>
       {locked ? (
         <p className="alert alert-info-plain">
-          🔒 {termLockedMessage(term, 'Assignment grades')} New assignments can't be set for this term either.
+          🔒 {termLockedMessage(term, 'Assignment grades')} Assignments in this term can no longer be created, changed or deleted either.
         </p>
       ) : (
         <CreateAssignmentForm
@@ -214,18 +214,20 @@ function ClassAssignments({ cls, term, teacherId }) {
                   <button type="button" className="button-secondary" onClick={() => setOpenId(isOpen ? null : a.id)}>
                     {isOpen ? 'Hide submissions' : 'View submissions'}
                   </button>
-                  <DeleteAction
-                    itemName={`"${a.title}"`}
-                    dependencyChecks={[{ table: 'submissions', column: 'assignment_id', value: a.id, label: ['submission', 'submissions'] }]}
-                    onDelete={async () => {
-                      await runWrite(supabase.from('assignments').delete().eq('id', a.id).select('id'))
-                      await removeAssignmentFile(a.attachment_url)
-                    }}
-                    onDeleted={() => {
-                      setMessage(`Deleted "${a.title}".`)
-                      query.reload()
-                    }}
-                  />
+                  {!locked && (
+                    <DeleteAction
+                      itemName={`"${a.title}"`}
+                      dependencyChecks={[{ table: 'submissions', column: 'assignment_id', value: a.id, label: ['submission', 'submissions'] }]}
+                      onDelete={async () => {
+                        await runWrite(supabase.from('assignments').delete().eq('id', a.id).select('id'))
+                        await removeAssignmentFile(a.attachment_url)
+                      }}
+                      onDeleted={() => {
+                        setMessage(`Deleted "${a.title}".`)
+                        query.reload()
+                      }}
+                    />
+                  )}
                 </div>
                 {isOpen && (
                   <SubmissionsTable

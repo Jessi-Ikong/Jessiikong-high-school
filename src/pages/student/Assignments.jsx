@@ -13,6 +13,7 @@ import {
   submissionStatus,
   uploadAssignmentFile,
 } from '../../lib/assignments'
+import { termGradingOpen } from '../../lib/grading'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useAuth } from '../../hooks/useAuth'
 import { FileLink, SubmissionBadges } from '../../components/SubmissionBadges'
@@ -39,7 +40,7 @@ async function fetchMyAssignments(userId) {
     ? await run(
         supabase
           .from('assignments')
-          .select('id, title, description, attachment_url, due_at, max_score, created_at, subjects(name), teachers(users(first_name, last_name)), terms!inner(id, name, term_number, is_current, session_id)')
+          .select('id, title, description, attachment_url, due_at, max_score, created_at, subjects(name), teachers(users(first_name, last_name)), terms!inner(id, name, term_number, is_current, end_date, session_id)')
           .eq('section_id', enrollment.section_id)
           .in('subject_id', subjectIds)
           .eq('terms.session_id', enrollment.session_id),
@@ -139,6 +140,7 @@ export default function Assignments() {
               <h2>
                 {term.name}
                 {term.is_current && <span className="badge badge-info">Current term</span>}
+                {!termGradingOpen(term) && <span className="badge badge-muted">🔒 Closed</span>}
               </h2>
               {GROUPS.map((group) => {
                 const groupItems = termItems.filter((i) => i.status.key === group.key)
@@ -179,6 +181,8 @@ export default function Assignments() {
 function AssignmentCard({ assignment, submission, status, studentId, urls, onSubmitted }) {
   const [editing, setEditing] = useState(false)
   const teacher = assignment.teachers?.users
+  // Closes with the term's grading window (end date + 7 days); the database enforces it.
+  const termClosed = !termGradingOpen(assignment.terms)
 
   return (
     <article className={`panel assignment-card status-${status.key}`}>
@@ -232,7 +236,14 @@ function AssignmentCard({ assignment, submission, status, studentId, urls, onSub
         </div>
       )}
 
+      {status.key !== 'graded' && termClosed && (
+        <p className="alert alert-info-plain">
+          🔒 This assignment&apos;s term has closed for new submissions. Contact an admin if you still need to hand this in.
+        </p>
+      )}
+
       {status.key !== 'graded' &&
+        !termClosed &&
         (editing ? (
           <SubmitForm
             assignment={assignment}
