@@ -18,6 +18,7 @@ export default function TeacherLayout() {
           </NavLink>
           <NavLink to="/teacher/gradebook">Gradebook</NavLink>
           <NavLink to="/teacher/assignments">Assignments</NavLink>
+          <NavLink to="/teacher/messages">Messages</NavLink>
         </nav>
         <div className="portal-user">
           <span className="muted small">{fullName(profile)}</span>

@@ -17,6 +17,7 @@ export default function ParentLayout() {
             Home
           </NavLink>
           <NavLink to="/parent/fees">Fees</NavLink>
+          <NavLink to="/parent/messages">Messages</NavLink>
         </nav>
         <div className="portal-user">
           <span className="muted small">{fullName(profile)}</span>

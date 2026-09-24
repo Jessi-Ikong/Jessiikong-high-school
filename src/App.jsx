@@ -26,6 +26,7 @@ import TeacherDashboard from './pages/TeacherDashboard'
 import MarkAttendance from './pages/teacher/MarkAttendance'
 import Gradebook from './pages/teacher/Gradebook'
 import TeacherAssignments from './pages/teacher/Assignments'
+import TeacherMessages from './pages/teacher/Messages'
 import StudentLayout from './components/StudentLayout'
 import StudentDashboard from './pages/StudentDashboard'
 import StudentAssignments from './pages/student/Assignments'
@@ -33,6 +34,7 @@ import ParentLayout from './components/ParentLayout'
 import ParentDashboard from './pages/ParentDashboard'
 import ParentFees from './pages/parent/Fees'
 import PaymentCallback from './pages/parent/PaymentCallback'
+import ParentMessages from './pages/parent/Messages'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -70,6 +72,7 @@ export default function App() {
           <Route path="attendance/:slotId" element={<MarkAttendance />} />
           <Route path="gradebook" element={<Gradebook />} />
           <Route path="assignments" element={<TeacherAssignments />} />
+          <Route path="messages" element={<TeacherMessages />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
@@ -85,6 +88,7 @@ export default function App() {
           <Route index element={<ParentDashboard />} />
           <Route path="fees" element={<ParentFees />} />
           <Route path="payment-callback" element={<PaymentCallback />} />
+          <Route path="messages" element={<ParentMessages />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
