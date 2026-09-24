@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { friendlyDbError, run } from '../../lib/db'
 import { fullName, byName } from '../../lib/people'
-import { gradeFor, weightTotal, weightedTotal } from '../../lib/grading'
+import { gradeFor, termGradingOpen, termLockedMessage, weightTotal, weightedTotal } from '../../lib/grading'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useAuth } from '../../hooks/useAuth'
 import { fetchTeacherClasses } from '../../lib/teacherClasses'
@@ -145,25 +145,30 @@ function GradebookForClass({ cls, term }) {
     return <p className="empty-state">No students in this section take this subject this session.</p>
   }
 
+  const locked = !termGradingOpen(term)
   return (
-    <ScoreGrid
-      key={JSON.stringify(saved)}
-      cls={cls}
-      components={components}
-      students={students}
-      saved={saved}
-      scale={scale}
-      savedMessage={savedMessage}
-      onSaved={(message) => {
-        setSavedMessage(message)
-        query.reload()
-      }}
-      onEdit={() => setSavedMessage(null)}
-    />
+    <>
+      {locked && <p className="alert alert-info-plain">🔒 {termLockedMessage(term, 'Scores')}</p>}
+      <ScoreGrid
+        key={JSON.stringify(saved)}
+        cls={cls}
+        locked={locked}
+        components={components}
+        students={students}
+        saved={saved}
+        scale={scale}
+        savedMessage={savedMessage}
+        onSaved={(message) => {
+          setSavedMessage(message)
+          query.reload()
+        }}
+        onEdit={() => setSavedMessage(null)}
+      />
+    </>
   )
 }
 
-function ScoreGrid({ cls, components, students, saved, scale, savedMessage, onSaved, onEdit }) {
+function ScoreGrid({ cls, locked, components, students, saved, scale, savedMessage, onSaved, onEdit }) {
   const [values, setValues] = useState(() => ({ ...saved }))
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -280,6 +285,7 @@ function ScoreGrid({ cls, components, students, saved, scale, savedMessage, onSa
                           min="0"
                           max={Number(c.max_score)}
                           step="any"
+                          disabled={locked}
                           value={values[key] ?? ''}
                           onChange={(e) => setValue(s.studentId, c.id, e.target.value)}
                           aria-label={`${c.name} for ${fullName(s)} (max ${Number(c.max_score)})`}
@@ -303,11 +309,13 @@ function ScoreGrid({ cls, components, students, saved, scale, savedMessage, onSa
         rounded to the nearest whole number.
       </p>
       {error && <p className="alert alert-error" role="alert">{error}</p>}
-      <div className="form-actions">
-        <button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : `Save scores${changed.length ? ` (${changed.length} changed)` : ''}`}
-        </button>
-      </div>
+      {!locked && (
+        <div className="form-actions">
+          <button type="submit" disabled={saving}>
+            {saving ? 'Saving…' : `Save scores${changed.length ? ` (${changed.length} changed)` : ''}`}
+          </button>
+        </div>
+      )}
     </form>
   )
 }

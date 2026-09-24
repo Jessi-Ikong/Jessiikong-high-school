@@ -1174,6 +1174,24 @@ select {
   align-items: center;
 }
 
-.assignment-group h2 .muted {
+
+.term-group {
+  margin-bottom: 2rem;
+}
+
+.term-group > h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid #e4e7eb;
+}
+
+.assignment-group h3 {
+  margin: 1rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.assignment-group h3 .muted {
   font-weight: normal;
 }

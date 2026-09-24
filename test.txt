@@ -1304,3 +1304,98 @@ Known issues / follow-ups:
   11. The migration creates the storage bucket and its policies from SQL. That's the standard Supabase approach, but if "db push" is refused on the storage part, the bucket can be created in the dashboard and the policies re-run.
   Nothing has been committed to git yet, and migration 022 is not applied yet.
 -------------------------------------------
+
+[2026-09-24 16:18] Task: Assignments by term + 7-day-after-term-end lock for scores and assignment grades
+Files changed/added: supabase/migrations/20260924000023_term_grading_lock.sql (new), src/lib/grading.js, src/lib/teacherClasses.js, src/pages/teacher/Gradebook.jsx, src/pages/teacher/Assignments.jsx, src/pages/student/Assignments.jsx, src/index.css
+What was done:
+  - ASSIGNMENTS ALREADY HAD A TERM. The request assumed assignments had no term_id, but it has been there, REQUIRED, since migration 006 ("term_id uuid not null references public.terms"). So no new column and no backfill were needed. Every existing row already has the term the teacher picked. Posting was already term-scoped too: a teacher can only create or edit an assignment for a section + subject they teach IN THAT TERM (the same teacher_teaches check as the timetable), and the term must be in the current session. So requirements 1 and 3 were already met, and nothing was changed for them.
+  - TEACHER ASSIGNMENTS PAGE: the new assignment is tied to the term chosen in the existing Term selector (no new dropdown). The form heading now names it ("New assignment for Biology — SS1 A · First Term"). The due-date field shows the term's dates and only offers dates inside the term. A due date outside the term is refused with "The due date must fall within First Term (7 Sept 2026 to 18 Dec 2026)." That check is in the page only, not the database (see assumptions).
+  - STUDENT ASSIGNMENTS PAGE: grouped by term (e.g. "First Term" / "Second Term", in term order, with a "Current term" badge). Inside each term: To do / Submitted — awaiting grade / Graded, each sorted by due date with upcoming first (unchanged). The term name was removed from each card because the heading shows it.
+  - NEW LOCK (migration 023), the same rule for BOTH scores and assignment grades:
+      A teacher can enter or change them until 7 days after the TERM's end date (terms.end_date + 7, inclusive, school time). Scores use their own term. Assignment grades use the assignment's term, not its due date.
+      From the day after, teachers are refused with a message that names the term and says an admin is needed, e.g.
+        "Scores for First Term (2025/2026) are locked: the term ended on 19 Dec 2025 and teachers could make changes until 26 Dec 2025. Only an admin can change them now."
+        "Assignment grades for First Term (2025/2026) are locked: ... Only an admin can change them now."
+      Admins (super AND limited) are exempt, like attendance (migration 015). This uses the same two layers: a trigger for the clear message and database rules (RLS) as a backstop. Moving a score OUT of a locked term is refused too.
+      On the pages: when the selected term is locked, the Gradebook shows a 🔒 note with that message, the score boxes are read-only and there's no Save button. The teacher Assignments page shows the note, grades become read-only ("🔒 Graded ..." / "🔒 Not graded (term locked)"), and "+ New assignment" is hidden for that term.
+  - SMALL FIX FOUND WHILE TESTING: when an ADMIN graded an assignment, graded_by and graded_at weren't filled in, so an admin-graded submission still looked "not graded" and the student could change it. Now an admin who enters or corrects a mark is recorded as the grader, and the submission locks for the student like a teacher's grade.
+  - AUDIT: no new logging code. The generic audit trigger (migration 019) already records these corrections: update_scores / insert_scores / update_submissions, with who did it and the old and new values. This was confirmed by tests, not assumed (below).
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully (only the usual large-chunk warning).
+  - New test on a temporary local copy (all 23 migrations): 28 checks, 28 passed, 0 failed. One current session with Term One (ended 100 days ago), Term Two (ended EXACTLY 7 days ago), and Term Three (current). Bola teaches Biology in all three; Lola is a LIMITED admin.
+      rule: Term One closed; Term Two still open on its last day (day 7); Term Three open.
+      scores (teacher): Term Three and Term Two (day 7) OK. Term One: a new score is refused with the message above, changing Ada's score is refused (still 50), and moving it to an open term is refused.
+      assignment grades (teacher): Term Three and Term Two (day 7) OK. Term One: grading refused with the SAME wording ("Assignment grades for Term One (2026/2027) are locked..."), and changing Ben's existing grade is refused (still 6).
+      day 8: Term Two's end moved one day earlier. Now BOTH the score and the assignment grade in Term Two are refused, on the same day, and both are unchanged. The current term is still editable for both.
+      admins exempt: Lola corrects Ada's Term One score (50 -> 58), adds a missing Term One score, corrects Ben's Term One grade (6 -> 9, new feedback), and grades Ada's ungraded Term One work (graded_by = Lola, graded_at set). After that, Ada can't change that work.
+      audit (generic trigger): update_scores by Lola with score_obtained {old 50, new 58}; insert_scores by Lola; update_submissions by Lola with score {old 6, new 9} and feedback {old "ok", new "Re-marked"}; the admin grading ungraded work is logged (score null -> 5, graded_at). Refused teacher attempts left NO audit entries. A normal in-window teacher grade is logged the same way.
+  - The same test WITHOUT migration 023: 14 checks FAIL (teachers could change Term One and day-8 scores and grades, and admin grading didn't set graded_by/graded_at). That confirms 023 is what makes the difference.
+  - FULL SUITE re-run with migration 023: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18, 15/15, 21/21, 24/24, 18/18, 29/29, 13/13, 11/11, 47/47, plus 28/28 new. Total 409 checks, all passing.
+      One old test setup had to change: the visibility test had a teacher entering a score in "First Term 2025/2026" (ended Dec 2025). That's now correctly locked, so the setup inserts that historical score directly. It's the same change made to that test for the attendance window in migration 015. Its 18 checks still pass with and without 023.
+  - NOT tested by me in the browser (needs migration 023 applied and teacher/admin/student logins).
+How to test manually:
+  1. Apply the migration (or ask me to):
+       npx supabase db push --dry-run    (expected: only 20260924000023_term_grading_lock.sql)
+       npx supabase db push              (type Y)
+  2. NEW ASSIGNMENT IS TIED TO A TERM: as a teacher > Assignments > Term "First Term (current)" > your class > "+ New assignment".
+       Expected: the heading ends with "· First Term", and the hint under the due date shows the term's dates. Choose a date after the term ends (type it in if the picker blocks it) > Create. Expected: "The due date must fall within First Term (...)". Pick a date inside the term > Create. Expected: it's created.
+     Check the stored term in Supabase > SQL Editor:
+       select a.title, t.name as term, s.name as session from public.assignments a join public.terms t on t.id = a.term_id join public.sessions s on s.id = t.session_id order by a.created_at desc limit 5;
+       Expected: the new assignment shows the term you had selected.
+     If the current session has a second term set up (Admin > Terms) and you teach in it, choose it in the Term selector and create another assignment. Expected: that one shows the second term.
+  3. STUDENT PAGE GROUPS BY TERM: as a student who takes the subject > Assignments.
+       Expected: a "First Term" heading (with a "Current term" badge), and under it "To do", "Submitted — awaiting grade" and "Graded" with counts. If you created one in a second term, a separate "Second Term" heading follows, with its own three groups. Order within each group is unchanged (upcoming due dates first).
+  4. SAME LOCK FOR SCORES AND ASSIGNMENT GRADES (old term). Your live data is in the current term, so temporarily make it look old, then put it back. In Supabase > SQL Editor:
+       a) Note the real end date:  select id, name, end_date from public.terms where is_current;
+       b) Pretend it ended 8 days ago:  update public.terms set end_date = (now() at time zone 'Africa/Lagos')::date - 8 where is_current;
+          (If that's before the term's start_date, the database will refuse. In that case also set start_date earlier, and note it so you can restore it.)
+       c) As the TEACHER: Gradebook > that class. Expected: "🔒 Scores for First Term are locked: the term ended on ... Only an admin can change them now." The score boxes are greyed out and there's no Save button.
+          Assignments > the same class. Expected: the matching "🔒 Assignment grades for First Term are locked..." note, no "+ New assignment", and the grade column read-only.
+       d) Same day, pretend it ended exactly 7 days ago:  update public.terms set end_date = (now() at time zone 'Africa/Lagos')::date - 7 where is_current;
+          Refresh as the teacher. Expected: BOTH pages are editable again (day 7 is the last allowed day). Save a score and a grade to prove it.
+       e) Back to 8 days ago (step b). Database proof that the rule itself, not just the page, blocks the teacher (put the teacher's email in):
+            do $$ declare v_me uuid; v_err text; begin
+              select auth_id into v_me from public.users where lower(email) = lower('TEACHER-EMAIL');
+              perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
+              execute 'set local role authenticated';
+              begin
+                update public.submissions set score = score where score is not null;
+                v_err := 'NOT BLOCKED';
+              exception when others then v_err := sqlerrm; end;
+              execute 'reset role';
+              raise exception 'Teacher regrading: %', v_err;
+            end $$;
+          Expected red box: "Teacher regrading: Assignment grades for First Term (...) are locked: ... Only an admin can change them now." (If the teacher has no graded work yet, it says NOT BLOCKED because there was nothing to change. Grade something in step d first.)
+       f) ADMINS EXEMPT: the Gradebook and Assignments pages are teacher-only, so test the admin in the SQL Editor (put a LIMITED admin's email in; nothing is changed permanently):
+            do $$ declare v_me uuid; v_n int; begin
+              select auth_id into v_me from public.users where lower(email) = lower('ADMIN-EMAIL');
+              perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
+              execute 'set local role authenticated';
+              update public.scores set score_obtained = score_obtained where term_id in (select id from public.terms where is_current);
+              get diagnostics v_n = row_count;
+              execute 'reset role';
+              raise exception 'Admin changed % locked score(s) without being refused (rolled back).', v_n;
+            end $$;
+          Expected red box: "Admin changed N locked score(s) without being refused (rolled back)." with N > 0.
+       g) RESTORE the real end date from step a:  update public.terms set end_date = 'YYYY-MM-DD' where is_current;
+  5. AUDIT LOG CAPTURES CORRECTIONS: with the term "locked" (step 4b), have an admin correct a grade in the SQL Editor (it stays changed, so pick a test submission):
+       do $$ declare v_me uuid; begin
+         select auth_id into v_me from public.users where lower(email) = lower('ADMIN-EMAIL');
+         perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
+         execute 'set local role authenticated';
+         update public.submissions set score = score + 1, feedback = 'Corrected by admin' where id = (select id from public.submissions where score is not null order by graded_at desc limit 1);
+         execute 'reset role';
+       end $$;
+     Then Admin > Audit Log (as a super admin, or as that admin). Expected: a new "update_submissions" entry done by that admin, showing score old -> new and feedback old -> "Corrected by admin" (and graded_by / graded_at). A score corrected the same way shows as "update_scores" with score_obtained old -> new. The teacher's refused attempts from step 4e do NOT appear (nothing was changed). Restore the end date (step 4g) afterwards.
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. BACKFILL: none was needed. term_id has been required on assignments since the first schema (006), so every existing row, test data included, already has the term the teacher selected when creating it. Nothing is uncertain.
+  2. "7 days after the term ends" means teachers can still edit ON end_date + 7 and are locked from end_date + 8, using Nigerian time ("school today", like attendance).
+  3. Both locks use the term's CURRENT end_date. If an admin later moves a term's end date, the lock moves with it, and that can reopen or close editing. That's also the simplest way for an admin to give teachers extra time.
+  4. The due-date-within-term rule is only checked on the teacher page, not in the database (a soft guard, as suggested). Existing assignments aren't re-checked. Admins aren't limited by it.
+  5. Only GRADING is locked. Students can still hand in (late) work for an earlier term of the CURRENT session. Such work may then arrive after the teacher's grading window, so an admin would have to grade it. If you'd rather close submissions at the same point, that's a small change.
+  6. Teachers can still post or edit assignments in an older term of the current session in the database; the page just hides "+ New assignment" once a term is locked. Tell me if the database should refuse that too.
+  7. Admin-graded submissions now count as graded (graded_by = the admin, graded_at set), so they lock for the student. The student sees the admin as the grader only through the audit log; the page doesn't show who graded.
+  8. The pages judge "locked" by the browser's date. The database uses the school's (Nigerian) date and always has the final say. Around midnight they could differ for a moment, and the database message then explains it.
+  Nothing has been committed to git yet, and migration 023 is not applied yet.
+-------------------------------------------

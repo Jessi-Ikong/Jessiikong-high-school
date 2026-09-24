@@ -14,6 +14,9 @@ import {
   uploadAssignmentFile,
 } from '../../lib/assignments'
 import { fetchTeacherClasses } from '../../lib/teacherClasses'
+import { termGradingOpen, termLockedMessage } from '../../lib/grading'
+import { fromIsoDate } from '../../lib/dates'
+import { formatDate } from '../../lib/format'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useAuth } from '../../hooks/useAuth'
 import DeleteAction from '../../components/DeleteAction'
@@ -143,18 +146,26 @@ function ClassAssignments({ cls, term, teacherId }) {
 
   const { assignments, students, submissions, urls } = query.data
   const rosterIds = new Set(students.map((s) => s.studentId))
+  const locked = !termGradingOpen(term)
 
   return (
     <>
-      <CreateAssignmentForm
-        cls={cls}
-        teacherId={teacherId}
-        onCreated={(text, newId) => {
-          setMessage(text)
-          setOpenId(newId)
-          query.reload()
-        }}
-      />
+      {locked ? (
+        <p className="alert alert-info-plain">
+          🔒 {termLockedMessage(term, 'Assignment grades')} New assignments can't be set for this term either.
+        </p>
+      ) : (
+        <CreateAssignmentForm
+          cls={cls}
+          term={term}
+          teacherId={teacherId}
+          onCreated={(text, newId) => {
+            setMessage(text)
+            setOpenId(newId)
+            query.reload()
+          }}
+        />
+      )}
       {message && <p className="alert alert-success" role="status">{message}</p>}
 
       <h2>
@@ -222,6 +233,7 @@ function ClassAssignments({ cls, term, teacherId }) {
                     students={students}
                     submissions={subs}
                     urls={urls}
+                    locked={locked}
                     onGraded={query.reload}
                   />
                 )}
@@ -234,9 +246,16 @@ function ClassAssignments({ cls, term, teacherId }) {
   )
 }
 
+// The due date (a datetime-local value) falls on a day inside the term.
+function dueWithinTerm(due, term) {
+  const day = new Date(due)
+  day.setHours(0, 0, 0, 0)
+  return day >= fromIsoDate(term.start_date) && day <= fromIsoDate(term.end_date)
+}
+
 const EMPTY_FORM = { title: '', description: '', due: '', maxScore: '10' }
 
-function CreateAssignmentForm({ cls, teacherId, onCreated }) {
+function CreateAssignmentForm({ cls, term, teacherId, onCreated }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [file, setFile] = useState(null)
@@ -255,6 +274,9 @@ function CreateAssignmentForm({ cls, teacherId, onCreated }) {
     const maxScore = Number(form.maxScore)
     if (!form.title.trim()) return setError('Give the assignment a title.')
     if (!form.due) return setError('Choose a due date and time.')
+    if (!dueWithinTerm(form.due, term)) {
+      return setError(`The due date must fall within ${term.name} (${formatDate(term.start_date)} to ${formatDate(term.end_date)}).`)
+    }
     if (!(maxScore > 0)) return setError('The maximum mark must be more than 0.')
     const problem = fileProblem(file)
     if (problem) return setError(problem)
@@ -310,7 +332,9 @@ function CreateAssignmentForm({ cls, teacherId, onCreated }) {
 
   return (
     <form className="panel form-grid" onSubmit={handleSubmit}>
-      <h2>New assignment for {cls.label}</h2>
+      <h2>
+        New assignment for {cls.label} · {term.name}
+      </h2>
       {error && <p className="alert alert-error" role="alert">{error}</p>}
       <label>
         Title
@@ -318,7 +342,17 @@ function CreateAssignmentForm({ cls, teacherId, onCreated }) {
       </label>
       <label>
         Due date and time
-        <input type="datetime-local" value={form.due} onChange={(e) => update('due', e.target.value)} required />
+        <input
+          type="datetime-local"
+          value={form.due}
+          min={`${term.start_date}T00:00`}
+          max={`${term.end_date}T23:59`}
+          onChange={(e) => update('due', e.target.value)}
+          required
+        />
+        <span className="muted small">
+          {term.name}: {formatDate(term.start_date)} to {formatDate(term.end_date)}
+        </span>
       </label>
       <label>
         Marked out of
@@ -354,7 +388,7 @@ function CreateAssignmentForm({ cls, teacherId, onCreated }) {
   )
 }
 
-function SubmissionsTable({ assignment, students, submissions, urls, onGraded }) {
+function SubmissionsTable({ assignment, students, submissions, urls, locked, onGraded }) {
   if (students.length === 0) {
     return <p className="empty-state">No students in this section take this subject this session.</p>
   }
@@ -395,7 +429,9 @@ function SubmissionsTable({ assignment, students, submissions, urls, onGraded })
                   )}
                 </td>
                 <td>
-                  {sub ? (
+                  {sub && locked ? (
+                    <LockedGrade assignment={assignment} submission={sub} />
+                  ) : sub ? (
                     <GradeForm key={`${sub.id}:${sub.graded_at}`} assignment={assignment} submission={sub} onGraded={onGraded} />
                   ) : (
                     <span className="muted small">Nothing to grade yet</span>
@@ -463,5 +499,19 @@ function GradeForm({ assignment, submission, onGraded }) {
       </button>
       {isGraded && <span className="muted small">Graded {formatDateTime(submission.graded_at)}</span>}
     </form>
+  )
+}
+
+// Read-only grade once the term is locked (only an admin can change it).
+function LockedGrade({ assignment, submission }) {
+  if (!submission.graded_at) return <span className="muted small">🔒 Not graded (term locked)</span>
+  return (
+    <div>
+      <strong>
+        {formatMark(submission.score)} / {formatMark(assignment.max_score)}
+      </strong>
+      {submission.feedback && <div className="submission-text">{submission.feedback}</div>}
+      <span className="muted small">🔒 Graded {formatDateTime(submission.graded_at)}</span>
+    </div>
   )
 }

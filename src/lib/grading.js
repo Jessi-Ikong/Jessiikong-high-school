@@ -1,3 +1,6 @@
+import { fromIsoDate, toIsoDate } from './dates'
+import { formatDate } from './format'
+
 // Total weight of a term + subject's assessment components. Grading for that
 // subject is "complete" only when this is exactly 100 (the database enforces
 // the same rule before any score can be saved).
@@ -70,4 +73,27 @@ export function scaleProblems(bands) {
   const last = sorted[sorted.length - 1]
   if (last.max !== 100) problems.push(`The scale must reach 100: the highest band (${last.label}) ends at ${last.max}.`)
   return problems
+}
+
+// ---------------------------------------------------------------------------
+// Term edit lock (migration 023). Teachers can enter or change scores and
+// assignment grades until 7 days after the term's end_date (inclusive); after
+// that only an admin can. The database enforces this; these helpers just let
+// the pages explain it up front. `term` needs end_date and name.
+// ---------------------------------------------------------------------------
+
+// The last day teachers can still make changes, as 'YYYY-MM-DD'.
+export function termGradingLastDay(term) {
+  const last = fromIsoDate(term.end_date)
+  last.setDate(last.getDate() + 7)
+  return toIsoDate(last)
+}
+
+export function termGradingOpen(term, today = new Date()) {
+  return toIsoDate(today) <= termGradingLastDay(term)
+}
+
+// what: 'Scores' or 'Assignment grades'
+export function termLockedMessage(term, what) {
+  return `${what} for ${term.name} are locked: the term ended on ${formatDate(term.end_date)} and teachers could make changes until ${formatDate(termGradingLastDay(term))}. Only an admin can change them now.`
 }

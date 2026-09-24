@@ -18,9 +18,9 @@ import { useAuth } from '../../hooks/useAuth'
 import { FileLink, SubmissionBadges } from '../../components/SubmissionBadges'
 
 // Assignments for the subjects the student takes, in their section, in the
-// CURRENT session (every class they take, every term), plus their own
-// submissions. RLS enforces the same scoping; the filters here just keep
-// older sessions out of the list.
+// CURRENT session (every class they take, every term; the page groups them by
+// term), plus their own submissions. RLS enforces the same scoping; the
+// filters here just keep older sessions out of the list.
 async function fetchMyAssignments(userId) {
   const student = await run(supabase.from('students').select('id').eq('user_id', userId).maybeSingle())
   if (!student) return { problem: 'no-student' }
@@ -39,7 +39,7 @@ async function fetchMyAssignments(userId) {
     ? await run(
         supabase
           .from('assignments')
-          .select('id, title, description, attachment_url, due_at, max_score, created_at, subjects(name), teachers(users(first_name, last_name)), terms!inner(name, session_id)')
+          .select('id, title, description, attachment_url, due_at, max_score, created_at, subjects(name), teachers(users(first_name, last_name)), terms!inner(id, name, term_number, is_current, session_id)')
           .eq('section_id', enrollment.section_id)
           .in('subject_id', subjectIds)
           .eq('terms.session_id', enrollment.session_id),
@@ -77,6 +77,12 @@ const GROUPS = [
   { key: 'submitted', title: 'Submitted — awaiting grade', empty: 'Nothing waiting to be graded.' },
   { key: 'graded', title: 'Graded', empty: 'Nothing graded yet.' },
 ]
+
+// The terms that have assignments, in term order (First, Second, Third).
+function termsOf(items) {
+  const terms = new Map(items.map((i) => [i.assignment.terms.id, i.assignment.terms]))
+  return [...terms.values()].sort((a, b) => a.term_number - b.term_number)
+}
 
 export default function Assignments() {
   const { profile } = useAuth()
@@ -126,31 +132,42 @@ export default function Assignments() {
       ) : assignments.length === 0 ? (
         <p className="empty-state">No assignments have been set for your subjects yet.</p>
       ) : (
-        GROUPS.map((group) => {
-          const groupItems = items.filter((i) => i.status.key === group.key)
+        termsOf(items).map((term) => {
+          const termItems = items.filter((i) => i.assignment.terms.id === term.id)
           return (
-            <section key={group.key} className="assignment-group">
+            <section key={term.id} className="term-group">
               <h2>
-                {group.title} <span className="muted small">({groupItems.length})</span>
+                {term.name}
+                {term.is_current && <span className="badge badge-info">Current term</span>}
               </h2>
-              {groupItems.length === 0 ? (
-                <p className="muted small">{group.empty}</p>
-              ) : (
-                <div className="assignment-list">
-                  {groupItems.map((item) => (
-                    <AssignmentCard
-                      key={`${item.assignment.id}:${item.submission?.submitted_at ?? ''}`}
-                      {...item}
-                      studentId={studentId}
-                      urls={urls}
-                      onSubmitted={(text) => {
-                        setMessage(text)
-                        query.reload()
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
+              {GROUPS.map((group) => {
+                const groupItems = termItems.filter((i) => i.status.key === group.key)
+                return (
+                  <section key={group.key} className="assignment-group">
+                    <h3>
+                      {group.title} <span className="muted small">({groupItems.length})</span>
+                    </h3>
+                    {groupItems.length === 0 ? (
+                      <p className="muted small">{group.empty}</p>
+                    ) : (
+                      <div className="assignment-list">
+                        {groupItems.map((item) => (
+                          <AssignmentCard
+                            key={`${item.assignment.id}:${item.submission?.submitted_at ?? ''}`}
+                            {...item}
+                            studentId={studentId}
+                            urls={urls}
+                            onSubmitted={(text) => {
+                              setMessage(text)
+                              query.reload()
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )
+              })}
             </section>
           )
         })
@@ -170,7 +187,7 @@ function AssignmentCard({ assignment, submission, status, studentId, urls, onSub
           <h3>{assignment.title}</h3>
           <p className="muted small">
             {assignment.subjects.name}
-            {teacher ? ` · ${fullName(teacher)}` : ''} · {assignment.terms.name}
+            {teacher ? ` · ${fullName(teacher)}` : ''}
           </p>
         </div>
         <SubmissionBadges status={status} />

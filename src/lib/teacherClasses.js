@@ -8,7 +8,7 @@ export async function fetchTeacherClasses(userId) {
   const terms = await run(
     supabase
       .from('terms')
-      .select('id, name, term_number, is_current, session_id, sessions!inner(name, is_current)')
+      .select('id, name, term_number, is_current, start_date, end_date, session_id, sessions!inner(name, is_current)')
       .eq('sessions.is_current', true)
       .order('term_number'),
   )
