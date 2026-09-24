@@ -21,7 +21,7 @@ export function fetchMessages(threadId) {
   return run(
     supabase
       .from('messages')
-      .select('id, sender_id, body, sent_at, read_at')
+      .select('id, sender_id, body, sent_at, read_at, edited_at')
       .eq('thread_id', threadId)
       .order('sent_at', { ascending: true }),
   )
@@ -44,6 +44,13 @@ export function sendMessage(threadId, myUserId, body) {
   return runWrite(supabase.from('messages').insert({ thread_id: threadId, sender_id: myUserId, body }).select('id'))
 }
 
+// Edits the text of one of your own messages. The database only allows it
+// within 1 hour of sending, in a conversation that isn't read-only, and
+// sets edited_at itself.
+export function editMessage(messageId, body) {
+  return runWrite(supabase.from('messages').update({ body }).eq('id', messageId).select('id'))
+}
+
 export async function startThread(parentId, teacherId) {
   const rows = await runWrite(
     supabase.from('message_threads').insert({ parent_id: parentId, teacher_id: teacherId }).select('id'),
@@ -52,3 +59,4 @@ export async function startThread(parentId, teacherId) {
 }
 
 export const MAX_MESSAGE_LENGTH = 2000
+export const EDIT_WINDOW_MS = 60 * 60 * 1000 // 1 hour (same as the database rule)

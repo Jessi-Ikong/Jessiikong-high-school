@@ -1483,3 +1483,34 @@ select {
     max-width: 92%;
   }
 }
+
+.message.is-editing {
+  align-self: stretch;
+  max-width: 100%;
+}
+
+.message-edit {
+  display: grid;
+  gap: 0.4rem;
+  text-align: left;
+}
+
+.message-edit textarea {
+  width: 100%;
+  font: inherit;
+}
+
+.message-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.message-edit-actions .muted {
+  margin-right: auto;
+}
+
+.message-edit-link {
+  font-size: inherit;
+}

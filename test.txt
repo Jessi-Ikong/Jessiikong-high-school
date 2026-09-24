@@ -2086,97 +2086,196 @@ Known issues / follow-ups:
   Nothing is committed to git yet: all the Paystack work since 21:30 (migrations 028-029, 5 functions, parent pages, Stuck Payments page, test.txt).
 -------------------------------------------
 
-[2026-09-24 22:57] Task: Parent-teacher Messages pages (UI on top of the existing messaging rules)
-Files changed/added: supabase/migrations/20260924000030_messaging_helpers.sql (new), src/components/Messaging.jsx (new), src/pages/parent/Messages.jsx (new), src/pages/teacher/Messages.jsx (new), src/lib/messages.js (new), src/hooks/usePolling.js (new), src/components/ParentLayout.jsx, src/components/TeacherLayout.jsx, src/App.jsx, src/index.css
+  [2026-09-24 22:57] Task: Parent-teacher Messages pages (UI on top of the existing messaging rules)
+  Files changed/added: supabase/migrations/20260924000030_messaging_helpers.sql (new), src/components/Messaging.jsx (new), src/pages/parent/Messages.jsx (new), src/pages/teacher/Messages.jsx (new), src/lib/messages.js (new), src/hooks/usePolling.js (new), src/components/ParentLayout.jsx, src/components/TeacherLayout.jsx, src/App.jsx, src/index.css
+  What was done:
+    - THE RULES ARE UNCHANGED (migrations 7, 9, 13): a conversation ("thread") is one parent-teacher PAIR. It can be opened, and messages sent in it, only while the teacher teaches one of the parent's children a subject that child takes, in the CURRENT session. Otherwise it stays readable but is read-only. Only the recipient can mark a message read, and message text is never copied into the audit log.
+    - TEACHERS CAN START CONVERSATIONS (checked against the database, not assumed): the rule for creating a thread (migration 9, "participant opens it if teacher teaches child") accepts EITHER participant, parent or teacher, as long as that link exists. So teachers get the same "+ New" button as parents (your choice "A"). The local tests prove a teacher can open one with a linked parent and CAN'T with an unlinked one.
+    - MIGRATION 030 (read-only helpers; no rule changes): the pages need information the browser can't safely work out itself (parents can't read timetables or other enrollments), so two functions return ONLY the caller's own data:
+        my_message_threads(): the caller's threads, newest activity first, with the other person's name; the children/subjects that link you NOW (e.g. "Ada Adeyemi (Biology), Dan Adeyemi (Mathematics)", or nothing if the thread is read-only); can_send; the last message (first 120 characters) and whether you sent it; and the unread count (the other person's messages you haven't read).
+        my_message_contacts(): who you may START a conversation with: linked now, and no thread yet.
+      They're not callable without signing in; students get nothing from them.
+    - PAGES: Parent > Messages and Teacher > Messages (new menu items), sharing one component:
+        LEFT, the conversation list, most recent first. Each shows the other person's name, which child and subject it's about (a thread covering two children shows both), a preview of the last message ("You: ..." if yours, bold when unread), the time, and a red unread count. Read-only threads say "No shared class this session (read-only)".
+        "+ New" lists the people you're allowed to start with (with the child/subject), each with a "Start" button. People you already have a conversation with aren't listed.
+        RIGHT, the open conversation: messages oldest to newest, yours on the right; each shows "Read <time>" / "Not read yet" on your own messages. A compose box (max 2,000 characters) with "Send".
+        READ-ONLY: instead of the compose box, a clear note: "🔒 This conversation is read-only. <Teacher> doesn't teach any of your children a subject this session, so new messages can't be sent. You can still read the history." (the teacher sees the equivalent). If it becomes read-only while the page is open, a send attempt shows "Your message was not sent: this conversation has become read-only..." instead of failing silently.
+        READ RECEIPTS: opening a conversation marks the other person's messages as read, and the unread count on the list clears.
+        FRESHNESS: the list and the open conversation refresh every 30 seconds while the tab is visible, and immediately when you return to the tab or window. There are no websockets; a reply shows up within 30 s (or on focus).
+        The open conversation is kept in the address (?thread=...). On phones you see either the list or the conversation, with a "← All conversations" link.
+  Automated tests run:
+    - "npm run lint": 0 problems. "npm run build": built successfully.
+    - New database test (local copy, all 30 migrations): 26 checks, 26 passed. Paul is the parent of Ada (SS1 A: Maths + Biology) and Dan (SS1 B: Biology); Pam is the parent of Ben (SS1 A: Maths + Literature). Teachers: Bola (Biology A), Lara (Literature A), Musa (Maths A + Biology B).
+        WHO PAUL CAN START WITH: exactly "Bola Bio [Ada Adeyemi (Biology)]" and "Musa Math [Ada Adeyemi (Mathematics), Dan Adeyemi (Biology)]" (two children in one line). NOT Lara, who teaches Literature and neither child takes it; the database also refuses a thread with her. After Paul starts with Bola, Bola is no longer offered.
+        CONVERSATION BOTH WAYS: Paul sends. Bola's list shows "Paul Adeyemi | Ada Adeyemi (Biology) | can reply | 1 unread | <preview>". Opening marks it read (unread 0). Bola replies, and Paul then has 1 unread.
+        TEACHERS: Musa is offered both parents and can START a conversation with Pam and send the first message. Lara can NOT start one with Paul, and sees no threads or messages.
+        PRIVACY: Pam sees only her own thread (not Paul's) and can't read Paul's messages. She's offered Lara (Ben takes Literature) but not Musa again. A student gets nothing. A sender can't mark their OWN message as read. Signed-out callers can't use the functions.
+        READ-ONLY: after a NEW session is made current, Paul's thread with Bola is read-only (can_send false, no current link), but its 2 messages are still readable. The database refuses new messages from Paul AND from Bola, and no one can be contacted until the new timetable links them.
+        AUDIT: message text is not in the audit log.
+    - WITHOUT migration 030 the new test can't run (the functions don't exist). The existing messaging rule tests (25 checks) still pass unchanged.
+    - FULL database suite: 63, 33, 28, 17, 20, 25, 18, 15, 21, 24, 18, 29, 13, 11, 47, 28, 31, 29, 35, 16, 24, 11, plus 26 new = 582 checks, all passing (plus the 51 Node checks = 633 in total).
+    - NOT tested by me in the browser (needs migration 030 applied, and parent + teacher logins).
+  How to test manually:
+    1. Apply the migration (or ask me to):
+        npx supabase db push --dry-run    (expected: only 20260924000030_messaging_helpers.sql)
+        npx supabase db push              (type Y)
+    2. A PARENT CAN ONLY START WITH ALLOWED TEACHERS: sign in as the parent (jessiikong404+parent@gmail.com) > Messages > "+ New".
+        Expected: only teachers who teach your child a subject this session, with the child and subject shown, e.g. "<teacher> · <child> (English Literature)". A teacher who teaches the child's section a subject the child does NOT take is not listed, and nor is any teacher of other classes.
+      Database check (shows exactly who the parent may message; nothing saved):
+        do $$ declare v_me uuid; v_list text; begin
+          select auth_id into v_me from public.users where lower(email) = 'jessiikong404+parent@gmail.com';
+          perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
+          execute 'set local role authenticated';
+          select string_agg(name || ' [' || links || ']', ' | ') into v_list from public.my_message_contacts();
+          execute 'reset role';
+          raise exception 'Parent may start with: %', coalesce(v_list, '(no one new)');
+        end $$;
+    3. A FULL CONVERSATION BOTH WAYS (two browsers, or one normal and one private window):
+        a) Parent > Messages > "+ New" > Start next to the teacher (jessiikong16@gmail.com). The conversation opens and says "No messages yet". Type "Hello, how is my child doing?" > Send. It appears on the right with "Not read yet".
+        b) Teacher (jessiikong16@gmail.com) > Messages. Within 30 s (or immediately after clicking back into the window) the conversation appears at the top with the parent's name, "<child> (<subject>)", a preview and a red "1". Open it: the message shows and the red "1" disappears.
+        c) Parent: within 30 s the message shows "Read <time>".
+        d) Teacher replies. Parent's list shows the red "1" and "<preview>" in bold. Opening it clears it.
+        e) Teacher side: "+ New" lists only parents of students they teach this session that they don't already have a conversation with (a teacher can start one too).
+    4. READ-ONLY THREAD BLOCKS SENDING (history still shown), after step 3 so a conversation exists. Easiest without disturbing live data: ask me to run it rolled back, as in the 17:05 check. Or run this in the SQL Editor; it temporarily makes a brand-new session current, and NOTHING is saved:
+        do $$ declare v_me uuid; v_sess uuid; v_row record; v_err text; v_hist int; begin
+          select auth_id into v_me from public.users where lower(email) = 'jessiikong404+parent@gmail.com';
+          insert into public.sessions (name, start_date, end_date) values ('TEMP READ-ONLY CHECK', current_date + 1000, current_date + 1300) returning id into v_sess;
+          update public.sessions set is_current = false where is_current;
+          update public.sessions set is_current = true where id = v_sess;
+          perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
+          execute 'set local role authenticated';
+          select * into v_row from public.my_message_threads() limit 1;
+          select count(*) into v_hist from public.messages where thread_id = v_row.thread_id;
+          begin insert into public.messages (thread_id, body) values (v_row.thread_id, 'still there?'); v_err := 'NOT BLOCKED';
+          exception when others then v_err := sqlerrm; end;
+          execute 'reset role';
+          raise exception 'with a new current session: can_send=%, history=% messages, sending -> %', v_row.can_send, v_hist, v_err;
+        end $$;
+      Expected red box: "with a new current session: can_send=false, history=N messages, sending -> new row violates row-level security policy for table "messages"".
+      On the PAGE, a read-only thread shows the 🔒 note instead of the compose box, and "No shared class this session (read-only)" in the list. (You'll see that for real once a new session is made current, e.g. next school year.)
+    5. PRIVACY: a second parent (another test account) sees none of the first parent's conversations; a teacher of another subject/class isn't offered that parent and can't see the thread.
+  Known issues / follow-ups:
+    ANSWER TO "CAN TEACHERS START CONVERSATIONS?": YES. The existing database rule (migration 9, still in force after 13) lets either participant open the thread, provided the teacher teaches one of the parent's children a subject this session. The UI now offers it to both (your choice A).
+    ASSUMPTIONS:
+    1. One conversation per parent-teacher pair (that's how the database is designed), not one per child. If a teacher teaches two of your children, both are listed on the same conversation.
+    2. "Unread" counts only the OTHER person's messages you haven't opened. Opening the conversation marks them all read. Read receipts are shown on your own messages.
+    3. The "which child/subject" line reflects the CURRENT session only. A read-only (past) conversation shows "No shared class this session" rather than last year's details.
+    4. Refresh every 30 s while visible, plus on focus or tab-switch; no websockets. Supabase Realtime could be added later if instant delivery matters.
+    5. Starting a conversation creates it straight away (empty until the first message).
+    6. Messages are plain text, up to 2,000 characters, with no attachments.
+    7. There's no unread badge on the menu item yet (only on the conversation list), and no email notification of new messages. Both are possible follow-ups.
+    8. Admins have no messaging screen (unchanged; admins can't read these conversations through the app).
+    Nothing has been committed to git yet, and migration 030 is not applied yet.
+  -------------------------------------------
+
+  [2026-09-24 23:05] Task: Applied migration 030 (messaging helpers) to the live database; live check
+  Files changed/added: test.txt only
+  What was done:
+    "npx supabase db push" applied 20260924000030_messaging_helpers.sql (the dry run listed only that). "migration list" shows 001-030 on both local and remote.
+  Automated tests run (LIVE; read-only, nothing saved):
+    - The API finds both functions straight away: /rest/v1/rpc/my_message_threads and /rpc/my_message_contacts answer 401 to the anonymous key (found and correctly refused), not 404.
+    - As the test parent (jessiikong404+parent@gmail.com): my_message_contacts() -> "Test Teacher [Ikong Kahen (Mathematics)] | Ug Jessi [Ikong Kahen (English Language), Ikong Kahen (English Literature)]"; my_message_threads() -> 0 threads. So the parent is offered exactly the teachers who teach their child a subject this session, with the child and subject.
+  How to test manually:
+    Steps 2-5 of the 22:57 entry (the conversation both ways needs the parent and a teacher signed in).
+  Known issues / follow-ups:
+    None new.
+  -------------------------------------------
+
+[2026-09-24 23:30] Task: Message editing (sender only, within 1 hour of sending)
+Files changed/added: supabase/migrations/20260924000031_message_editing.sql (new), src/components/Messaging.jsx, src/lib/messages.js, src/index.css
 What was done:
-  - THE RULES ARE UNCHANGED (migrations 7, 9, 13): a conversation ("thread") is one parent-teacher PAIR. It can be opened, and messages sent in it, only while the teacher teaches one of the parent's children a subject that child takes, in the CURRENT session. Otherwise it stays readable but is read-only. Only the recipient can mark a message read, and message text is never copied into the audit log.
-  - TEACHERS CAN START CONVERSATIONS (checked against the database, not assumed): the rule for creating a thread (migration 9, "participant opens it if teacher teaches child") accepts EITHER participant, parent or teacher, as long as that link exists. So teachers get the same "+ New" button as parents (your choice "A"). The local tests prove a teacher can open one with a linked parent and CAN'T with an unlinked one.
-  - MIGRATION 030 (read-only helpers; no rule changes): the pages need information the browser can't safely work out itself (parents can't read timetables or other enrollments), so two functions return ONLY the caller's own data:
-      my_message_threads(): the caller's threads, newest activity first, with the other person's name; the children/subjects that link you NOW (e.g. "Ada Adeyemi (Biology), Dan Adeyemi (Mathematics)", or nothing if the thread is read-only); can_send; the last message (first 120 characters) and whether you sent it; and the unread count (the other person's messages you haven't read).
-      my_message_contacts(): who you may START a conversation with: linked now, and no thread yet.
-    They're not callable without signing in; students get nothing from them.
-  - PAGES: Parent > Messages and Teacher > Messages (new menu items), sharing one component:
-      LEFT, the conversation list, most recent first. Each shows the other person's name, which child and subject it's about (a thread covering two children shows both), a preview of the last message ("You: ..." if yours, bold when unread), the time, and a red unread count. Read-only threads say "No shared class this session (read-only)".
-      "+ New" lists the people you're allowed to start with (with the child/subject), each with a "Start" button. People you already have a conversation with aren't listed.
-      RIGHT, the open conversation: messages oldest to newest, yours on the right; each shows "Read <time>" / "Not read yet" on your own messages. A compose box (max 2,000 characters) with "Send".
-      READ-ONLY: instead of the compose box, a clear note: "🔒 This conversation is read-only. <Teacher> doesn't teach any of your children a subject this session, so new messages can't be sent. You can still read the history." (the teacher sees the equivalent). If it becomes read-only while the page is open, a send attempt shows "Your message was not sent: this conversation has become read-only..." instead of failing silently.
-      READ RECEIPTS: opening a conversation marks the other person's messages as read, and the unread count on the list clears.
-      FRESHNESS: the list and the open conversation refresh every 30 seconds while the tab is visible, and immediately when you return to the tab or window. There are no websockets; a reply shows up within 30 s (or on focus).
-      The open conversation is kept in the address (?thread=...). On phones you see either the list or the conversation, with a "← All conversations" link.
+  - DATABASE (migration 031):
+      New column messages.edited_at: when the text was last edited (empty = never). Only the database sets it; there's no edit history.
+      The SENDER may change the TEXT of their own message while it's less than 1 HOUR since it was sent (measured from sent_at; messages have no created_at) AND the conversation is still writable. Otherwise:
+        "Messages can only be edited within 1 hour of sending."
+        "This conversation is read-only (there is no shared class this session), so its messages can no longer be edited."
+        "Only the sender can edit a message." (for the other participant)
+      Nothing else can change: thread, sender and sent time are fixed ("Only the text of a message can be edited."), so the window can't be reset. edited_at can't be set or cleared by hand. The recipient can still only mark messages read, even in a read-only thread.
+      SAME CONTENT RULES for new messages and edits: 1 to 2,000 characters. Non-empty was already a database rule; the 2,000 limit was only on the page and is now in the database too, for both.
+      LOOPHOLE CLOSED while testing: when SENDING, nothing stopped a client from choosing its own sent_at, e.g. a message "sent" a year from now, which would have stayed editable for a year (and sorted wrongly). The database now sets sent_at itself for every new message from a signed-in user, as it already did for the sender.
+      Enforced in the update trigger (clear messages) plus the update rule (RLS) as a backstop: the sender's own updates must be inside the window of a writable thread.
+  - AUDIT: the generic trigger (migration 019) never copies message text. It would also have skipped an update whose only change was the text, so an edit would have left NO trace. Now every edit changes edited_at, so it's logged as "update_messages" with the message id, WHO edited it, and edited_at (old -> new): never the old or new text.
+  - PAGE (Parent > Messages and Teacher > Messages, shared component):
+      On YOUR OWN messages that are less than an hour old, in a conversation that isn't read-only, the meta line shows "· Edit" (a small link, so it works on phones too, where hover isn't available). After the hour (checked against the clock, refreshed with the 30 s polling) the link isn't shown at all.
+      "Edit" turns that message into a text box (with a character counter) and Cancel / Save. Save replaces the text; the database's refusal message is shown if it's refused (e.g. the hour ran out while editing).
+      Edited messages show "(edited)" after the time (hover it for when). The other person sees it after their next refresh.
 Automated tests run:
   - "npm run lint": 0 problems. "npm run build": built successfully.
-  - New database test (local copy, all 30 migrations): 26 checks, 26 passed. Paul is the parent of Ada (SS1 A: Maths + Biology) and Dan (SS1 B: Biology); Pam is the parent of Ben (SS1 A: Maths + Literature). Teachers: Bola (Biology A), Lara (Literature A), Musa (Maths A + Biology B).
-      WHO PAUL CAN START WITH: exactly "Bola Bio [Ada Adeyemi (Biology)]" and "Musa Math [Ada Adeyemi (Mathematics), Dan Adeyemi (Biology)]" (two children in one line). NOT Lara, who teaches Literature and neither child takes it; the database also refuses a thread with her. After Paul starts with Bola, Bola is no longer offered.
-      CONVERSATION BOTH WAYS: Paul sends. Bola's list shows "Paul Adeyemi | Ada Adeyemi (Biology) | can reply | 1 unread | <preview>". Opening marks it read (unread 0). Bola replies, and Paul then has 1 unread.
-      TEACHERS: Musa is offered both parents and can START a conversation with Pam and send the first message. Lara can NOT start one with Paul, and sees no threads or messages.
-      PRIVACY: Pam sees only her own thread (not Paul's) and can't read Paul's messages. She's offered Lara (Ben takes Literature) but not Musa again. A student gets nothing. A sender can't mark their OWN message as read. Signed-out callers can't use the functions.
-      READ-ONLY: after a NEW session is made current, Paul's thread with Bola is read-only (can_send false, no current link), but its 2 messages are still readable. The database refuses new messages from Paul AND from Bola, and no one can be contacted until the new timetable links them.
-      AUDIT: message text is not in the audit log.
-  - WITHOUT migration 030 the new test can't run (the functions don't exist). The existing messaging rule tests (25 checks) still pass unchanged.
-  - FULL database suite: 63, 33, 28, 17, 20, 25, 18, 15, 21, 24, 18, 29, 13, 11, 47, 28, 31, 29, 35, 16, 24, 11, plus 26 new = 582 checks, all passing (plus the 51 Node checks = 633 in total).
-  - NOT tested by me in the browser (needs migration 030 applied, and parent + teacher logins).
+  - New database test (local copy, all 31 migrations): 23 checks, 23 passed. Paul (parent) <-> Bola (teacher) about Ada's Biology; messages created with chosen ages.
+      WINDOW: Paul fixes a typo in a 5-minute-old message (saved, edited_at set). 59 minutes old is still editable. 2 hours old is REFUSED with "Messages can only be edited within 1 hour of sending." (unchanged). Changing sent_at to "reset the clock" is refused. A client can't post a message dated in the future.
+      CONTENT: blank text is refused; 2,001 characters are refused (edit AND new message); exactly 2,000 is fine. A new message can't arrive marked as edited; the sender can't clear edited_at; the sender still can't mark their own message read.
+      PEOPLE: Paul can't edit Bola's message, and Bola can't edit Paul's (but CAN mark it read). Teachers can edit their own messages. Someone outside the thread changes 0 rows.
+      READ-ONLY: after a new session is made current, even a 1-MINUTE-old message can't be edited (read-only message shown), but the recipient can still mark messages read.
+      AUDIT: Paul's edit is logged (update_messages, that message, by Paul, edited_at). NEITHER the old NOR the new text appears anywhere in the audit log, no entry has a body field, and the refused edit left no entry.
+  - WITHOUT migration 031 the new test can't run (no edited_at column); editing is then refused outright ("Messages cannot be edited").
+  - FULL database suite: 63, 33, 28, 17, 20, 25, 18, 15, 21, 24, 18, 29, 13, 11, 47, 28, 31, 29, 35, 16, 24, 11, 26, plus 23 new = 605 checks, all passing (plus 51 Node checks = 656 in total).
+  - NOT tested by me in the browser (needs migration 031 applied and two logins).
 How to test manually:
   1. Apply the migration (or ask me to):
-       npx supabase db push --dry-run    (expected: only 20260924000030_messaging_helpers.sql)
+       npx supabase db push --dry-run    (expected: only 20260924000031_message_editing.sql)
        npx supabase db push              (type Y)
-  2. A PARENT CAN ONLY START WITH ALLOWED TEACHERS: sign in as the parent (jessiikong404+parent@gmail.com) > Messages > "+ New".
-       Expected: only teachers who teach your child a subject this session, with the child and subject shown, e.g. "<teacher> · <child> (English Literature)". A teacher who teaches the child's section a subject the child does NOT take is not listed, and nor is any teacher of other classes.
-     Database check (shows exactly who the parent may message; nothing saved):
-       do $$ declare v_me uuid; v_list text; begin
+  2. EDITING WITHIN THE HOUR: as the parent (jessiikong404+parent@gmail.com) > Messages > open a conversation with a teacher and send "Helo". Your message shows "· Edit". Click it, change it to "Hello", then Save. Expected: the text updates and shows "(edited)" after the time (hover for when). As the teacher, after up to 30 s, the message says "Hello" with "(edited)".
+     Cancel instead: the text is unchanged. The teacher's messages never show "Edit" on the parent's side.
+  3. REFUSED AFTER THE HOUR: wait an hour and the "Edit" link is gone. To test without waiting (nothing saved; rolled back), SQL Editor:
+       do $$ declare v_me uuid; v_thread uuid; v_msg uuid; v_err text; begin
          select auth_id into v_me from public.users where lower(email) = 'jessiikong404+parent@gmail.com';
+         select id into v_thread from public.message_threads
+          where parent_id = (select p.id from public.parents p join public.users u on u.id = p.user_id where u.auth_id = v_me) limit 1;
+         -- a message "sent" 2 hours ago (created server-side, so the time can be set)
+         insert into public.messages (thread_id, sender_id, body, sent_at)
+         values (v_thread, (select id from public.users where auth_id = v_me), 'old message', now() - interval '2 hours') returning id into v_msg;
          perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
          execute 'set local role authenticated';
-         select string_agg(name || ' [' || links || ']', ' | ') into v_list from public.my_message_contacts();
+         begin update public.messages set body = 'old message, edited' where id = v_msg; v_err := 'NOT BLOCKED';
+         exception when others then v_err := sqlerrm; end;
          execute 'reset role';
-         raise exception 'Parent may start with: %', coalesce(v_list, '(no one new)');
+         raise exception 'Editing a 2-hour-old message: %', v_err;
        end $$;
-  3. A FULL CONVERSATION BOTH WAYS (two browsers, or one normal and one private window):
-       a) Parent > Messages > "+ New" > Start next to the teacher (jessiikong16@gmail.com). The conversation opens and says "No messages yet". Type "Hello, how is my child doing?" > Send. It appears on the right with "Not read yet".
-       b) Teacher (jessiikong16@gmail.com) > Messages. Within 30 s (or immediately after clicking back into the window) the conversation appears at the top with the parent's name, "<child> (<subject>)", a preview and a red "1". Open it: the message shows and the red "1" disappears.
-       c) Parent: within 30 s the message shows "Read <time>".
-       d) Teacher replies. Parent's list shows the red "1" and "<preview>" in bold. Opening it clears it.
-       e) Teacher side: "+ New" lists only parents of students they teach this session that they don't already have a conversation with (a teacher can start one too).
-  4. READ-ONLY THREAD BLOCKS SENDING (history still shown), after step 3 so a conversation exists. Easiest without disturbing live data: ask me to run it rolled back, as in the 17:05 check. Or run this in the SQL Editor; it temporarily makes a brand-new session current, and NOTHING is saved:
-       do $$ declare v_me uuid; v_sess uuid; v_row record; v_err text; v_hist int; begin
+     Expected red box: "Editing a 2-hour-old message: Messages can only be edited within 1 hour of sending." (Needs a conversation from step 2.)
+  4. A READ-ONLY THREAD BLOCKS EDITING (rolled back; a brand-new session is made current only inside the check):
+       do $$ declare v_me uuid; v_thread uuid; v_msg uuid; v_sess uuid; v_err text; begin
          select auth_id into v_me from public.users where lower(email) = 'jessiikong404+parent@gmail.com';
+         select id into v_thread from public.message_threads
+          where parent_id = (select p.id from public.parents p join public.users u on u.id = p.user_id where u.auth_id = v_me) limit 1;
+         insert into public.messages (thread_id, sender_id, body) values (v_thread, (select id from public.users where auth_id = v_me), 'fresh message') returning id into v_msg;
          insert into public.sessions (name, start_date, end_date) values ('TEMP READ-ONLY CHECK', current_date + 1000, current_date + 1300) returning id into v_sess;
          update public.sessions set is_current = false where is_current;
          update public.sessions set is_current = true where id = v_sess;
          perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
          execute 'set local role authenticated';
-         select * into v_row from public.my_message_threads() limit 1;
-         select count(*) into v_hist from public.messages where thread_id = v_row.thread_id;
-         begin insert into public.messages (thread_id, body) values (v_row.thread_id, 'still there?'); v_err := 'NOT BLOCKED';
+         begin update public.messages set body = 'fresh message, edited' where id = v_msg; v_err := 'NOT BLOCKED';
          exception when others then v_err := sqlerrm; end;
          execute 'reset role';
-         raise exception 'with a new current session: can_send=%, history=% messages, sending -> %', v_row.can_send, v_hist, v_err;
+         raise exception 'Editing a 1-minute-old message in a read-only thread: %', v_err;
        end $$;
-     Expected red box: "with a new current session: can_send=false, history=N messages, sending -> new row violates row-level security policy for table "messages"".
-     On the PAGE, a read-only thread shows the 🔒 note instead of the compose box, and "No shared class this session (read-only)" in the list. (You'll see that for real once a new session is made current, e.g. next school year.)
-  5. PRIVACY: a second parent (another test account) sees none of the first parent's conversations; a teacher of another subject/class isn't offered that parent and can't see the thread.
+     Expected red box: "...: This conversation is read-only (there is no shared class this session), so its messages can no longer be edited."
+     On the page, a read-only conversation shows no "Edit" links at all (and no compose box).
+  5. AUDIT LOG RECORDS THE EDIT, NOT THE TEXT: after step 2, SQL Editor:
+       select a.action, a.entity_id, u.first_name as edited_by, a.changes, a.created_at
+         from public.audit_log a left join public.users u on u.id = a.user_id
+        where a.action = 'update_messages' order by a.created_at desc limit 5;
+     Expected: a row for the edited message, edited_by = the parent, changes = {"edited_at": {"old": null, "new": "<time>"}}. No "body" field, and neither "Helo" nor "Hello" anywhere. (Admin > Audit Log shows the same entry as super admin.)
 Known issues / follow-ups:
-  ANSWER TO "CAN TEACHERS START CONVERSATIONS?": YES. The existing database rule (migration 9, still in force after 13) lets either participant open the thread, provided the teacher teaches one of the parent's children a subject this session. The UI now offers it to both (your choice A).
+  POINT 3 (READ-ONLY THREADS BLOCK EDITING TOO): implemented as you suggested, and I agree with it. A conversation with no shared class this session is frozen for both sides; letting someone quietly rewrite what they said after the relationship ended (e.g. after a dispute, or once the teacher has moved on) would undermine the record the other person relies on. The 1-hour window almost never overlaps a session change anyway. If you'd prefer to allow edits within the hour even in a read-only thread, it's one line in the trigger and one in the policy.
   ASSUMPTIONS:
-  1. One conversation per parent-teacher pair (that's how the database is designed), not one per child. If a teacher teaches two of your children, both are listed on the same conversation.
-  2. "Unread" counts only the OTHER person's messages you haven't opened. Opening the conversation marks them all read. Read receipts are shown on your own messages.
-  3. The "which child/subject" line reflects the CURRENT session only. A read-only (past) conversation shows "No shared class this session" rather than last year's details.
-  4. Refresh every 30 s while visible, plus on focus or tab-switch; no websockets. Supabase Realtime could be added later if instant delivery matters.
-  5. Starting a conversation creates it straight away (empty until the first message).
-  6. Messages are plain text, up to 2,000 characters, with no attachments.
-  7. There's no unread badge on the menu item yet (only on the conversation list), and no email notification of new messages. Both are possible follow-ups.
-  8. Admins have no messaging screen (unchanged; admins can't read these conversations through the app).
-  Nothing has been committed to git yet, and migration 030 is not applied yet.
+  1. The hour is measured from sent_at (when it was sent). Editing doesn't restart the hour.
+  2. A read receipt is kept after an edit (it isn't reset to "not read"); the reader sees "(edited)". If the recipient should be alerted to edits (e.g. the message becoming unread again), that's a small change.
+  3. The last-message preview in the conversation list shows the edited text after the next refresh.
+  4. No deleting messages (not requested). No edit history: only whether and when it was last edited.
+  5. The page hides "Edit" using the browser's clock; the database decides with its own clock, so a wrong device clock can only lead to a clear refusal, never an edit outside the hour.
+  6. The new 2,000-character database limit also applies to new messages. Existing messages were all shorter (the page already limited them).
+  Nothing has been committed to git yet, and migration 031 is not applied yet.
 -------------------------------------------
 
-[2026-09-24 23:05] Task: Applied migration 030 (messaging helpers) to the live database; live check
+[2026-09-24 23:45] Task: Applied migration 031 (message editing) to the live database; live check
 Files changed/added: test.txt only
 What was done:
-  "npx supabase db push" applied 20260924000030_messaging_helpers.sql (the dry run listed only that). "migration list" shows 001-030 on both local and remote.
-Automated tests run (LIVE; read-only, nothing saved):
-  - The API finds both functions straight away: /rest/v1/rpc/my_message_threads and /rpc/my_message_contacts answer 401 to the anonymous key (found and correctly refused), not 404.
-  - As the test parent (jessiikong404+parent@gmail.com): my_message_contacts() -> "Test Teacher [Ikong Kahen (Mathematics)] | Ug Jessi [Ikong Kahen (English Language), Ikong Kahen (English Literature)]"; my_message_threads() -> 0 threads. So the parent is offered exactly the teachers who teach their child a subject this session, with the child and subject.
+  - Before applying: the live database had 5 messages, the longest 55 characters, so the new 2,000-character limit couldn't fail.
+  - "npx supabase db push" applied 20260924000031_message_editing.sql (the dry run listed only that). "migration list" shows 001-031 on both local and remote. The messages.edited_at column exists.
+Automated tests run (LIVE; rolled back, nothing saved):
+  - As the test parent (jessiikong404+parent@gmail.com), in their existing conversation: editing a message "sent" 2 hours ago -> refused with "Messages can only be edited within 1 hour of sending."; editing a just-sent message -> OK, edited_at set. Afterwards there are still 5 messages (nothing saved).
 How to test manually:
-  Steps 2-5 of the 22:57 entry (the conversation both ways needs the parent and a teacher signed in).
+  Steps 2-5 of the 23:30 entry (the Edit link in the browser, the read-only check, the audit entry).
 Known issues / follow-ups:
-  None new.
+  The "reply to a specific message" feature (migration 032) is planned but NOT built yet; it's waiting for a go-ahead.
 -------------------------------------------

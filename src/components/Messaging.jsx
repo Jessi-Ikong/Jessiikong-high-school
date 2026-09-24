@@ -3,7 +3,9 @@ import { useSearchParams } from 'react-router-dom'
 import { friendlyDbError } from '../lib/db'
 import { formatDateTime } from '../lib/assignments'
 import {
+  EDIT_WINDOW_MS,
   MAX_MESSAGE_LENGTH,
+  editMessage,
   fetchContacts,
   fetchMessages,
   fetchThreads,
@@ -173,7 +175,13 @@ function NewConversation({ viewer, onStarted }) {
 
 function Conversation({ thread, viewer, myUserId, onChanged, onBack }) {
   const messagesQuery = useAsyncData(() => fetchMessages(thread.thread_id), `messages:${thread.thread_id}`)
-  usePolling(messagesQuery.reload)
+  // "Now", refreshed with the polling, decides which messages still show "Edit".
+  const [now, setNow] = useState(() => Date.now())
+  usePolling(() => {
+    setNow(Date.now())
+    messagesQuery.reload()
+  })
+  const [editingId, setEditingId] = useState(null)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState(null)
   const [sending, setSending] = useState(false)
@@ -239,14 +247,24 @@ function Conversation({ thread, viewer, myUserId, onChanged, onBack }) {
         ) : (
           messages.map((m) => {
             const mine = m.sender_id === myUserId
+            // Same rule as the database: your own message, under 1 hour old, in a writable conversation.
+            const canEdit = mine && thread.can_send && now - new Date(m.sent_at).getTime() < EDIT_WINDOW_MS
             return (
-              <div key={m.id} className={`message ${mine ? 'is-mine' : 'is-theirs'}`}>
-                <div className="message-body">{m.body}</div>
-                <div className="message-meta muted small">
-                  {mine ? 'You' : thread.other_name} · {formatDateTime(m.sent_at)}
-                  {mine && (m.read_at ? ` · Read ${formatDateTime(m.read_at)}` : ' · Not read yet')}
-                </div>
-              </div>
+              <MessageItem
+                key={m.id}
+                message={m}
+                mine={mine}
+                authorName={mine ? 'You' : thread.other_name}
+                canEdit={canEdit}
+                editing={editingId === m.id}
+                onEdit={() => setEditingId(m.id)}
+                onCancel={() => setEditingId(null)}
+                onSaved={() => {
+                  setEditingId(null)
+                  messagesQuery.reload()
+                  onChanged()
+                }}
+              />
             )
           })
         )}
@@ -285,6 +303,77 @@ function Conversation({ thread, viewer, myUserId, onChanged, onBack }) {
           You can still read the history.
         </p>
       )}
+    </div>
+  )
+}
+
+// One message. Your own recent messages can be edited in place (Save / Cancel).
+function MessageItem({ message, mine, authorName, canEdit, editing, onEdit, onCancel, onSaved }) {
+  const [text, setText] = useState(message.body)
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  async function save(event) {
+    event.preventDefault()
+    const body = text.trim()
+    if (!body) return setError('A message can’t be empty.')
+    if (body === message.body) return onCancel()
+    setSaving(true)
+    setError(null)
+    try {
+      await editMessage(message.id, body)
+      onSaved()
+    } catch (err) {
+      // e.g. "Messages can only be edited within 1 hour of sending." or the read-only message
+      setError(friendlyDbError(err))
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className={`message ${mine ? 'is-mine' : 'is-theirs'}${editing ? ' is-editing' : ''}`}>
+      {editing ? (
+        <form className="message-edit" onSubmit={save}>
+          <label className="visually-hidden" htmlFor={`edit-${message.id}`}>
+            Edit your message
+          </label>
+          <textarea
+            id={`edit-${message.id}`}
+            rows={3}
+            maxLength={MAX_MESSAGE_LENGTH}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            autoFocus
+          />
+          {error && <p className="alert alert-error small" role="alert">{error}</p>}
+          <div className="message-edit-actions">
+            <span className="muted small">
+              {text.length}/{MAX_MESSAGE_LENGTH}
+            </span>
+            <button type="button" className="button-secondary" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving || !text.trim()}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="message-body">{message.body}</div>
+      )}
+      <div className="message-meta muted small">
+        {authorName} · {formatDateTime(message.sent_at)}
+        {message.edited_at && <span title={`Edited ${formatDateTime(message.edited_at)}`}> (edited)</span>}
+        {mine && (message.read_at ? ` · Read ${formatDateTime(message.read_at)}` : ' · Not read yet')}
+        {canEdit && !editing && (
+          <>
+            {' · '}
+            <button type="button" className="button-link message-edit-link" onClick={onEdit}>
+              Edit
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }
