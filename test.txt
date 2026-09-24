@@ -1110,3 +1110,67 @@ Known issues / follow-ups:
   6. The "Done by" filter lists everyone in the system, grouped by role (Admins, Teachers, Parents, Students).
   Nothing has been committed to git yet, and migration 019 is not applied yet.
 -------------------------------------------
+
+[2026-09-24 14:21] Task: Limited admins get a scoped view of the audit log
+Files changed/added: supabase/migrations/20260924000020_audit_log_limited_admin_view.sql (new), src/pages/admin/AuditLog.jsx, src/components/AdminLayout.jsx
+What was done: This is an access change only. Which tables are logged, what is recorded, how entries are summarised, and the attendance-correction / grade-scale logic from the previous task are all unchanged.
+  - The audit log's read rule (RLS) was replaced (migration 020):
+      SUPER admins: see every entry, as before.
+      LIMITED admins: see an entry if (a) the person who made it is NOT an admin (a teacher, student or parent), or (b) nobody was signed in (database / server changes), or (c) they made it themselves. They do NOT see entries made by any OTHER admin, super or limited.
+      Everyone else (teachers, students, parents, signed-out visitors): nothing, as before.
+    Nobody can add, edit or delete audit entries directly, as before.
+  - ADMIN > AUDIT LOG is now in the menu for BOTH admin levels:
+      A blue note explains what you can see: super admins "see every change, including other admins' changes"; limited admins "see changes made by teachers, students, parents and the system, plus your own. Changes made by other admins are not shown to you." The old "Only super admins can view the audit log" message and wording are gone.
+      For a limited admin, the "Done by" filter offers only people they can actually get results for: "You (your name)", Teachers, Parents, Students, and "No signed-in user". There is NO "Admins" group, since picking another admin would always show nothing. Super admins still get every group, including Admins.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - New audit-access test on a temporary local copy (all 20 migrations): 13 checks, 13 passed, 0 failed. People: Sade (super admin), Lola (limited admin A), Kemi (limited admin B), Bola (teacher). Each made a change, plus one change was made with nobody signed in.
+      Lola sees: her OWN change, the TEACHER's change, and the no-signed-in-user change.
+      Lola does NOT see: the SUPER admin's change or Kemi's change, even when asking the database directly for those exact rows (0 rows), or for anything by another admin in any way.
+      Kemi (the mirror image) sees her own change but not Lola's or Sade's.
+      The super admin still sees everything. A teacher and a signed-out visitor still see nothing. A limited admin still can't add, edit or delete entries.
+  - The same test WITHOUT migration 020: 5 checks FAIL (Lola couldn't see anything, not even her own changes), which confirms 020 is what makes the difference.
+  - FULL SUITE re-run with migration 020: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18, 15/15, 21/21, 24/24, 18/18, 29/29, plus 13/13 new. Total 336 checks, all passing.
+    (Two earlier checks were updated for this intended change. Both used to say "a limited admin can't read the audit log". They now check that a limited admin sees her OWN entries and no other admin's.)
+  - The SQL Editor check in step 9 below was run locally: as the limited admin, the super admin's entries visible = 0 (the super admin really has 1); own entries visible = 1.
+  - NOT tested by me in the browser (needs admin logins, and migration 020 applied).
+How to test manually:
+  A) APPLY THE MIGRATION (or ask me to)
+    1. npx supabase db push --dry-run    (expected: only 20260924000020_audit_log_limited_admin_view.sql)
+       npx supabase db push              (type Y)
+  B) SET UP (as your SUPER admin)
+    2. Staff > Account type "Admin (limited)": add "Limited One" (jessiikong11+jhs-limited1@gmail.com) and "Limited Two" (jessiikong11+jhs-limited2@gmail.com). Accept both invites from Gmail and set passwords.
+    3. Still as the super admin: Classes & Sections > rename a class, e.g. JSS2 -> "JSS 2 (by super)".
+    4. Sign in as Limited Two: Subjects > rename a subject, e.g. Music -> "Music (by limited two)".
+    5. Sign in as Test Teacher: mark attendance for one of today's classes and save.
+  C) WHAT LIMITED ONE SEES
+    6. Sign in as Limited One. Expected: "Audit Log" IS in the menu. Rename a class, e.g. JSS1 -> "JSS 1 (by limited one)". Open Audit Log.
+       Expected: the blue note "As a limited admin you see changes made by teachers, students, parents and the system, plus your own..."
+       Expected: YOUR change "Updated class: ... (by limited one)" is at the top, by Limited One.
+    7. Expected: Test Teacher's "Created attendance record: <student>, <date>" entries ARE listed.
+    8. Expected: the super admin's "JSS 2 (by super)" rename and Limited Two's "Music (by limited two)" rename are NOT listed anywhere.
+       Filters: "What was changed" = Classes shows only your class change (not the super admin's); "Subjects" shows nothing from Limited Two. The "Done by" list shows "You (Limited One)", Teachers, Parents, Students and "No signed-in user", with NO Admins group.
+    9. Prove the DATABASE blocks it (not just the page). In Supabase > SQL Editor, put in Limited One's and the super admin's emails and click Run:
+         do $$ declare v_me uuid; v_super uuid; n_blocked bigint; n_own bigint; begin
+           select auth_id into v_me from public.users where lower(email) = lower('LIMITED-ADMIN-EMAIL');
+           select id into v_super from public.users where lower(email) = lower('SUPER-ADMIN-EMAIL');
+           perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
+           execute 'set local role authenticated';
+           select count(*) into n_blocked from public.audit_log where user_id = v_super;
+           select count(*) into n_own from public.audit_log where user_id = private.current_user_id();
+           execute 'reset role';
+           raise exception 'As the limited admin: super admin''s entries visible = % (expected 0), own entries visible = % (expected more than 0). For comparison, the super admin really has % entries.',
+             n_blocked, n_own, (select count(*) from public.audit_log where user_id = v_super);
+         end $$;
+       Expected red box (deliberate, nothing is changed): "super admin's entries visible = 0 (expected 0), own entries visible = N (expected more than 0). For comparison, the super admin really has M entries." (M is above 0.)
+       (Optional) Put Limited Two's email in place of SUPER-ADMIN-EMAIL. Expected: 0 visible, even though Limited Two has entries.
+    10. Sign in as the super admin and open Audit Log. Expected: the blue note says you see every change, and ALL of steps 3–6 are listed, including both limited admins' changes. "Done by" includes an Admins group.
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. "Is an admin" is based on the person's CURRENT role, not their role when they made the change. If a teacher were later made an admin, their past teacher actions would become hidden from limited admins, and the reverse if an admin became a teacher. Role changes are rare here, and an account's role can't change while it has a teacher/student/parent record. If you need "role at the time", the role would have to be recorded in each entry (a logging change, deliberately not made here).
+  2. Entries with no signed-in user (Supabase Table Editor, server-side code, migrations) ARE visible to limited admins, as you specified. That includes Table Editor changes made by a super admin, because the database can't tell who used the Table Editor.
+  3. If an admin's user record were ever DELETED, their past entries would lose the link to them (they'd show as "No signed-in user") and become visible to limited admins. Deactivating an admin (the normal way) keeps them hidden.
+  4. Limited admins can see their own "Created/Updated user account" entries etc., but never another admin's, even if it concerns them (e.g. a super admin editing that limited admin's own account).
+  5. Server-side account creation is credited to the admin who asked for it, so a limited admin sees the accounts they created themselves, and not ones created by other admins.
+  Nothing has been committed to git yet, and migration 020 is not applied yet.
+-------------------------------------------

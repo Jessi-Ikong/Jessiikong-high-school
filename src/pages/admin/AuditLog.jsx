@@ -45,22 +45,17 @@ async function fetchPage({ page, entity, userId, from, to }) {
   return { entries: data, count: count ?? 0, names, rowsByEntity }
 }
 
+// Every admin can open this page. What each one sees is decided by the
+// database (RLS, migration 020): super admins see everything; limited admins
+// see their own changes plus those by teachers, students, parents and the
+// system, but not other admins' changes.
 export default function AuditLog() {
   const { profile } = useAuth()
-  if (profile.admin_level !== 'super_admin') {
-    return (
-      <>
-        <h1>Audit log</h1>
-        <p className="alert alert-error" role="alert">
-          Only super admins can view the audit log.
-        </p>
-      </>
-    )
-  }
-  return <AuditLogViewer />
+  return <AuditLogViewer profile={profile} />
 }
 
-function AuditLogViewer() {
+function AuditLogViewer({ profile }) {
+  const isSuperAdmin = profile.admin_level === 'super_admin'
   const usersQuery = useAsyncData(fetchUsers, 'audit-users')
   const [filters, setFilters] = useState({ entity: '', userId: '', from: '', to: '' })
   const [page, setPage] = useState(0)
@@ -80,8 +75,13 @@ function AuditLogViewer() {
     <>
       <h1>Audit log</h1>
       <p className="muted">
-        Every change made in the system: who did it, when, and what changed. Newest first. Only super admins can see
-        this page. Message text and raw payment-provider replies are never stored here.
+        Changes made in the system: who did it, when, and what changed. Newest first. Message text and raw
+        payment-provider replies are never stored here.
+      </p>
+      <p className="alert alert-info-plain">
+        {isSuperAdmin
+          ? "As a super admin you see every change, including other admins' changes."
+          : 'As a limited admin you see changes made by teachers, students, parents and the system, plus your own. Changes made by other admins are not shown to you.'}
       </p>
 
       <div className="filter-bar">
@@ -103,7 +103,8 @@ function AuditLogViewer() {
           <select value={filters.userId} onChange={(e) => setFilter('userId', e.target.value)} disabled={usersQuery.loading}>
             <option value="">Anyone</option>
             <option value={NO_USER}>No signed-in user (database / server)</option>
-            {ROLE_GROUPS.map(([role, label]) => (
+            {!isSuperAdmin && <option value={profile.id}>You ({fullName(profile)})</option>}
+            {ROLE_GROUPS.filter(([role]) => isSuperAdmin || role !== 'admin').map(([role, label]) => (
               <optgroup key={role} label={label}>
                 {users
                   .filter((u) => u.role === role)

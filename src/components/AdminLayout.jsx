@@ -17,7 +17,7 @@ const NAV_LINKS = [
   { to: '/admin/staff', label: 'Staff' },
   { to: '/admin/students', label: 'Students' },
   { to: '/admin/parents', label: 'Parents' },
-  { to: '/admin/audit-log', label: 'Audit Log', superAdminOnly: true },
+  { to: '/admin/audit-log', label: 'Audit Log' },
 ]
 
 export default function AdminLayout() {
