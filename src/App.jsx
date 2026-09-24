@@ -20,6 +20,7 @@ import Students from './pages/admin/Students'
 import Parents from './pages/admin/Parents'
 import AuditLog from './pages/admin/AuditLog'
 import FeeStructures from './pages/admin/FeeStructures'
+import StuckPayments from './pages/admin/StuckPayments'
 import TeacherLayout from './components/TeacherLayout'
 import TeacherDashboard from './pages/TeacherDashboard'
 import MarkAttendance from './pages/teacher/MarkAttendance'
@@ -28,7 +29,10 @@ import TeacherAssignments from './pages/teacher/Assignments'
 import StudentLayout from './components/StudentLayout'
 import StudentDashboard from './pages/StudentDashboard'
 import StudentAssignments from './pages/student/Assignments'
+import ParentLayout from './components/ParentLayout'
 import ParentDashboard from './pages/ParentDashboard'
+import ParentFees from './pages/parent/Fees'
+import PaymentCallback from './pages/parent/PaymentCallback'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -55,6 +59,7 @@ export default function App() {
           <Route path="students" element={<Students />} />
           <Route path="parents" element={<Parents />} />
           <Route path="fees" element={<FeeStructures />} />
+          <Route path="stuck-payments" element={<StuckPayments />} />
           <Route path="audit-log" element={<AuditLog />} />
           <Route path="*" element={<NotFound />} />
         </Route>
@@ -76,7 +81,12 @@ export default function App() {
         </Route>
       </Route>
       <Route element={<ProtectedRoute allowedRoles={[ROLES.PARENT]} />}>
-        <Route path="/parent/*" element={<ParentDashboard />} />
+        <Route path="/parent" element={<ParentLayout />}>
+          <Route index element={<ParentDashboard />} />
+          <Route path="fees" element={<ParentFees />} />
+          <Route path="payment-callback" element={<PaymentCallback />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<NotFound />} />

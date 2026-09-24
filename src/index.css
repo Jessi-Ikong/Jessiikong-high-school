@@ -1211,3 +1211,85 @@ select {
   border-top: 2px solid #e4e7eb;
   font-weight: 600;
 }
+
+/* ---------- Parent fees & payments ---------- */
+.child-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.child-tab {
+  background: #ffffff;
+  color: #1f2933;
+  border: 1px solid #cbd2d9;
+}
+
+.child-tab.is-active {
+  background: #1e3a5f;
+  color: #ffffff;
+  border-color: #1e3a5f;
+}
+
+.child-tab.is-active .muted {
+  color: #d9e2ec;
+}
+
+.fee-balance {
+  margin: 0.5rem 0 1rem;
+  font-size: 1.05rem;
+}
+
+.fee-balance.is-clear {
+  color: #03543f;
+  font-weight: 600;
+}
+
+.reference {
+  overflow-wrap: anywhere;
+}
+
+.payment-callback {
+  max-width: 40rem;
+}
+
+.payment-status.is-success {
+  border-left: 4px solid #0e9f6e;
+}
+
+.payment-status.is-failed {
+  border-left: 4px solid #e02424;
+}
+
+.spinner-line {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+}
+
+.spinner {
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 3px solid #cbd2d9;
+  border-top-color: #1e3a5f;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+.stuck-table td {
+  vertical-align: top;
+}

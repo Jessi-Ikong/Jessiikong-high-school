@@ -18,6 +18,7 @@ const NAV_LINKS = [
   { to: '/admin/students', label: 'Students' },
   { to: '/admin/parents', label: 'Parents' },
   { to: '/admin/fees', label: 'Fees', superAdminOnly: true },
+  { to: '/admin/stuck-payments', label: 'Stuck Payments' },
   { to: '/admin/audit-log', label: 'Audit Log' },
 ]
 

@@ -1756,3 +1756,332 @@ How to test manually:
 Known issues / follow-ups:
   None new.
 -------------------------------------------
+
+[2026-09-24 21:05] Task: Investigate "404 ... /rest/v1/rpc/fee_collection_summary" on the Fees page
+Files changed/added: test.txt only (no code or database changes were needed)
+What was done:
+  1. DOES THE FUNCTION EXIST, AND IN WHICH SCHEMA? Checked on LIVE: public.fee_collection_summary(p_term_id uuid, p_class_id uuid) exists in the PUBLIC schema, which is the one the API exposes, as created by migration 026. Signed-in users can run it and the anonymous key can't. That's exactly the same set-up as public.get_class_rankings, which the Class Ranking page already uses successfully. So the schema was NOT the problem.
+  2. IS THE PAGE CALLING IT CORRECTLY? src/pages/admin/FeeStructures.jsx calls supabase.rpc('fee_collection_summary', { p_term_id, p_class_id }). The name, the default (public) schema and both argument names match the database exactly. The page code is correct.
+  3. WHAT WAS WRONG: the API (PostgREST) serves /rpc/ calls from a CACHED copy of the database's list of functions. It answers 404 "function not found" for any function that isn't in that cache yet, even if it exists. Supabase normally refreshes the cache automatically after a migration. When the page was opened, the cache evidently didn't yet include the function created a few minutes earlier by migration 026, so the call got a 404.
+     By the time of this check the cache HAD refreshed: calling the live endpoint /rest/v1/rpc/fee_collection_summary now gets "permission denied" (401) for the anonymous key, the same answer as the working get_class_rankings. That means the API now finds the function. Only an actually missing function gives a 404.
+  4. HOW IT WAS FIXED: no code or migration change was needed. The API's cache caught up by itself. (If it ever sticks, running  notify pgrst, 'reload schema';  in the SQL Editor forces an immediate refresh.)
+Automated tests run (LIVE):
+  - Catalog check: fee_collection_summary is in schema public, args (p_term_id uuid, p_class_id uuid), execute granted to authenticated, not to anon. Same as get_class_rankings.
+  - Live API: POST /rest/v1/rpc/fee_collection_summary with the app's public anon key returns 401 "permission denied for function fee_collection_summary" (found; anon correctly refused), identical to get_class_rankings. It's no longer a 404.
+  - As the SUPER ADMIN (jessiikong11@gmail.com), rolled back so nothing was saved: creating a fee "LIVE CHECK" (₦1,000) for JSS1 / First Term succeeded and created 1 invoice (JSS1 has 1 active student). The page's summary call then returned invoices=1, unpaid=1, due 1000.00, paid 0.00. Afterwards live still has 0 fees and 0 invoices.
+  - NOT done: signing in to the web app myself (I can't enter passwords). The final in-browser check below is yours.
+How to test manually:
+  1. Hard-refresh the Fees page (Ctrl+F5) as the super admin. Expected: no 404 in the browser console; the page loads with "No fees yet for JSS1 this term" (or your chosen class).
+  2. Add a fee (e.g. "Tuition", 50000) for JSS1, First Term. Expected: '"Tuition" was added and 1 invoice was created for JSS1 students.' The row shows "1 · 1 unpaid", ₦0.00 collected, ₦50,000.00 outstanding.
+  3. If you'd rather not keep it, delete it (no payments, so deleting is allowed); its invoice goes with it.
+  If a 404 ever comes back straight after a future migration: wait a minute and refresh, or run  notify pgrst, 'reload schema';  in the SQL Editor.
+Known issues / follow-ups:
+  1. Suggestion: future migrations that add or change API functions could end with  notify pgrst, 'reload schema';  so the cache refreshes immediately instead of whenever Supabase gets to it. I haven't added it anywhere yet.
+-------------------------------------------
+
+[2026-09-24 21:30] Task: Parent Fees page + Paystack online payments (test mode)
+Files changed/added: supabase/migrations/20260924000028_paystack_payments.sql (new), supabase/functions/_shared/paystack.ts (new), supabase/functions/initialize-payment/index.ts (new), supabase/functions/paystack-webhook/index.ts (new), supabase/config.toml, src/pages/parent/Fees.jsx (new), src/pages/parent/PaymentCallback.jsx (new), src/components/ParentLayout.jsx (new), src/components/ChildSwitcher.jsx (new), src/components/PaymentBadges.jsx (new), src/hooks/useChosenChild.js (new), src/lib/parentChildren.js (new), src/pages/ParentDashboard.jsx, src/App.jsx, src/index.css
+What was done:
+  - EDGE FUNCTION initialize-payment (signed-in users only; verify_jwt = true):
+      1. The caller must be an active PARENT account.
+      2. The invoice must belong to one of THEIR children (checked in parent_students), otherwise: "You can only pay fees for your own children." It gives the same answer whether the invoice doesn't exist or isn't theirs, so it doesn't reveal other families' invoices.
+      3. A fully paid invoice is refused: "This invoice is already fully paid."
+      4. Creates the payment row: status pending, provider paystack, a unique reference "JHS-<random UUID>", amount = OUTSTANDING balance (amount_due - amount_paid), paid_by = the parent.
+      5. Calls Paystack's Initialize Transaction API server-side with the secret key: amount in KOBO, NGN, the parent's email, the reference, callback_url = APP_URL/parent/payment-callback, plus the invoice/payment ids as metadata. If Paystack refuses, the payment is marked failed and the parent sees "We couldn't start the payment with Paystack...".
+      6. Returns Paystack's authorization_url; the page sends the browser there.
+  - EDGE FUNCTION paystack-webhook (PUBLIC; verify_jwt = false in supabase/config.toml, because Paystack sends no Supabase token):
+      1. Checks X-Paystack-Signature = HMAC-SHA512 of the RAW request body with PAYSTACK_SECRET_KEY, compared in constant time. A missing or wrong signature gets 401 and nothing happens.
+      2. Finds our payment by reference. Unknown references are ignored (200).
+      3. If it's already successful: nothing more is done (duplicate / retried webhook), and it answers 200.
+      4. Otherwise it asks Paystack's Verify Transaction API itself; the webhook payload isn't trusted:
+           success + same amount (kobo) + NGN + same reference -> status successful, paid_at, Paystack's details saved in provider_response;
+           success but the amount/currency/reference DON'T match -> status failed, never paid, and the details are kept for an admin to review;
+           failed / reversed -> status failed;
+           anything else (incl. "abandoned", which Paystack also reports while the parent is still on the checkout page) -> left pending.
+         The update itself only touches rows that aren't successful yet, so two deliveries arriving at the same moment still can't double-process.
+      5. Temporary problems (e.g. Paystack unreachable) return 500, and Paystack retries later.
+  - MIGRATION 028: removes the old database rule that let a PARENT insert a pending payment directly from the browser (any amount, any reference). Now only the Edge Functions (service role) and admins can write payments:
+      parents / students: read only (payments on invoices they can see);
+      admins (either tier): can record payments (cash / bank transfer at the bursary; unchanged);
+      super admins: can correct or delete payments (unchanged).
+    A parent can never set a payment to successful (proven below).
+  - INVOICE RECALCULATION: the existing trigger (migration 006) re-adds an invoice's SUCCESSFUL payments whenever a payment changes, and the status follows (paid if fully covered, partial if part paid, etc.). Tested below rather than assumed.
+  - PARENT PAGES (the first real parent pages; new parent menu: Home, Fees):
+      Home: a card per child (class this session, admission no.) with a "School fees" link.
+      Fees (/parent/fees): with several children, a button per child switches between them (the choice stays in the address, ?child=). Shows "Total outstanding: ₦..." and an invoice table (fee and term, amount due, paid so far, status, due date) with a "Pay ₦<balance>" button on anything not fully paid. An overpaid invoice says so. Below it, Payment history: date, fee, amount, method (Paystack / At the school), reference and status (Successful / Pending / Failed).
+      Payment callback (/parent/payment-callback): Paystack returns the parent here. The page shows "Confirming your payment…" and checks the payment every 2 seconds, up to 10 times (~20 s):
+        successful -> "✅ Payment successful" + the invoice's new status (and any amount still to pay);
+        failed -> "Payment not completed ... you have not been charged";
+        still pending -> "Still waiting for confirmation... you don't need to pay again" with a "Check again" button (it never hangs forever);
+        no such payment on their account -> a message with the reference to quote to the school.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - Paystack helpers, run with Node (the same Web Crypto API as the Edge runtime): 18 checks, 18 passed.
+      signature: a genuine signature, computed independently the way Paystack does, is accepted (also in upper-case hex). REJECTED: body edited after signing, a different key, no header, an empty header, a truncated signature, SHA-256 instead of SHA-512, and re-formatted JSON (it must be the RAW body).
+      naira -> kobo, including decimals.
+      verify outcome: success with a matching amount -> successful; wrong amount / currency / reference -> mismatch (never paid); failed / reversed -> failed; abandoned / ongoing -> stays pending.
+  - The Edge Functions THEMSELVES were NOT run by me: they need Deno, which isn't installed here (you declined it earlier). They get exercised for real on Supabase after deploying (manual test below).
+  - New database test (all 28 migrations): 24 checks, 24 passed. Paul is Ada's parent, Pam is Ben's; Lola is a limited admin.
+      Paul sees only Ada's invoice. Paul can NOT insert a pending payment, nor a successful one. He can NOT mark the pending payment successful (0 rows; still pending) or delete payments, but he CAN see it. Pam can't see it. A student can't insert payments.
+      RECALCULATION: while pending, Ada's invoice stays unpaid (nothing counted). The webhook's update marks it successful (1 row), and the trigger sets amount_paid 50,000 and status PAID.
+      DUPLICATES: the same update run twice more changes 0 rows each time. amount_paid is still 50,000 (not 100,000 or 150,000), and there's still exactly one successful payment.
+      PARTIAL: Lola records ₦20,000 cash for Ben -> PARTIAL. The online payment is for the OUTSTANDING ₦30,000; after the webhook, Ben is PAID.
+      A failed payment is kept but not counted, and can still become successful later if Paystack confirms it. An overpayment is counted, and the invoice stays PAID (for a refund).
+      AUDIT: the webhook's change is logged (update_payments pending -> successful, by the system). Paystack's raw response is NOT copied into the audit log. The invoice unpaid -> paid change is logged, and so is the admin's cash payment (by Lola).
+  - The same test WITHOUT migration 028: the "parent can NOT insert a pending payment" check FAILS (plus one knock-on: that payment row then exists). That confirms 028 closes the gap.
+  - FULL SUITE with migration 028, each file on a fresh database: 63/63, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18, 15/15, 21/21, 24/24, 18/18, 29/29, 13/13, 11/11, 47/47, 28/28, 31/31, 29/29, 35/35, 16/16, plus 24/24 new. Total 545 checks, all passing.
+      One older test was updated on purpose: the original RLS test had a parent starting a pending payment directly, which migration 028 now forbids. It now checks that the parent is BLOCKED, and the pending payment is created by the service role (as initialize-payment does). Its later check (confirming the payment server-side makes the invoice partial) passes unchanged.
+How to test manually:
+  1. SECRETS: PAYSTACK_SECRET_KEY is ALREADY SET on the project ("npx supabase secrets list" shows it, added 24 Sep 20:18 UTC), and APP_URL too, which is used for the callback link. To set or rotate the key later (TEST key, starts with sk_test_):
+       npx supabase secrets set PAYSTACK_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxx
+     APP_URL must be the address you open the app on (e.g. http://localhost:5174 for local dev), because Paystack sends the parent back there. To change it:  npx supabase secrets set APP_URL=http://localhost:5174
+  2. APPLY THE MIGRATION AND DEPLOY BOTH FUNCTIONS (or ask me to):
+       npx supabase db push --dry-run    (expected: only 20260924000028_paystack_payments.sql)
+       npx supabase db push              (type Y)
+       npx supabase functions deploy initialize-payment --use-api
+       npx supabase functions deploy paystack-webhook --no-verify-jwt --use-api
+     (--use-api bundles on Supabase's side, so no Docker or Deno is needed locally. --no-verify-jwt matches config.toml: the webhook must accept Paystack's calls, which carry no Supabase token. Its security is the signature check.)
+  3. REGISTER THE WEBHOOK IN PAYSTACK: dashboard.paystack.com > Settings > API Keys & Webhooks > make sure you're on TEST mode > "Test Webhook URL":
+       https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/paystack-webhook
+     Save. ("Test Callback URL" can stay empty: each payment sends its own callback_url.)
+  4. SET UP A TEST FAMILY (if you don't have one): as super admin, Admin > Parents: create a parent with a Gmail "+" alias (e.g. jessiikong11+parent@gmail.com), and link them to your test student (jessiikong404@gmail.com). Admin > Fees: add e.g. "Tuition" ₦50,000 for that student's class, First Term. Sign in as the parent (invite email -> set password).
+  5. END-TO-END TEST PAYMENT (parent):
+       a) Parent > Fees. Expected: Tuition ₦50,000.00, paid ₦0.00, "Unpaid", due 18 Dec 2026, and a "Pay ₦50,000.00" button. Total outstanding ₦50,000.00. Payment history: none.
+       b) Click Pay. Expected: "Opening Paystack…", then Paystack's TEST checkout for ₦50,000 with the parent's email.
+       c) Pay with Paystack's standard successful TEST card:
+            card number 4084 0840 8408 4081, CVV 408, any future expiry date (e.g. 12/30)
+          If it asks for a PIN or OTP, use what Paystack's page shows for test mode. Paystack's current list of test cards (including ones that are declined, or ask for PIN/OTP) is at https://paystack.com/docs/payments/test-payments/ ; I couldn't fetch that page automatically, so please check the card there if it's refused.
+       d) Expected: Paystack redirects to /parent/payment-callback?reference=JHS-..., which shows "Confirming your payment…", then within a few seconds "✅ Payment successful: ₦50,000.00 was paid for Tuition. This fee is now Paid."
+          If it shows "Still waiting for confirmation" instead, the webhook isn't reaching us: check step 3, and Supabase > Edge Functions > paystack-webhook > Logs.
+       e) "Back to school fees". Expected: Tuition "Paid", paid ₦50,000.00, no Pay button, "All fees are paid. Thank you!". Payment history: ₦50,000.00, Paystack, JHS-..., "Successful".
+       f) PARTIAL: add another fee (e.g. "Books" ₦10,000). As an admin, record ₦4,000 cash against the student's Books invoice (SQL Editor, until a payments screen exists):
+            insert into public.payments (invoice_id, amount, provider, provider_ref, status, paid_at)
+            select i.id, 4000, 'manual', 'CASH-TEST-1', 'successful', now() from public.invoices i join public.fee_structures fs on fs.id = i.fee_structure_id where fs.name = 'Books' limit 1;
+          The parent's page shows Books "Part paid", ₦4,000 paid, and "Pay ₦6,000.00". Pay it with the test card -> Books "Paid".
+       g) AUDIT: Admin > Audit Log (super admin). Expected: "update_payments" by the system (no user) with status pending -> successful and paid_at set, and "update_invoices" with amount_paid 0 -> 50000 and status unpaid -> paid. Paystack's raw response is NOT shown (it's deliberately left out of the log).
+       h) CANCEL: start another payment and close Paystack's checkout without paying (or use the "Cancel payment" link). The callback page (if Paystack redirects) or the history shows "Pending", nothing is charged, and the invoice is unchanged.
+  6. DUPLICATE WEBHOOK DOES NOT DOUBLE-PROCESS. Re-send the same charge.success event, correctly signed, for the reference from step 5 (copy JHS-... from the payment history). Run in a terminal, with your TEST secret key typed where shown; it's used only locally to sign the message:
+       node -e "const c=require('crypto');const key=process.argv[1];const body=JSON.stringify({event:'charge.success',data:{reference:process.argv[2]}});fetch('https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/paystack-webhook',{method:'POST',headers:{'Content-Type':'application/json','x-paystack-signature':c.createHmac('sha512',key).update(body).digest('hex')},body}).then(async r=>console.log(r.status,await r.text()))" sk_test_YOUR_KEY JHS-PASTE-REFERENCE
+     Expected: 200 {"ok":true,"already":"successful"}. Run it 2-3 times. Then in the SQL Editor:
+       select status, amount, paid_at from public.payments where provider_ref = 'JHS-PASTE-REFERENCE';
+       select amount_due, amount_paid, status from public.invoices i where i.id = (select invoice_id from public.payments where provider_ref = 'JHS-PASTE-REFERENCE');
+     Expected: ONE payment, still successful, with the SAME paid_at as before; amount_paid still 50000 (not 100000).
+     Also, a FORGED call is rejected: run the same command with a wrong key (e.g. sk_test_wrong). Expected: 401 {"error":"invalid signature"}.
+     (Paystack's own retries behave the same. Supabase > Edge Functions > paystack-webhook > Logs shows each call.)
+  7. A PARENT CAN'T PAY FOR SOMEONE ELSE'S CHILD. Get an invoice id for a student who is NOT linked to your test parent (SQL Editor):
+       select i.id from public.invoices i where i.student_id not in (select ps.student_id from public.parent_students ps join public.parents p on p.id = ps.parent_id join public.users u on u.id = p.user_id where lower(u.email) = lower('PARENT-EMAIL')) limit 1;
+     (If every student belongs to that parent, create a second student + fee first.) Then, signed in as the parent in the app, open the browser console (F12) and run, with the anon key from .env.local (VITE_SUPABASE_ANON_KEY) and that invoice id:
+       const t = JSON.parse(localStorage.getItem('sb-drrapyknckdzsdhqcxka-auth-token')).access_token; fetch('https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/initialize-payment', {method:'POST', headers:{Authorization:'Bearer '+t, apikey:'PASTE-ANON-KEY', 'Content-Type':'application/json'}, body: JSON.stringify({invoice_id:'PASTE-INVOICE-ID'})}).then(async r => console.log(r.status, await r.text()))
+     Expected: 403 {"error":"You can only pay fees for your own children."}, and NO new row in public.payments for that invoice.
+     Database level: even writing the payment directly is blocked for a parent (proven in the local tests above; migration 028).
+Known issues / follow-ups:
+  DECISION: PARTIAL PAYMENTS. The Pay button always charges the WHOLE outstanding balance of that fee; parents can't type an amount. A "part paid" state still happens when the bursary records a cash/transfer part-payment; the parent then pays exactly the remainder online. Reasons: it's simpler and clearer for parents; there are fewer Paystack transactions (each has a fee); no tiny or accidental amounts; and the webhook's "amount must match" check stays exact. Instalment plans can be added later (e.g. a chosen amount with a minimum) if the school wants them.
+  ASSUMPTIONS / OTHER DECISIONS:
+  1. Paystack's secret key lives only in the PAYSTACK_SECRET_KEY Edge Function secret. The browser never sees it. VITE_PAYSTACK_PUBLIC_KEY isn't needed for this redirect flow (it's only for Paystack's inline pop-up), so the app doesn't use it; adding it to .env.local is harmless.
+  2. The callback address comes from the existing APP_URL secret, not from the browser, so a request can't redirect a parent anywhere else. If you run the app on a different address (or deploy it), update APP_URL.
+  3. An amount MISMATCH (Paystack says success but for a different amount) is NEVER marked paid. It's stored as failed, with Paystack's details and a "review" note in provider_response, for an admin to look into.
+  4. PAYING TWICE (e.g. two tabs, both completed): both payments are real money and both are recorded as successful. The invoice shows as paid, and the parent sees "Overpaid by ₦... the school will contact you". Refunds are handled by the school.
+  5. Pending payments whose checkout was closed stay "Pending" (Paystack doesn't send a webhook for abandoned checkouts). They're harmless and never counted. A tidy-up job could mark old ones failed later.
+  6. Only the parent can pay online (not the student or admins). Admins record offline payments.
+  7. The parent's email on their account is sent to Paystack for the receipt.
+  8. Amounts are Naira only.
+  9. For extra hardening later: Paystack also publishes the IP addresses its webhooks come from, which could be allow-listed. The signature check plus server-side verification already covers forged calls.
+  Nothing has been committed to git yet, migration 028 is not applied, and neither function is deployed.
+-------------------------------------------
+
+[2026-09-24 21:45] Task: Applied migration 028 and deployed initialize-payment + paystack-webhook to the live project
+Files changed/added: test.txt only
+What was done:
+  - "npx supabase db push" applied 20260924000028_paystack_payments.sql (the dry run listed only that). "migration list" shows 001-028 on both local and remote.
+  - Deployed with "npx supabase functions deploy initialize-payment --use-api" and "npx supabase functions deploy paystack-webhook --no-verify-jwt --use-api". Both are ACTIVE, version 1. initialize-payment has verify_jwt = true; paystack-webhook has verify_jwt = false (public; protected by the signature check).
+Automated tests run (against the LIVE functions; none of these create or change data):
+  1. Webhook with NO signature -> 401 {"error":"invalid signature"}.
+  2. Webhook with a FORGED signature -> 401 {"error":"invalid signature"}. Both also prove the function found PAYSTACK_SECRET_KEY; without it, it answers 500 "not configured".
+  3. initialize-payment CORS preflight -> 200, Access-Control-Allow-Origin: *.
+  4. initialize-payment with no login -> 401 "Missing authorization header" (blocked by Supabase before the function runs).
+  5. initialize-payment with only the public anon key (not a signed-in user) -> 401 "Your session has expired. Please sign in again." That means the function ran, found all its secrets (service key, PAYSTACK_SECRET_KEY, APP_URL), and refused a caller who isn't a signed-in parent.
+  - Live payments table afterwards: 0 rows (nothing was created).
+  - NOT yet tested: a real payment. That needs the Paystack webhook URL registered (below) and a parent login.
+How to test manually:
+  1. In Paystack (TEST mode) > Settings > API Keys & Webhooks > Test Webhook URL:  https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/paystack-webhook  > Save.
+  2. Check APP_URL is the address you open the app on (Paystack returns parents there after checkout). To set it:  npx supabase secrets set APP_URL=http://localhost:5174   (or your deployed address).
+  3. Then follow steps 4-7 of the 21:30 entry (test family, test card payment, duplicate webhook, other family's invoice).
+Known issues / follow-ups:
+  None new. Nothing committed to git yet.
+-------------------------------------------
+
+[2026-09-24 21:55] Task: Investigate "CORS ... preflight ... does not have HTTP ok status" on initialize-payment; harden paystack-webhook
+Files changed/added: supabase/functions/paystack-webhook/index.ts
+What was done:
+  1. LOGS: the Supabase CLI (v2.117) has no command for reading function logs, and I can't open the dashboard, so I couldn't read Edge Functions > initialize-payment > Logs. Instead I checked the live function directly, and when it was deployed:
+       - initialize-payment was FIRST deployed at 20:40:14 UTC (21:40 Nigerian time). Before that it did NOT EXIST on Supabase. Calling a missing function gets a 404 with no CORS headers, which the browser reports as exactly "Response to preflight request doesn't pass access control check: It does not have HTTP ok status."
+       - Since the deploy, the browser's exact preflight (OPTIONS with Origin and the supabase-js request headers) gets 200 + Access-Control-Allow-Origin: *, every time (tested repeatedly).
+       - The live payments table has 0 rows. If any call from the page had reached the function's code, a pending payment would exist (it's created before Paystack is contacted). So no call ever ran the function, which also fits "it wasn't deployed yet".
+     ROOT CAUSE (most likely): the Pay button was used before the function was deployed (a 404 at preflight), NOT a crash inside the function. If the error still appears now, please paste the dashboard log line and I'll dig further.
+  2. initialize-payment ALREADY follows the invite-user fix pattern, checked line by line: OPTIONS is answered first with 200 + CORS headers (before secrets or clients); everything else runs inside a catch-all; and every response (success, validation error, "not configured", crash) goes through the same JSON helper that adds the CORS headers. The allowed-headers list is IDENTICAL to supabase-js 2.117's own published list (@supabase/supabase-js/cors: authorization, x-client-info, apikey, content-type, x-retry-count, traceparent, tracestate, baggage). No code change was needed; it was redeployed anyway (now version 2).
+  3. paystack-webhook DID have the fragile structure: reading the body, the signature check and creating the database client ran OUTSIDE any error handling, so a crash there would have returned a bare, unhelpful error. It's now wrapped like invite-user: all logic is in handle(), and a catch-all turns any unexpected error into a JSON 500 plus a clear "Unhandled error in paystack-webhook" line in the logs (Paystack then retries). It needs no CORS: Paystack calls it server to server. Redeployed (version 2).
+Automated tests run (LIVE, after redeploying):
+  - initialize-payment preflight (browser-style): 200, allow-origin *, allow-headers = the supabase-js list.
+  - initialize-payment with only the anon key: 401 "Your session has expired..." (it ran, found its secrets, and refused a non-parent).
+  - paystack-webhook: forged signature -> 401 {"error":"invalid signature"}; GET -> 405 {"error":"Method not allowed."} (clean JSON, no bare errors).
+  - The functions list shows invite-user v5 (verify_jwt true), initialize-payment v2 (verify_jwt true), paystack-webhook v2 (verify_jwt false).
+  - NOT yet done: the real in-browser end-to-end call. That needs a signed-in PARENT session (jessiikong404+parent@gmail.com), and I can't sign in with a password.
+How to test manually:
+  1. Sign in as jessiikong404+parent@gmail.com > Fees > click "Pay ₦...". Expected: "Opening Paystack…", then Paystack's TEST checkout. No CORS error in the console (F12).
+  2. Supabase > SQL Editor:  select status, amount, provider_ref, created_at from public.payments order by created_at desc limit 3;   Expected: one new "pending" payment with reference JHS-...
+  3. Continue with steps 5-7 of the 21:30 entry (test card, callback page, duplicate webhook, other family).
+Known issues / follow-ups:
+  1. If the preflight error ever reappears straight after a deploy, wait a minute and hard-refresh. A brand-new function can take a moment to be reachable.
+-------------------------------------------
+
+[2026-09-24 22:05] Task: Investigate a completed Paystack test payment that stayed "pending"; make verification robust and diagnosable
+Files changed/added: supabase/functions/_shared/processPayment.ts (new), supabase/functions/verify-payment/index.ts (new), supabase/functions/paystack-webhook/index.ts, supabase/functions/initialize-payment/index.ts, supabase/config.toml, src/pages/parent/PaymentCallback.jsx
+What was done:
+  1. THE STORED PAYMENT (live, read-only): reference JHS-bcdeb8a1-da75-452f-b8a5-3a1e05997ebd, ₦65,000 (= the invoice's full amount), created 20:48:13 UTC by initialize-payment. Status still "pending", provider_response EMPTY, updated_at = created_at, and its only audit entry is its creation. So NOTHING ever updated it: the webhook never reached the point of writing. The invoice is still unpaid (amount_paid 0).
+  2. WAS IT THE EARLIER PREFLIGHT / CRASH ISSUE? No. The hardened webhook (v2) had gone live at 20:45:45 UTC, 2.5 minutes BEFORE this payment was created, and initialize-payment clearly worked (it created the row and the Paystack checkout).
+  3. LOGS: this CLI version has no command for reading function logs, and I can't open the dashboard, so I could NOT read the webhook log for 20:48-20:52 UTC. The old webhook also wrote nothing to the payment in several of its paths. Five causes would each leave the row exactly like this:
+       a) Paystack never called us (webhook URL not saved in TEST mode, or a typo);
+       b) signature rejected (401), e.g. the stored secret key having a stray space/newline/quote: that still works for API calls (so checkout started) but breaks the signature check;
+       c) Paystack's Verify said "not final yet": the old code deliberately wrote nothing in that case;
+       d) the Verify API call failed (500, Paystack retries);
+       e) the database lookup failed (500).
+     Which one it was can't be proven from the data alone. The changes below remove the blind spots, and the next step (below) will show the answer for this exact payment.
+  4. FIXES:
+       - ONE shared verification module, _shared/processPayment.ts, now used by BOTH the webhook and a new verify-payment function: Paystack Verify API -> successful only if Paystack says success AND the amount (kobo), currency and reference match -> never touches an already-successful payment (race-safe). EVERY check now records what Paystack said in provider_response.last_check (when, webhook or verify-payment, Paystack's status and gateway message, amounts, outcome), so a stuck payment shows why.
+       - paystack-webhook: now writes ONE log line per request ("paystack-webhook: {...}"): signature rejected (with whether a header was present and whether the key is test or live), unknown reference, or the full outcome. The secret key is .trim()'d (cause b can't happen any more). Uses the shared module.
+       - NEW verify-payment (signed-in users only; verify_jwt = true): a signed-in PARENT of the invoice's student, or an ADMIN, can ask the server to re-check one payment with Paystack. Same shared verification, so it can NEVER mark something paid unless Paystack confirms it. Others get "No payment with that reference was found on your account."
+       - The payment callback page now calls verify-payment as soon as the parent lands (and once more halfway), instead of only waiting for the webhook. Payments now get confirmed even if a webhook is late, lost or misconfigured.
+       - initialize-payment: the key is also .trim()'d.
+       - Redeployed: initialize-payment v3, paystack-webhook v3 (verify_jwt false), verify-payment v1 (verify_jwt true).
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - New Node test of the shared verification (fake Paystack API + fake database): 9 checks, 9 passed. ₦65,000 with Paystack reporting 6,500,000 kobo "success" -> successful with Paystack's paid_at; the update only matches rows that aren't already successful; the check is recorded. Already successful -> no Paystack call, no update. Wrong amount -> failed with a review note. Abandoned -> status unchanged but the check is recorded. Failed -> failed. Unknown reference -> nothing. Paystack unreachable -> error (retry), nothing written.
+  - The 18 Paystack helper checks still pass.
+  - Live: verify-payment preflight 200 + CORS; with only the anon key -> 401 (it runs, finds its secrets, refuses non-users); webhook with a forged signature -> 401.
+  - NOT done by me: re-checking THIS payment. verify-payment needs the parent's or an admin's login, and re-sending the webhook needs the Paystack secret key. I have neither.
+How to test manually:
+  RESCUE THIS PAYMENT (either option; both go through the real Paystack verification, and neither marks it paid by hand):
+  A) Easiest: signed in as the parent (jessiikong404+parent@gmail.com), open  <your APP_URL>/parent/payment-callback?reference=JHS-bcdeb8a1-da75-452f-b8a5-3a1e05997ebd
+     The page asks the server to verify with Paystack. Expected: "✅ Payment successful: ₦65,000.00 was paid for ...". The Fees page then shows it Paid.
+  B) Re-send the webhook yourself, correctly signed (this ALSO tests the webhook path). In a terminal, with your TEST secret key:
+       node -e "const c=require('crypto');const key=process.argv[1].trim();const body=JSON.stringify({event:'charge.success',data:{reference:process.argv[2]}});fetch('https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/paystack-webhook',{method:'POST',headers:{'Content-Type':'application/json','x-paystack-signature':c.createHmac('sha512',key).update(body).digest('hex')},body}).then(async r=>console.log(r.status,await r.text()))" sk_test_YOUR_KEY JHS-bcdeb8a1-da75-452f-b8a5-3a1e05997ebd
+     The reply says exactly what happened, e.g. 200 {"ok":true,"outcome":"successful","paystackStatus":"success",...}. A 401 means the key you used doesn't match the one stored in Supabase.
+  THEN (either option), check what Paystack said (SQL Editor):
+       select status, paid_at, provider_response->'last_check' as last_check from public.payments where provider_ref = 'JHS-bcdeb8a1-da75-452f-b8a5-3a1e05997ebd';
+     and that the invoice is now paid (amount_paid 65000, status paid).
+  FIND THE ORIGINAL CAUSE: in Paystack (TEST mode) > Settings > API Keys & Webhooks, check the Test Webhook URL is exactly https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/paystack-webhook . If it was empty, wrong, or saved under Live, that's the cause (a). Supabase > Edge Functions > paystack-webhook > Logs (around 20:48-20:52 UTC) would also show whether any request arrived; the NEW version logs every request clearly.
+Known issues / follow-ups:
+  1. Nothing committed to git yet (all the Paystack work since 21:30 is uncommitted).
+-------------------------------------------
+
+[2026-09-24 22:25] Task: Automatic reconciliation of stuck Paystack payments + admin "Stuck Payments" page
+Files changed/added: supabase/migrations/20260924000029_schedule_payment_reconciliation.sql (new), supabase/functions/reconcile-pending-payments/index.ts (new), supabase/functions/_shared/reconcile.ts (new), supabase/functions/_shared/processPayment.ts, supabase/config.toml, src/pages/admin/StuckPayments.jsx (new), src/App.jsx, src/components/AdminLayout.jsx, src/index.css
+What was done:
+  - FIRST, THE EARLIER STUCK PAYMENT: JHS-bcdeb8a1-... is now SUCCESSFUL (checked live, read-only). It was confirmed by verify-payment at 21:00:35 UTC, i.e. the callback link (option A). Paystack says it was paid at 20:48:23 (10 s after checkout started), with the right amount. The ₦65,000 invoice is PAID. Since Paystack's Verify worked and matched, the original problem was the WEBHOOK NOT ARRIVING or being REJECTED on signature (the webhook's logs for ~20:48 UTC would say which; it now logs every request).
+  - SHARED VERIFICATION (_shared/processPayment.ts, still the ONE place that decides): now also keeps a check history in provider_response.last_check: check_count (1, 2, 3, ...), first_checked_at, the source (webhook / verify-payment / reconcile), Paystack's status and message. If Paystack can't be reached, that's recorded too ("paystack-unreachable", with the error) without touching the status. It can optionally EXPIRE a payment (used only by the sweep; see the decision below).
+  - NEW EDGE FUNCTION reconcile-pending-payments: finds Paystack payments still 'pending' more than 15 minutes after they started (oldest first, at most 50 per run) and checks each with Paystack via the shared module, one at a time. A failure on one doesn't stop the rest. It returns and logs a summary: checked / successful / failed / expired / still_pending / errors. It can NEVER mark something paid unless Paystack confirms success for the exact amount, currency and reference.
+      Protection: it has no user login (the database calls it), so verify_jwt = false. Every call must instead carry the header x-cron-secret matching the RECONCILE_CRON_SECRET function secret, compared in constant time; anything else gets 401. Even someone who had the secret could only make us ASK Paystack.
+  - SCHEDULE (migration 029): enables pg_net (lets the database make HTTP calls) and adds a pg_cron job "reconcile-pending-payments" running every 15 minutes ("*/15 * * * *"). It POSTs to the function with {"min_age_minutes": 15, "expire_after_hours": 48, "limit": 50}.
+      WHY pg_cron + pg_net + an Edge Function: the check needs Paystack's SECRET key, which lives only in Edge Function secrets and not in the database, and the verification logic must stay in the shared module. So the database job only makes a (non-blocking) HTTP call, the same approach Supabase documents for scheduling Edge Functions.
+      THE CRON SECRET IS NOT IN THE MIGRATION or anywhere in git. The job reads it at run time from Supabase VAULT (secret "reconcile_cron_secret"). The same value is set once as the Edge Function secret RECONCILE_CRON_SECRET (setup commands below). Until that's done, the job's calls are just refused (401): harmless.
+      Changing the settings: re-run the cron.schedule statement from the migration with different numbers (it replaces the job, it doesn't add a second one).
+  - ADMIN > STUCK PAYMENTS (menu "Stuck Payments"; BOTH admin tiers):
+      "Waiting for confirmation": every Paystack payment pending 15+ minutes (a checkbox also shows newer ones). Each row shows the student (admission no.), the parent who started it (with email), the fee and term, the amount, how long it's been pending, when it started, the reference ("Auto-fails in about N h" once within a day of expiry), and the LAST PAYSTACK CHECK:
+        "Never checked" (yellow): nothing has asked Paystack yet;
+        "Paystack: abandoned" etc. + "checked N× since <first>, last <time> (automatic / verify-payment / webhook)" + Paystack's message;
+        from the 3rd check on, it's greyed and says "Consistently not completed on Paystack: the parent most likely left the checkout. Nothing was charged.", which separates "still waiting" from "something's wrong";
+        "Paystack unreachable" (red): our server couldn't reach Paystack (it will retry).
+      "Re-check now" on each row calls verify-payment straight away (admins of either tier can), then shows the result in plain words (confirmed and marked successful / failed / amount mismatch for review / still not completed) and refreshes.
+      "Settled by the automatic check (last 7 days)": payments the sweep resolved (successful, failed, or expired), with the reason. Useful for confirming the job is working.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - New Node test of the sweep + shared verification (fake Paystack API + fake payments table): 24 checks, 24 passed.
+      History: still abandoned after 3 checks -> pending, check_count 3, first_checked_at kept. Unreachable -> status untouched, recorded, error raised.
+      Selection: a 5-minute-old payment is NOT touched; successful, failed and cash payments are never picked up.
+      Outcomes: stuck but actually paid -> successful with Paystack's paid_at; success with the WRONG amount -> failed for review; abandoned but 2 h old -> pending; abandoned 50 h old -> expired (failed, with the explanation); 50 h old but Paystack UNREACHABLE -> NOT expired; 50 h old but Paystack says SUCCESS -> successful (expiry never overrides a real payment). Summary counts are right. The next run doesn't re-check resolved payments, and the still-pending one gets check 2.
+      NEVER PAID WITHOUT PAYSTACK: answers "pending", "ongoing", "failed", "reversed", no status, success in the wrong currency, and success for another reference -> none marked paid.
+      Settings: expire_after_hours 0 turns auto-fail off; values are kept in range (minimum age >= 5 min, limit <= 200, bad values -> defaults); limit 3 -> 3 checked.
+  - Earlier Node suites, re-run against the updated shared module: 9/9 (one expectation updated on purpose: an unreachable Paystack is now RECORDED on the payment, status still untouched) and 18/18.
+  - New database test of the schedule (local copy, all 29 migrations; local stand-ins for pg_cron, pg_net and Vault): 11 checks, 11 passed. Exactly one active job, every 15 min; the overdue job is untouched; the job text contains NO secret (it reads Vault). A run POSTs to the right URL with the right settings and a 60 s timeout; before setup it sends an empty secret (refused), and after setup the Vault value. Re-scheduling replaces the job. WITHOUT 029: the job checks FAIL.
+  - FULL database suite with 029: 63, 33, 28, 17, 20, 25, 18, 15, 21, 24, 18, 29, 13, 11, 47, 28, 31, 29, 35, 16, 24, plus 11 new = 556 checks, all passing. Together with the 51 Node checks, 607 in total.
+  - NOT done yet: applying 029, the one-time secret setup, and deploying (see below). Nothing is applied or deployed.
+How to test manually:
+  1. ONE-TIME SETUP + DEPLOY (or ask me: I can do all of it without the secret ever being shown). In a bash terminal in the project folder:
+       SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+       npx supabase secrets set RECONCILE_CRON_SECRET=$SECRET
+       npx supabase db query --linked "select vault.create_secret('$SECRET', 'reconcile_cron_secret', 'x-cron-secret for reconcile-pending-payments')"
+       unset SECRET
+       npx supabase db push --dry-run     (expected: only 20260924000029_schedule_payment_reconciliation.sql)
+       npx supabase db push               (type Y)
+       npx supabase functions deploy reconcile-pending-payments --no-verify-jwt --use-api
+       npx supabase functions deploy verify-payment --use-api
+       npx supabase functions deploy paystack-webhook --no-verify-jwt --use-api
+     (verify-payment and paystack-webhook are redeployed because the shared module they use changed.)
+  2. RIGHT AWAY: is the job registered, and does a run work? SQL Editor:
+       select jobid, jobname, schedule, active from cron.job order by jobid;
+     Expected: mark-overdue-invoices (0 0 * * *) AND reconcile-pending-payments (*/15 * * * *), both active.
+     Trigger one run now instead of waiting (the job's own command):
+       select command from cron.job where jobname = 'reconcile-pending-payments';   -- copy the result, then run it
+     A second later:
+       select status_code, content from net._http_response order by created desc limit 1;
+     Expected: 200 and {"ok":true,"settings":{...},"checked":N,...}. A 401 means the Vault secret and RECONCILE_CRON_SECRET don't match (redo step 1's secret lines).
+  3. AFTER 15-30 MINUTES, it runs by itself:
+       select j.jobname, d.status, d.start_time at time zone 'Africa/Lagos' as started_lagos
+         from cron.job_run_details d join cron.job j on j.jobid = d.jobid
+        where j.jobname = 'reconcile-pending-payments' order by d.start_time desc limit 5;
+     Expected: "succeeded" roughly every 15 minutes (this only means the HTTP call was queued; step 2's net._http_response shows the function's actual answer).
+  4. A DELIBERATELY STUCK PAYMENT (abandoned):
+       a) As the parent: Fees > Pay > on Paystack's page close the tab WITHOUT paying.
+       b) As an admin: Admin > Stuck Payments > tick "Also show payments started in the last 15 minutes". Expected: the payment, "Never checked" (or "Paystack: abandoned" if the callback page already checked it).
+       c) After the next 1-2 sweeps (15-30 min), untick the box. Expected: the row shows "Paystack: abandoned", "checked 1× ... (automatic)", then 2×, 3×... After 3 checks: "Consistently not completed on Paystack...". Status stays Pending and the parent is not charged.
+       d) "Re-check now". Expected: "...Still not completed on Paystack (abandoned). It stays pending." and the count goes up by one.
+  5. A STUCK BUT GENUINELY PAID PAYMENT (what the sweep is really for): in Paystack (TEST) temporarily CLEAR the Test Webhook URL. As the parent pay with the test card, and when Paystack shows success, CLOSE the tab before it returns to our site (so neither the webhook nor the callback page confirms it). Within 15-30 minutes: Admin > Stuck Payments > "Settled by the automatic check" shows it as Successful ("Paystack: success"), and the parent's Fees page shows the fee Paid. Put the webhook URL back afterwards.
+     ("Re-check now" on such a payment does the same immediately: "Paystack confirmed it...".)
+  6. AUTO-FAIL WITHOUT WAITING 48 HOURS: with a test payment abandoned more than 1 hour ago, run ONE sweep with a 1-hour expiry (same as the job, different body):
+       select net.http_post(url := 'https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/reconcile-pending-payments',
+         headers := jsonb_build_object('Content-Type','application/json','x-cron-secret',(select decrypted_secret from vault.decrypted_secrets where name='reconcile_cron_secret')),
+         body := '{"min_age_minutes": 15, "expire_after_hours": 1, "limit": 50}'::jsonb);
+     Expected (net._http_response): "expired":1. The payment moves to "Settled by the automatic check" as Failed: "Expired: never completed on Paystack (checked N×)". The parent's history shows "Failed", with nothing charged.
+  7. NEVER PAID WITHOUT PAYSTACK: covered by the 24 + 9 + 18 Node checks above (every non-matching Paystack answer, including wrong amount/currency/reference). On live you can also confirm a forged call is refused:
+       curl -s -X POST https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/reconcile-pending-payments -H "x-cron-secret: guess" -d "{}"
+     Expected: {"error":"unauthorized"} (401). And every successful payment in the database has provider_response.last_check.paystack_status = "success":
+       select provider_ref, provider_response->'last_check'->>'paystack_status' from public.payments where provider = 'paystack' and status = 'successful';
+Known issues / follow-ups:
+  DECISION: AUTO-FAIL AFTER 48 HOURS - YES, but narrowly. A payment is marked failed automatically only when:
+    (1) it has been pending for more than 48 hours, AND
+    (2) Paystack itself, asked at that moment, still reports it as NOT completed (e.g. "abandoned").
+  It never happens when Paystack can't be reached or reports success.
+  Why: a checkout nobody finished in two days is effectively dead. Leaving it "Pending" alarms parents ("did my payment go through?") and hides the payments that really need attention on the admin page. Marking it failed removes no money and no record; the row stays, with an "expired" note and the full check history. If Paystack ever did confirm it later, the webhook or "Re-check now" still moves it to successful (they don't skip failed payments).
+  Why 48 hours and not less: parents sometimes complete a bank-transfer or USSD payment hours later, and a weekend shouldn't expire anything.
+  TO CHANGE IT: re-run the cron.schedule statement from migration 029 with another "expire_after_hours" (e.g. 24 or 72), or 0 to switch auto-fail OFF. The admin page's "Auto-fails in about N h" hint uses 48; if you change the job, also change EXPIRE_AFTER_HOURS at the top of src/pages/admin/StuckPayments.jsx.
+  ASSUMPTIONS:
+  1. 15 minutes is enough for a normal checkout. The sweep never touches younger payments, and the callback page confirms most payments within seconds anyway.
+  2. At most 50 payments per run (checked one by one, oldest first). A backlog is worked through over successive runs.
+  3. "Succeeded" in cron.job_run_details means the HTTP request was queued (pg_net is asynchronous). The function's real answer is in net._http_response (kept for a few hours) and in the function's log line "reconcile: {...}".
+  4. The project URL is written into the job (it belongs to this project). A different project would need that line changed.
+  5. Both admin tiers can see the page and re-check (operational, not sensitive). Only the parent or an admin can ever trigger a check, and a check can only ever apply Paystack's own answer.
+  Nothing has been committed to git yet (this AND the earlier Paystack work since 21:30). Migration 029 is not applied, the cron secret is not created, and reconcile-pending-payments is not deployed.
+-------------------------------------------
+
+[2026-09-24 22:40] Task: One-time setup + deployment of payment reconciliation (secret, migration 029, functions); live checks
+Files changed/added: test.txt only
+What was done (all against the LIVE project; the secret was never displayed or written to any file):
+  1. SECRET: generated 32 random bytes (64 hex characters) with Node's crypto, held only in a shell variable, then:
+       - stored as the Edge Function secret RECONCILE_CRON_SECRET ("Finished supabase secrets set.");
+       - stored in Supabase Vault as "reconcile_cron_secret" (vault.create_secret -> created);
+       - the shell variable was cleared.
+     Beforehand: Vault was empty and there was no RECONCILE_CRON_SECRET, so nothing was overwritten.
+     BOTH COPIES ARE IDENTICAL: the SHA-256 fingerprint shown by "supabase secrets list" equals the SHA-256 of the Vault value computed inside the database (both 484ac8bc355f…), compared without revealing the secret.
+  2. MIGRATION 029: the dry run listed only 20260924000029_schedule_payment_reconciliation.sql; "db push" applied it; "migration list" shows 001-029 on both local and remote.
+  3. FUNCTIONS deployed (--use-api): reconcile-pending-payments (NEW, v1, verify_jwt false), verify-payment (v3, verify_jwt true), paystack-webhook (v5, verify_jwt false). All ACTIVE. (invite-user v6 and initialize-payment v4 are also active; their version numbers show extra deploys since my last count, which is harmless.)
+Automated tests run (LIVE):
+  - cron.job: jobid 1 mark-overdue-invoices "0 0 * * *" active; jobid 2 reconcile-pending-payments "*/15 * * * *" active. pg_net 0.20.4 is enabled. The job text does NOT contain the secret (it reads Vault at run time).
+  - One run triggered by executing the job's own command: net._http_response -> 200 {"ok":true,"settings":{"minAgeMinutes":15,"expireAfterHours":48,"limit":50},"checked":0,...,"errors":0}. So the database reached the function, the Vault secret was accepted, and there are no stuck payments right now (the earlier one is already successful).
+  - Calls with a wrong x-cron-secret, or none -> 401 {"error":"unauthorized"}.
+How to test manually:
+  - In 15-30 minutes, check the scheduled runs:  select j.jobname, d.status, d.start_time at time zone 'Africa/Lagos' from cron.job_run_details d join cron.job j on j.jobid = d.jobid where j.jobname = 'reconcile-pending-payments' order by d.start_time desc limit 5;   and the replies:  select status_code, content, created from net._http_response order by created desc limit 5;
+  - Then steps 4-7 of the 22:25 entry (abandoned payment, stuck-but-paid payment, 1-hour expiry run, forged call).
+  - TO ROTATE THE SECRET later: generate a new one and update BOTH copies (npx supabase secrets set RECONCILE_CRON_SECRET=... and  select vault.update_secret((select id from vault.secrets where name = 'reconcile_cron_secret'), '<new>'); ). If only one is changed, the job's calls get 401 until both match.
+Known issues / follow-ups:
+  Nothing is committed to git yet: all the Paystack work since 21:30 (migrations 028-029, 5 functions, parent pages, Stuck Payments page, test.txt).
+-------------------------------------------
