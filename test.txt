@@ -1506,3 +1506,37 @@ Known issues / follow-ups:
   5. As before, "locked" follows the term's CURRENT end date. An admin who moves the end date later reopens submissions, assignment edits, scores and grades for that term together.
   Nothing has been committed to git yet, and migration 024 is not applied yet.
 -------------------------------------------
+
+[2026-09-24 17:05] Task: Live verification of the term locks (migrations 023 + 024) against the real Supabase database
+Files changed/added: test.txt only (no code or migration changes)
+What was done:
+  Ran the checks from the 16:18 and 16:41 entries myself against the LIVE database with the Supabase CLI ("npx supabase db query --linked"), instead of the SQL Editor.
+  As agreed, I used a ROLLED-BACK approach rather than saving the change and restoring it. Everything ran inside ONE database block that ends with a deliberate error, so none of it was saved: the term dates, a temporary test assignment, and every test write. Nobody using the site could have seen a locked term.
+  Accounts used (existing live test accounts):
+    student jessiikong404@gmail.com: takes English Literature in section A; their one submission is already graded.
+    teacher jessiikong16@gmail.com: set the only assignment this term, "Summary of 'The Passport of Mallam Ilia'".
+    limited admin jessiikong16+admin@gmail.com.
+  Steps inside the block:
+    1. Read the current term: First Term 2026/2027, real dates 2026-09-16 to 2026-12-18.
+    2. Created a temporary assignment in that term (as the server), so a brand-new submission could be tried as well as a resubmission.
+    3. Pretended the term ended 8 days ago (end 2026-09-16; start moved to 2026-08-25, because the database requires the end to be after the start).
+    4. Ran the student, teacher and limited-admin checks, each signed in as that person.
+    5. Ended the block with a report that rolls everything back.
+Automated tests run (live results):
+  STUDENT, new submission to a locked-term assignment: REFUSED with "This assignment's term (First Term, 2026/2027) has closed for new submissions. Contact an admin if you still need to hand this in." (matches expected)
+  STUDENT, resubmission of their existing (graded) work: REFUSED with the same message (matches expected; for graded work either this or "already graded" counts as correct).
+  TEACHER, create an assignment in the locked term: REFUSED with "Assignments for First Term (2026/2027) are locked: the term ended on 16 Sep 2026 and teachers could make changes until 23 Sep 2026. Only an admin can change them now." (matches)
+  TEACHER, edit the real assignment: REFUSED, same message (matches).
+  TEACHER, delete the real assignment: REFUSED, same message (matches). Straight after these attempts the title was unchanged, the assignment still existed, and its 1 submission was still there.
+  LIMITED ADMIN, create a submission for the student: OK. Create a new assignment in the locked term: OK. Edit the real assignment: OK (1 row changed). All three succeed as expected.
+  AFTERWARDS (separate read-only check, run straight after):
+    current term dates: 2026-09-16 to 2026-12-18. EXACTLY the real dates noted in step 1 (never actually changed).
+    leftover test assignments: 0; leftover test submissions: 0; the real assignment's title is unchanged and it still has 1 submission.
+    audit log entries for terms/assignments/submissions in the last 15 minutes: 0. This confirms the rollback: nothing was saved, so nothing was logged.
+How to test manually:
+  Nothing to do. If you want to re-run it, ask me, or use the SQL in the 16:41 entry (steps 2-6).
+Known issues / follow-ups:
+  1. Scores (the migration 023 score lock) were not re-checked live, because there's no score data this term. They're covered by the local tests.
+  2. A data note, not a bug: the live assignment's title ends with a double quote instead of a single quote ("Summary of 'The Passport of Mallam Ilia""). There's no screen for editing an assignment yet, so fixing it means correcting it in the database (or adding an edit screen later).
+  Nothing new to commit except this test.txt entry.
+-------------------------------------------
