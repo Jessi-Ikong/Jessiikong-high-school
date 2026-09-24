@@ -17,6 +17,7 @@ const NAV_LINKS = [
   { to: '/admin/staff', label: 'Staff' },
   { to: '/admin/students', label: 'Students' },
   { to: '/admin/parents', label: 'Parents' },
+  { to: '/admin/audit-log', label: 'Audit Log', superAdminOnly: true },
 ]
 
 export default function AdminLayout() {
@@ -30,7 +31,7 @@ export default function AdminLayout() {
           <span className="muted small">Admin</span>
         </div>
         <nav className="admin-nav" aria-label="Admin">
-          {NAV_LINKS.map((link) => (
+          {NAV_LINKS.filter((link) => !link.superAdminOnly || profile.admin_level === 'super_admin').map((link) => (
             <NavLink key={link.to} to={link.to} end={link.end}>
               {link.label}
             </NavLink>

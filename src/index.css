@@ -965,3 +965,75 @@ select {
   margin: 0.35rem 0 0;
   padding-left: 1.25rem;
 }
+
+/* ---------- Audit log ---------- */
+.filter-reset {
+  align-self: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+.audit-list {
+  list-style: none;
+  margin: 0.5rem 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.audit-entry {
+  padding: 0.75rem 1rem;
+  background: #ffffff;
+  border: 1px solid #e4e7eb;
+  border-left: 4px solid #9aa5b1;
+  border-radius: 8px;
+}
+
+.audit-entry.audit-created {
+  border-left-color: #059669;
+}
+
+.audit-entry.audit-updated {
+  border-left-color: #1f4e8c;
+}
+
+.audit-entry.audit-deleted {
+  border-left-color: #b91c1c;
+}
+
+.audit-entry.audit-corrected {
+  border-left-color: #d97706;
+}
+
+.audit-verb {
+  font-weight: 700;
+}
+
+.audit-changes {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+}
+
+.audit-raw summary {
+  cursor: pointer;
+  color: #616e7c;
+  margin-top: 0.35rem;
+}
+
+.audit-raw pre {
+  margin: 0.35rem 0 0;
+  padding: 0.5rem;
+  background: #f5f7fa;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}

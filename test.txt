@@ -1031,3 +1031,82 @@ Known issues / follow-ups:
   6. Admin-only changes (both admin levels). Tell me if only super admins should be allowed to change the scale.
   Nothing has been committed to git yet, and migration 018 is not applied yet.
 -------------------------------------------
+
+[2026-09-24 11:19] Task: Audit logging on every table, super-admin-only access, and an Audit Log viewer
+Files changed/added: supabase/migrations/20260924000019_generic_audit_logging.sql (new), src/pages/admin/AuditLog.jsx (new), src/lib/audit.js (new), src/components/AdminLayout.jsx, src/App.jsx, src/index.css
+What was done:
+  1. Only SUPER admins can read the audit log now. Limited admins, teachers, students and parents all get nothing. Nobody can add, edit or delete audit entries directly: they are only written by the database itself.
+  2. Every business table is now logged. One generic database trigger records every add, change and delete on ALL 27 tables in the app, i.e. every table except audit_log itself (which would loop). Before, only 15 were covered. Each entry records:
+       who:          the signed-in person (stored as their users.id, so the viewer can show their name). Changes made with nobody signed in, e.g. Supabase Table Editor or server code, have no person.
+       action:       table-aware, e.g. insert_students, update_scores, delete_timetable_slots
+       entity:       the table
+       entity_id:    the record's id. The two link tables use their key instead: parent_students = "parent id:student id", student_subjects = "enrollment id:subject id".
+       changes:      added -> the new record; deleted -> the old record; edited -> ONLY the fields that changed, as {old, new}. An edit that changes nothing isn't logged, and updated_at alone doesn't count.
+     Entries made before today keep their old action names ("insert", "update", "delete"); the viewer understands both.
+  3. HOW THE EXISTING SPECIAL LOGGING WAS RECONCILED (no double entries):
+     - Attendance, consolidated:
+         * Adding and deleting attendance, and a teacher editing their OWN record: logged by the generic trigger (insert_/update_/delete_attendance_records).
+         * Someone ELSE correcting a record (marked_by changes): still logged ONLY by the special 'correct_attendance' trigger from migration 016, which keeps the original teacher's name. The generic "edit" trigger on attendance is set to skip exactly those rows.
+         * Result: every attendance action is logged exactly once, and corrections keep their richer details. (Before, normal marking wasn't logged at all.)
+     - Grade scale: it turned out migration 018 was ALREADY using the generic function, not special logic. It just moved to the new version, still one entry per change. Saving the scale replaces all bands, so one save logs one "deleted" per old band and one "created" per new band.
+  4. ADMIN > AUDIT LOG (new page, visible in the menu and usable only for super admins; limited admins don't see the link, and opening the address says "Only super admins can view the audit log"):
+     - Newest first, 25 per page, with "← Newer" / "Older →".
+     - Filters: "What was changed" (any table), "Done by" (anyone, a specific person grouped by role, or "No signed-in user"), and a From / To date range. "Clear filters" resets them.
+     - Each entry reads like: "Updated class: JSS 1" · "24 Sept 2026, 10:00 · by Lola Limited (admin)" · "Name: JSS1 → JSS 1".
+     - Names are shown instead of ids where it's a quick lookup: students (with admission number), people, classes, sections, subjects, sessions, terms, periods, timetable slots, assessment components, fee items and enrollments. Deleted timetable slots are described from their old values.
+     - A colour stripe shows the kind of change (green created, blue updated, red deleted, amber corrected). A collapsed "Raw data" section shows the exact stored entry if ever needed.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully. The viewer's summaries were checked on sample entries (class edit, new student, deleted slot, correction, message, deactivated account, linked login) and read as above.
+  - New audit test on a temporary local copy (all 19 migrations): 29 checks, 29 passed, 0 failed.
+      Coverage: every table except audit_log has the trigger; attendance_records has exactly two (add/delete + non-correction edits), every other table exactly one; the old triggers are gone.
+      Entries: create class -> insert_classes with the new row and the right person. Rename -> update_classes with ONLY {name: {old, new}}. A no-change edit isn't logged; updated_at is left out. Deleting a slot -> delete_timetable_slots with the old row. A link table gets its key. Announcements and subjects are now logged.
+      Access: a LIMITED admin reads 0 rows, a teacher 0 rows, a SUPER admin sees them. Nobody can write, edit or delete audit entries directly.
+      Attendance: a teacher marking -> 1 entry; the teacher editing their own -> 1 update entry (no correction entry); an admin correcting -> exactly 1 correct_attendance (with the original teacher) and NO extra update entry; deleting -> 1 entry.
+      Grade scale: a save logs one entry per band and action, with no duplicates.
+      Messages: a sent message is logged with sender, thread and time, and the body appears NOWHERE in the audit log. Reading it isn't logged. A deleted message is logged without the body.
+      Payments: logged without the raw provider response (the reference is kept). The invoice update is logged too. Changes made as the database owner have no person.
+  - FULL SUITE re-run with migration 019: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18, 15/15, 21/21, 24/24, 18/18, plus 29/29 audit. Total 310 checks, all passing.
+    (Two earlier tests were updated for intended changes: the account test now looks for action "insert_users" instead of "insert", and the correction test now expects a LIMITED admin to see nothing and a SUPER admin to see the entry.)
+  - PERFORMANCE: the logging adds about 0.2 milliseconds per record written.
+      5,000 records added at once: about 0.9 s with logging vs 0.05 s without. 5,000 edited at once: about 1.0 s vs 0.07 s.
+      In normal use (e.g. saving attendance for a class of 40 = about 8 ms extra) this is NOT noticeable. Only big bulk jobs, e.g. a future import of thousands of records, would take noticeably longer (about a second per 5,000). Nothing in the app does that today.
+  - NOT tested by me: the viewer in a browser (needs a super admin login and migration 019 applied).
+How to test manually:
+  A) APPLY THE MIGRATION (or ask me to)
+    1. npx supabase db push --dry-run    (expected: only 20260924000019_generic_audit_logging.sql)
+       npx supabase db push              (type Y)
+  B) A LIMITED ADMIN CAN NO LONGER READ THE AUDIT LOG
+    2. Sign in as a LIMITED admin (e.g. switch your test admin: update public.users set admin_level = 'limited_admin' where email = 'your-admin-email';). Expected: no "Audit Log" in the menu. Opening http://localhost:5180/admin/audit-log shows "Only super admins can view the audit log."
+    3. Prove the DATABASE blocks it too. In Supabase > SQL Editor, put a limited admin's email in and click Run:
+         do $$ declare n bigint; begin
+           perform set_config('request.jwt.claims', json_build_object('sub', (select auth_id from public.users where lower(email) = lower('LIMITED-ADMIN-EMAIL')), 'role', 'authenticated')::text, true);
+           execute 'set local role authenticated';
+           select count(*) into n from public.audit_log;
+           execute 'reset role';
+           raise exception 'Audit entries visible to that account: % (expected 0)', n;
+         end $$;
+       Expected: a red box "Audit entries visible to that account: 0 (expected 0)". Run it with a SUPER admin's email and the number is above 0.
+       Switch your test admin back to super: update public.users set admin_level = 'super_admin' where email = 'your-admin-email';
+  C) CHANGES SHOW UP WITH SENSIBLE SUMMARIES (as SUPER admin)
+    4. Classes & Sections: rename a class, e.g. JSS1 -> "JSS 1". Then open Audit Log. Expected at the top: "Updated class: JSS 1", by you, just now, with "Name: JSS1 → JSS 1".
+    5. Students: add a student (Gmail "+" alias as before). Expected, as several entries from that one action: "Created user account: <name>", "Created student: <name> (STU/…)" with Admission number, Admission session etc., "Created enrollment: <name> (STU/…), JSS1 A", one "Created student subject" per ticked subject, and, once the invite is accepted, "Updated user account" with "Login linked".
+    6. Timetable: remove a class chip (×). Expected: "Deleted timetable slot: Biology — JSS1 A, monday Period 1", with the old details listed.
+    7. Filters: set "What was changed" = Classes. Expected: only the class entries. Set "Done by" = yourself, and a From/To date of today. Expected: only today's changes by you. Click "Clear filters".
+  D) ATTENDANCE CORRECTIONS AND GRADE SCALE: STILL THERE, NOT DUPLICATED
+    8. As Test Teacher, mark attendance for a class and save. Audit Log (What was changed = Attendance records): one "Created attendance record: <student>, <date>" per student. Change one student's status and save again: ONE "Updated attendance record" for that student, and no "Corrected" entry.
+    9. Corrections by an admin: there's still no admin screen for correcting attendance. To check one without a screen, run supabase/manual_checks/attendance_correction_audit_check.sql in the SQL Editor (as in the 22:27 entry). It acts as the teacher, then as an admin, and reports.
+       Expected in its report: the admin correction creates ONE correct_attendance entry that keeps the original teacher. The automated test above also confirms there is NO extra "Updated attendance record" entry for it. (That script saves nothing, so it won't appear in the viewer.)
+    10. Grade Scale: change one band (e.g. B's remark) and save. Audit Log (What was changed = Grade scale): one "Deleted grade band" per old band and one "Created grade band" per new band from that single save. No band appears twice for the same kind of change.
+  E) MESSAGES (once messaging screens exist): sending a message will show as "Created message: from <sender>" with the thread and time only. The text is never shown or stored in the audit log.
+Known issues / follow-ups:
+  PLEASE CONFIRM OR OVERRIDE, MESSAGE CONTENT: I did NOT copy message BODY text into the audit log. Only the fact that a message was sent or deleted is logged: which message (id), who sent it, which thread, and when. Reason: messages are private parent–teacher conversations, and copying them into audit_log would put that text in a second place with different access rules (any super admin can read the audit log, while the messages themselves are visible only to the two people in the thread). Marking a message as read is not logged either (it's reading, not editing). If you DO want message text logged, it's a one-line change.
+  ALSO FLAGGED, same reasoning: payments.provider_response (Paystack/Flutterwave's raw reply, which can include card details such as the last 4 digits) is not copied into the audit log. Everything else about a payment (amount, provider, reference, status, who paid) is logged.
+  ASSUMPTIONS:
+  1. "Acting user" is stored as the person's users.id (the audit_log.user_id column links to users), not the raw login id. It's the same person either way, and it lets the viewer show names. Server-side account creation still credits the admin who asked for it.
+  2. Only tables in the app's main (public) schema are logged. The internal admission-number counter isn't a business record and isn't logged.
+  3. Tables added in FUTURE migrations won't be logged automatically; each new migration must add the trigger. The automated test checks every table is covered, so a missing one would be caught.
+  4. The audit log will grow faster now, mostly from attendance (one entry per student per class marked). Roughly: 500 students x 6 classes a day is about 3,000 entries a day, or about 600,000 a school year. That is fine for the database. The viewer only ever loads 25 at a time and has indexes for date and person. An archive/clean-up policy can be decided later if needed.
+  5. Changes made directly in Supabase's Table Editor ARE now logged (as "No signed-in user (database / server)"), including attendance status edits that weren't logged before. They still skip the app's rules (7-day window etc.) and can't record who made them.
+  6. The "Done by" filter lists everyone in the system, grouped by role (Admins, Teachers, Parents, Students).
+  Nothing has been committed to git yet, and migration 019 is not applied yet.
+-------------------------------------------

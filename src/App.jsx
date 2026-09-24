@@ -18,6 +18,7 @@ import GradeScale from './pages/admin/GradeScale'
 import Staff from './pages/admin/Staff'
 import Students from './pages/admin/Students'
 import Parents from './pages/admin/Parents'
+import AuditLog from './pages/admin/AuditLog'
 import TeacherLayout from './components/TeacherLayout'
 import TeacherDashboard from './pages/TeacherDashboard'
 import MarkAttendance from './pages/teacher/MarkAttendance'
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="staff" element={<Staff />} />
           <Route path="students" element={<Students />} />
           <Route path="parents" element={<Parents />} />
+          <Route path="audit-log" element={<AuditLog />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
