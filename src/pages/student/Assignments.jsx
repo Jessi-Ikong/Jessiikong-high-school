@@ -40,7 +40,7 @@ async function fetchMyAssignments(userId) {
     ? await run(
         supabase
           .from('assignments')
-          .select('id, title, description, attachment_url, due_at, max_score, created_at, subjects(name), teachers(users(first_name, last_name)), terms!inner(id, name, term_number, is_current, end_date, session_id)')
+          .select('id, title, description, attachment_url, due_at, max_score, requires_submission, created_at, subjects(name), teachers(users(first_name, last_name)), terms!inner(id, name, term_number, is_current, end_date, session_id)')
           .eq('section_id', enrollment.section_id)
           .in('subject_id', subjectIds)
           .eq('terms.session_id', enrollment.session_id),
@@ -183,12 +183,17 @@ function AssignmentCard({ assignment, submission, status, studentId, urls, onSub
   const teacher = assignment.teachers?.users
   // Closes with the term's grading window (end date + 7 days); the database enforces it.
   const termClosed = !termGradingOpen(assignment.terms)
+  // Offline work (practicals, presentations...): nothing to hand in here.
+  const offline = !assignment.requires_submission
 
   return (
     <article className={`panel assignment-card status-${status.key}`}>
       <header className="assignment-card-header">
         <div>
-          <h3>{assignment.title}</h3>
+          <h3>
+            {assignment.title}
+            {offline && <span className="badge badge-muted">Offline work</span>}
+          </h3>
           <p className="muted small">
             {assignment.subjects.name}
             {teacher ? ` · ${fullName(teacher)}` : ''}
@@ -207,7 +212,7 @@ function AssignmentCard({ assignment, submission, status, studentId, urls, onSub
         </p>
       )}
 
-      {submission && !editing && (
+      {submission && !offline && !editing && (
         <div className="my-submission">
           <h4>Your work</h4>
           <p className="muted small">
@@ -232,17 +237,24 @@ function AssignmentCard({ assignment, submission, status, studentId, urls, onSub
           ) : (
             <p className="muted small">No written feedback.</p>
           )}
-          <p className="muted small">🔒 Graded {formatDateTime(submission.graded_at)}. This submission can no longer be changed.</p>
+          <p className="muted small">
+            🔒 Graded {formatDateTime(submission.graded_at)}.{offline ? '' : ' This submission can no longer be changed.'}
+          </p>
         </div>
       )}
 
-      {status.key !== 'graded' && termClosed && (
+      {status.key !== 'graded' && offline && (
+        <p className="alert alert-info-plain">No submission needed — your teacher will grade this directly.</p>
+      )}
+
+      {status.key !== 'graded' && !offline && termClosed && (
         <p className="alert alert-info-plain">
           🔒 This assignment&apos;s term has closed for new submissions. Contact an admin if you still need to hand this in.
         </p>
       )}
 
       {status.key !== 'graded' &&
+        !offline &&
         !termClosed &&
         (editing ? (
           <SubmitForm

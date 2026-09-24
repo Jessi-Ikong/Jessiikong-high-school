@@ -1540,3 +1540,77 @@ Known issues / follow-ups:
   2. A data note, not a bug: the live assignment's title ends with a double quote instead of a single quote ("Summary of 'The Passport of Mallam Ilia""). There's no screen for editing an assignment yet, so fixing it means correcting it in the database (or adding an edit screen later).
   Nothing new to commit except this test.txt entry.
 -------------------------------------------
+
+[2026-09-24 17:16] Task: Offline assignments (no submission; the teacher grades each student directly)
+Files changed/added: supabase/migrations/20260924000025_offline_assignments.sql (new), src/lib/assignments.js, src/pages/teacher/Assignments.jsx, src/pages/student/Assignments.jsx, src/index.css
+What was done:
+  For work done outside the app (practicals, presentations, physical projects) that still needs a mark.
+  - DATABASE (migration 025):
+      New column assignments.requires_submission (true/false), default true, so every existing assignment keeps working exactly as before. false = "offline work".
+      STUDENTS can't create or change a submission for offline work, or upload a file for it. The database refuses with:
+        "This assignment is offline work, so there's nothing to hand in. Your teacher will grade it directly."
+        This is enforced in the submission trigger (the message), in the database rules (the "may this student submit" check now also requires a hand-in assignment), and in the storage upload rule, which uses the same check.
+      TEACHERS can create the graded record directly for offline work, with no submission needed first. A new database rule allows it only for their own offline assignment, and only for a student who is actively enrolled in that section and takes the subject (the same scoping as the roster). The record gets the mark (required, not above the maximum) and optional feedback. graded_by = the teacher and graded_at are set automatically; text and file stay empty. Trying to add text is refused: "Offline work has no text or file. Enter just the mark and feedback." The teacher can re-mark later.
+      The "must include text or a file" rule still applies to students handing in normal work, unchanged. It never applied to teachers or admins, so offline grades with no content are valid.
+      Teachers still CAN'T create a record for a normal (hand-in) assignment: "Students hand this assignment in themselves. You can grade it once they have."
+      ADMINS: exempt, as everywhere. An admin who enters a mark on a NEW record is now also recorded as the grader (before, only on edits).
+      TERM LOCK: unchanged. Teachers can grade offline work only until 7 days after the term ends ("Assignment grades for ... are locked..."); admins can always.
+      SWITCHING: an assignment can't be switched between hand-in and offline once it has any submission or grade (for anyone, admins included). This way hand-in work and direct grades never get mixed on one assignment.
+      AUDIT: nothing new was needed. The generic trigger logs offline grades as insert_submissions (first grade) and update_submissions (re-marks), with who did it and the old and new values.
+  - TEACHER PAGE: "+ New assignment" has a new checkbox, "This is offline work (no file/text submission expected)". Offline assignments show an "Offline work" badge and "X of Y graded" (instead of "submitted"), and the button is "Grade students". The list shows EVERY student who takes the subject, each with a Mark + Feedback form ready to use (no "Handed in" or "Work" columns), and saving creates the graded record. In a locked term the grades are read-only, as before.
+  - STUDENT PAGE: offline assignments appear in the usual groups with an "Offline work" badge. Before grading they're under "To do" with "No submission needed — your teacher will grade this directly", and there's NO "Hand in work" / "Change my submission" button. Once graded they move to "Graded" and show the mark and feedback like any other graded work (without the "Your work" block, since nothing was handed in).
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - New test on a temporary local copy (all 25 migrations): 29 checks, 29 passed, 0 failed. Setup: Term One LOCKED, Term Three current; Bola teaches Biology to SS1 A; Ada and Ben take Biology; Cara is in SS1 A but does NOT take it; Lola is a LIMITED admin.
+      column: existing assignments default to requires_submission = true.
+      Bola creates an offline assignment ("Frog dissection practical", out of 20) in Term Three; Ada can see it.
+      STUDENT BLOCKED (database level): Ada's submission is refused with the exact message, via a plain insert and via the page's upsert. A file upload is refused by storage, and the database's "may submit" check says no. Control: she can still hand in a NORMAL Term Three assignment.
+      TEACHER GRADES DIRECTLY: Bola grades Ada 17/20 with feedback and NO submission existing first. The record has graded_by = Bola, graded_at set, and empty text and file. He grades Ben via upsert (feedback optional) and can re-mark Ada (17 -> 18). Refused: grading Cara (doesn't take Biology), no mark, a mark above 20, adding text, and creating a record for a normal hand-in assignment.
+      Ada sees her grade (18) and can't change the record.
+      TERM LOCK: Bola can't grade an offline assignment in locked Term One ("Assignment grades for Term One (2026/2027) are locked: ... Only an admin can change them now."). Lola CAN (graded_by = Lola).
+      SWITCHING: refused for the graded offline assignment and for a hand-in assignment with submissions (admins included). Allowed for an assignment with no records.
+      AUDIT: Bola's first grade is logged as insert_submissions by Bola (score 17, no content); his re-mark as update_submissions (score 17 -> 18); Lola's locked-term grade as insert_submissions by Lola. Ada's refused attempts left no entries.
+  - WITHOUT migration 025 the new test can't run at all (the requires_submission column doesn't exist), so it depends entirely on 025.
+  - FULL SUITE with migration 025, each file on a fresh database: 62/62, 33/33, 28/28, 17/17, 20/20, 25/25, 18/18, 15/15, 21/21, 24/24, 18/18, 29/29, 13/13, 11/11, 47/47, 28/28, 31/31, plus 29/29 new. Total 469 checks, all passing. No existing test needed changing.
+  - NOT tested by me in the browser (needs migration 025 applied).
+How to test manually:
+  1. Apply the migration (or ask me to):
+       npx supabase db push --dry-run    (expected: only 20260924000025_offline_assignments.sql)
+       npx supabase db push              (type Y)
+  2. CREATE OFFLINE WORK, STUDENTS SEE NO PROMPT: as the teacher (jessiikong16@gmail.com) > Assignments > English Literature — SS1 A > "+ New assignment": title "Poetry recital", due in 3 days, out of 10, tick "This is offline work (no file/text submission expected)" > Create.
+       Expected: the card shows "Offline work" and "0 of N graded", and its button says "Grade students".
+     As the student (jessiikong404@gmail.com) > Assignments: under First Term > To do, "Poetry recital" has an "Offline work" badge and the note "No submission needed — your teacher will grade this directly". There's NO "Hand in work" button, and no Late/Overdue badge.
+  3. TEACHER GRADES EVERY STUDENT DIRECTLY: as the teacher, "Poetry recital" > "Grade students".
+       Expected: EVERY student who takes English Literature in SS1 A is listed, each with a Mark box and a Feedback box ready (no "Handed in" or "Work" columns), even though nobody has submitted anything. Students in SS1 A who don't take the subject are NOT listed.
+       Enter 8 and "Confident delivery" for the student > Save grade. Expected: status "Graded", the card says "1 of N graded", and the button changes to "Update grade".
+       As the student: "Poetry recital" is now under "Graded" with "Mark: 8 / 10" and the feedback.
+  4. STUDENT BLOCKED AT THE DATABASE LEVEL (not just the page). Supabase > SQL Editor (nothing is saved):
+       do $$ declare v_me uuid; v_sid uuid; v_aid uuid; v_err text; begin
+         select u.auth_id, s.id into v_me, v_sid from public.users u join public.students s on s.user_id = u.id where lower(u.email) = 'jessiikong404@gmail.com';
+         select id into v_aid from public.assignments where title = 'Poetry recital' limit 1;
+         perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
+         execute 'set local role authenticated';
+         begin
+           insert into public.submissions (assignment_id, student_id, content) values (v_aid, v_sid, 'my recital notes')
+             on conflict (assignment_id, student_id) do update set content = excluded.content;
+           v_err := 'NOT BLOCKED';
+         exception when others then v_err := sqlerrm; end;
+         execute 'reset role';
+         raise exception 'Student submitting to offline work: %', v_err;
+       end $$;
+     Expected red box: "Student submitting to offline work: This assignment is offline work, so there's nothing to hand in. Your teacher will grade it directly."
+     (Or ask me to run it for you, rolled back like the 17:05 check.)
+  5. TERM LOCK + AUDIT FOR OFFLINE GRADES:
+       Audit: Admin > Audit Log (as super admin). Expected: an "insert_submissions" entry by the teacher for the step-3 grade (score 8, feedback, no content). Change the mark to 9 and save; expected: an "update_submissions" entry showing score 8 -> 9.
+       Term lock: the same rolled-back technique as the 17:05 entry. Pretend the term ended 8 days ago, then try the teacher's grade (expected: "Assignment grades for First Term (2026/2027) are locked: ... Only an admin can change them now.") and the admin's grade (expected: OK). This is easiest if you ask me to run it; the local tests already cover it.
+Known issues / follow-ups:
+  ASSUMPTIONS / DECISIONS:
+  1. THE "LATE" LABEL: offline work is NEVER shown as Late or Overdue, to the student or the teacher. "Late" in this app means "handed in after the due date", and offline work is never handed in. The only time on record is when the TEACHER graded it, and flagging a student as late because of when the teacher got round to marking would be wrong. "Overdue" (not handed in and past due) doesn't apply either, because there's nothing to hand in. For offline work the due date is simply "when the practical / presentation happens". If you want to record that a student did it late (e.g. missed the practical day), the teacher's feedback is the place for now; a proper "done late" flag would be a small addition.
+  2. For offline records, submitted_at (required by the table) holds the time the teacher first graded it, not a hand-in time. The pages never show it for offline work.
+  3. Offline grades don't feed into the Gradebook, like all assignment marks (see the 15:35 entry: assignments stay separate from report-card scores).
+  4. Before grading, offline work sits under the student's "To do" group (that's where ungraded work waits). It never appears under "Submitted — awaiting grade".
+  5. An assignment can't be switched between hand-in and offline once any submission or grade exists (admins included). There's no edit screen yet anyway; the rule protects the data if one is added.
+  6. Deleting an offline assignment follows the existing rules: only while it has no grades (the page checks), and never in a locked term (database).
+  7. Admins still have no screen for grading. They can grade offline work (including in locked terms) only through the database.
+  Nothing has been committed to git yet, and migration 025 is not applied yet.
+-------------------------------------------

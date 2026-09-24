@@ -30,7 +30,7 @@ async function fetchClassAssignments(cls, term, teacherId) {
     run(
       supabase
         .from('assignments')
-        .select('id, title, description, attachment_url, due_at, max_score, created_at')
+        .select('id, title, description, attachment_url, due_at, max_score, requires_submission, created_at')
         .eq('teacher_id', teacherId)
         .eq('section_id', cls.sectionId)
         .eq('subject_id', cls.subjectId)
@@ -187,21 +187,35 @@ function ClassAssignments({ cls, term, teacherId }) {
               <article key={a.id} className="panel assignment-card">
                 <header className="assignment-card-header">
                   <div>
-                    <h3>{a.title}</h3>
+                    <h3>
+                      {a.title}
+                      {!a.requires_submission && <span className="badge badge-muted">Offline work</span>}
+                    </h3>
                     <p className="muted small">
                       Due {a.due_at ? formatDateTime(a.due_at) : '(no due date)'} · Out of {formatMark(a.max_score) || '—'} ·
                       Set {formatDateTime(a.created_at)}
                     </p>
                   </div>
                   <div className="submission-count">
-                    <strong>
-                      {subs.length} of {students.length}
-                    </strong>{' '}
-                    submitted
-                    <span className="muted small">
-                      {' '}
-                      · {graded} graded{late > 0 ? ` · ${late} late` : ''}
-                    </span>
+                    {a.requires_submission ? (
+                      <>
+                        <strong>
+                          {subs.length} of {students.length}
+                        </strong>{' '}
+                        submitted
+                        <span className="muted small">
+                          {' '}
+                          · {graded} graded{late > 0 ? ` · ${late} late` : ''}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <strong>
+                          {graded} of {students.length}
+                        </strong>{' '}
+                        graded
+                      </>
+                    )}
                   </div>
                 </header>
                 {a.description && <p className="assignment-description">{a.description}</p>}
@@ -212,12 +226,18 @@ function ClassAssignments({ cls, term, teacherId }) {
                 )}
                 <div className="row-actions">
                   <button type="button" className="button-secondary" onClick={() => setOpenId(isOpen ? null : a.id)}>
-                    {isOpen ? 'Hide submissions' : 'View submissions'}
+                    {isOpen
+                      ? a.requires_submission
+                        ? 'Hide submissions'
+                        : 'Hide students'
+                      : a.requires_submission
+                        ? 'View submissions'
+                        : 'Grade students'}
                   </button>
                   {!locked && (
                     <DeleteAction
                       itemName={`"${a.title}"`}
-                      dependencyChecks={[{ table: 'submissions', column: 'assignment_id', value: a.id, label: ['submission', 'submissions'] }]}
+                      dependencyChecks={[{ table: 'submissions', column: 'assignment_id', value: a.id, label: a.requires_submission ? ['submission', 'submissions'] : ['grade', 'grades'] }]}
                       onDelete={async () => {
                         await runWrite(supabase.from('assignments').delete().eq('id', a.id).select('id'))
                         await removeAssignmentFile(a.attachment_url)
@@ -255,7 +275,7 @@ function dueWithinTerm(due, term) {
   return day >= fromIsoDate(term.start_date) && day <= fromIsoDate(term.end_date)
 }
 
-const EMPTY_FORM = { title: '', description: '', due: '', maxScore: '10' }
+const EMPTY_FORM = { title: '', description: '', due: '', maxScore: '10', offline: false }
 
 function CreateAssignmentForm({ cls, term, teacherId, onCreated }) {
   const [open, setOpen] = useState(false)
@@ -297,6 +317,7 @@ function CreateAssignmentForm({ cls, term, teacherId, onCreated }) {
             description: form.description.trim() || null,
             due_at: new Date(form.due).toISOString(), // datetime-local is the teacher's local time
             max_score: maxScore,
+            requires_submission: !form.offline,
           })
           .select('id')
           .single(),
@@ -360,6 +381,15 @@ function CreateAssignmentForm({ cls, term, teacherId, onCreated }) {
         Marked out of
         <input type="number" min="1" step="any" value={form.maxScore} onChange={(e) => update('maxScore', e.target.value)} required />
       </label>
+      <label className="checkbox-field span-all">
+        <input type="checkbox" checked={form.offline} onChange={(e) => update('offline', e.target.checked)} />
+        This is offline work (no file/text submission expected)
+        <span className="muted small">
+          {' '}
+          e.g. a practical, presentation or physical project. Students won&apos;t hand anything in; you grade each
+          student directly.
+        </span>
+      </label>
       <label className="span-all">
         Instructions (optional)
         <textarea rows={4} value={form.description} onChange={(e) => update('description', e.target.value)} />
@@ -395,6 +425,7 @@ function SubmissionsTable({ assignment, students, submissions, urls, locked, onG
     return <p className="empty-state">No students in this section take this subject this session.</p>
   }
   const byStudent = Object.fromEntries(submissions.map((s) => [s.student_id, s]))
+  const offline = !assignment.requires_submission
   return (
     <div className="table-wrap">
       <table className="data-table submissions-table">
@@ -402,8 +433,8 @@ function SubmissionsTable({ assignment, students, submissions, urls, locked, onG
           <tr>
             <th>Student</th>
             <th>Status</th>
-            <th>Handed in</th>
-            <th>Work</th>
+            {!offline && <th>Handed in</th>}
+            {!offline && <th>Work</th>}
             <th>Mark and feedback</th>
           </tr>
         </thead>
@@ -419,22 +450,33 @@ function SubmissionsTable({ assignment, students, submissions, urls, locked, onG
                 <td>
                   <SubmissionBadges status={status} />
                 </td>
-                <td className="small">{sub ? formatDateTime(sub.submitted_at) : <span className="muted">—</span>}</td>
+                {!offline && (
+                  <td className="small">{sub ? formatDateTime(sub.submitted_at) : <span className="muted">—</span>}</td>
+                )}
+                {!offline && (
+                  <td>
+                    {sub ? (
+                      <>
+                        {sub.content && <div className="submission-text">{sub.content}</div>}
+                        <FileLink path={sub.attachment_url} urls={urls} />
+                      </>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                )}
                 <td>
-                  {sub ? (
-                    <>
-                      {sub.content && <div className="submission-text">{sub.content}</div>}
-                      <FileLink path={sub.attachment_url} urls={urls} />
-                    </>
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
-                </td>
-                <td>
-                  {sub && locked ? (
+                  {(sub || offline) && locked ? (
                     <LockedGrade assignment={assignment} submission={sub} />
-                  ) : sub ? (
-                    <GradeForm key={`${sub.id}:${sub.graded_at}`} assignment={assignment} submission={sub} onGraded={onGraded} />
+                  ) : sub || offline ? (
+                    // Offline work: graded directly, no submission needed first.
+                    <GradeForm
+                      key={`${student.studentId}:${sub?.graded_at ?? ''}`}
+                      assignment={assignment}
+                      studentId={student.studentId}
+                      submission={sub}
+                      onGraded={onGraded}
+                    />
                   ) : (
                     <span className="muted small">Nothing to grade yet</span>
                   )}
@@ -448,13 +490,13 @@ function SubmissionsTable({ assignment, students, submissions, urls, locked, onG
   )
 }
 
-function GradeForm({ assignment, submission, onGraded }) {
-  const [score, setScore] = useState(formatMark(submission.score))
-  const [feedback, setFeedback] = useState(submission.feedback ?? '')
+function GradeForm({ assignment, studentId, submission, onGraded }) {
+  const [score, setScore] = useState(formatMark(submission?.score))
+  const [feedback, setFeedback] = useState(submission?.feedback ?? '')
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const max = Number(assignment.max_score)
-  const isGraded = Boolean(submission.graded_at)
+  const isGraded = Boolean(submission?.graded_at)
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -464,13 +506,13 @@ function GradeForm({ assignment, submission, onGraded }) {
     if (n < 0 || (max && n > max)) return setError(`The mark must be between 0 and ${max}.`)
     setSaving(true)
     try {
-      await runWrite(
-        supabase
-          .from('submissions')
-          .update({ score: n, feedback: feedback.trim() || null })
-          .eq('id', submission.id)
-          .select('id'),
-      )
+      const grade = { score: n, feedback: feedback.trim() || null }
+      if (submission) {
+        await runWrite(supabase.from('submissions').update(grade).eq('id', submission.id).select('id'))
+      } else {
+        // Offline work: the graded record is created here (no text or file).
+        await run(supabase.from('submissions').insert({ assignment_id: assignment.id, student_id: studentId, ...grade }))
+      }
       onGraded()
     } catch (err) {
       setError(friendlyDbError(err))
@@ -506,7 +548,7 @@ function GradeForm({ assignment, submission, onGraded }) {
 
 // Read-only grade once the term is locked (only an admin can change it).
 function LockedGrade({ assignment, submission }) {
-  if (!submission.graded_at) return <span className="muted small">🔒 Not graded (term locked)</span>
+  if (!submission?.graded_at) return <span className="muted small">🔒 Not graded (term locked)</span>
   return (
     <div>
       <strong>

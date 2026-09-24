@@ -89,7 +89,15 @@ export function friendlyStorageError(error) {
 
 // 'not-submitted' | 'submitted' | 'graded', plus whether it's late/overdue.
 // Late = handed in after the due date (late work is accepted, just flagged).
+// Offline work (requires_submission = false) is never handed in, so it's only
+// "not graded yet" or "graded", and never Late / Overdue: the only time on
+// record is when the teacher graded it, which says nothing about the student.
 export function submissionStatus(assignment, submission, now = new Date()) {
+  if (assignment.requires_submission === false) {
+    return submission?.graded_at
+      ? { key: 'graded', label: 'Graded', late: false, overdue: false }
+      : { key: 'not-submitted', label: 'Not graded yet', late: false, overdue: false }
+  }
   const due = assignment.due_at ? new Date(assignment.due_at) : null
   if (!submission) {
     return { key: 'not-submitted', label: 'Not submitted', late: false, overdue: Boolean(due && now > due) }
