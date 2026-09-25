@@ -2279,3 +2279,102 @@ How to test manually:
 Known issues / follow-ups:
   The "reply to a specific message" feature (migration 032) is planned but NOT built yet; it's waiting for a go-ahead.
 -------------------------------------------
+
+[2026-09-24 23:55] Task: Reply to a specific message (quoting), like WhatsApp
+Files changed/added: supabase/migrations/20260924000032_message_replies.sql (new), src/components/Messaging.jsx, src/lib/messages.js, src/index.css
+What was done:
+  - DATABASE (migration 032):
+      New column messages.reply_to_message_id: the message being replied to (optional). If a quoted message were ever deleted (there's no delete feature), the reply keeps its own text and just loses the quote.
+      SAME CONVERSATION ONLY: the send trigger checks the quoted message exists AND is in the same thread. Otherwise: "You can only reply to a message in the same conversation." A made-up id gets the SAME answer, so it can't be used to probe other conversations. This is enforced by the database, not just the page.
+      EVERY SENDING RULE STILL APPLIES (a reply is just a new message): read-only threads refused, 1-2,000 characters, sender and sent time set by the database, and only the thread's two participants can send.
+      A reply can't be changed afterwards: migration 031 only lets the TEXT of a message be edited, so the quote can't be re-pointed or removed, and a plain message can't become a reply. Editing a reply's text keeps its quote.
+      AUDIT: replies are logged like any message (insert_messages, including reply_to_message_id), never with the text.
+  - PAGE (Parent > Messages and Teacher > Messages):
+      Every message has a small "· Reply" link (next to "Edit" on your own recent ones; always visible, so it works on phones). It's hidden in read-only conversations, where nothing can be sent.
+      Reply shows a quote bar above the compose box ("Replying to Bola Bio: Ada did well in the…", or "Replying to You: …") with an ✕ to cancel; the cursor moves to the compose box. Sending attaches the quote and clears the bar.
+      A sent reply shows the quoted author and a one-line snippet above its own text. Clicking the quote scrolls to the original and highlights it briefly (yellow outline, 2 s). Clicking the quote in the compose bar does the same.
+      If a message isn't a reply, or its original isn't there, it shows normally with no quote block.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - New database test (local copy, all 32 migrations): 19 checks, 19 passed. Conversation A: Paul <-> Bola; conversation B: Pam <-> Musa.
+      Paul replies to Bola's message (saved, pointing at the original) and can read the original through it. Replying to a reply, or to yourself, is fine.
+      CROSS-CONVERSATION: Paul quoting a message from Pam's conversation -> REFUSED ("You can only reply to a message in the same conversation."); a made-up id -> the same refusal; neither saved.
+      RULES: a reply over 2,000 characters is refused, as is a blank reply. A reply's sent time is still set by the database. Pam can't reply inside Paul's conversation.
+      FIXED AFTERWARDS: a reply can't be re-pointed at another message, its quote can't be removed, and an existing message can't be pointed at a different message later. Editing the reply's text keeps the quote.
+      LIVE TEXT: Bola corrects the quoted original, and the reply now quotes the CORRECTED text, marked edited.
+      READ-ONLY: once the conversation is read-only (new session made current), a reply is refused like any message.
+      DEFENSIVE: if the original is removed, the reply keeps its text and loses the quote.
+      AUDIT: the reply is logged with reply_to_message_id and without any text.
+  - WITHOUT migration 032 the new test can't run (no reply_to_message_id column).
+  - FULL database suite: 63, 33, 28, 17, 20, 25, 18, 15, 21, 24, 18, 29, 13, 11, 47, 28, 31, 29, 35, 16, 24, 11, 26, 23, plus 19 new = 624 checks, all passing (plus 51 Node checks = 675 in total).
+  - NOT tested by me in the browser (needs migration 032 applied and two logins).
+How to test manually:
+  1. Apply the migration (or ask me to):
+       npx supabase db push --dry-run    (expected: only 20260924000032_message_replies.sql)
+       npx supabase db push              (type Y)
+  2. REPLY, QUOTE AND JUMP: as the teacher, send two or three messages in the conversation with the parent. As the parent (jessiikong404+parent@gmail.com) > Messages > open it. Click "Reply" under the teacher's FIRST message.
+       Expected: a bar above the compose box, "Replying to <teacher>: <start of that message>", with an ✕. Type "Thanks for this" > Send.
+       Expected: your new message shows the quote (teacher's name + snippet) above "Thanks for this"; the bar is gone. Scroll to the bottom and click the quote: the page scrolls up to the original, which is outlined in yellow for about 2 seconds.
+       ✕ before sending: the bar disappears and the message is sent without a quote.
+       As the teacher (after up to 30 s): the parent's reply shows the same quote; clicking it jumps to the teacher's own original.
+       If the teacher then EDITS the quoted message (within the hour), the quote shows the NEW text with "(edited)".
+  3. CAN'T QUOTE ANOTHER CONVERSATION (database level; nothing saved). SQL Editor:
+       do $$ declare v_me uuid; v_user uuid; v_thread uuid; v_other uuid; v_err text; begin
+         select auth_id, id into v_me, v_user from public.users where lower(email) = 'jessiikong404+parent@gmail.com';
+         select id into v_thread from public.message_threads where parent_id = (select id from public.parents where user_id = v_user) limit 1;
+         -- a message from ANY other conversation (or, if there is none yet, an id that doesn't exist)
+         select coalesce((select id from public.messages where thread_id <> v_thread limit 1), gen_random_uuid()) into v_other;
+         perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
+         execute 'set local role authenticated';
+         begin insert into public.messages (thread_id, body, reply_to_message_id) values (v_thread, 'sneaky quote', v_other); v_err := 'NOT BLOCKED';
+         exception when others then v_err := sqlerrm; end;
+         execute 'reset role';
+         raise exception 'Quoting another conversation: %', v_err;
+       end $$;
+     Expected red box: "Quoting another conversation: You can only reply to a message in the same conversation."
+  4. REPLYING RESPECTS THE READ-ONLY RULE (nothing saved; a brand-new session is made current only inside the check):
+       do $$ declare v_me uuid; v_user uuid; v_thread uuid; v_quote uuid; v_sess uuid; v_err text; begin
+         select auth_id, id into v_me, v_user from public.users where lower(email) = 'jessiikong404+parent@gmail.com';
+         select id into v_thread from public.message_threads where parent_id = (select id from public.parents where user_id = v_user) limit 1;
+         select id into v_quote from public.messages where thread_id = v_thread order by sent_at desc limit 1;
+         insert into public.sessions (name, start_date, end_date) values ('TEMP READ-ONLY CHECK', current_date + 1000, current_date + 1300) returning id into v_sess;
+         update public.sessions set is_current = false where is_current;
+         update public.sessions set is_current = true where id = v_sess;
+         perform set_config('request.jwt.claims', json_build_object('sub', v_me, 'role', 'authenticated')::text, true);
+         execute 'set local role authenticated';
+         begin insert into public.messages (thread_id, body, reply_to_message_id) values (v_thread, 'late reply', v_quote); v_err := 'NOT BLOCKED';
+         exception when others then v_err := sqlerrm; end;
+         execute 'reset role';
+         raise exception 'Replying in a read-only conversation: %', v_err;
+       end $$;
+     Expected red box: "Replying in a read-only conversation: new row violates row-level security policy for table "messages"".
+     On the page, a read-only conversation shows no "Reply" links (and no compose box); existing quotes still show and still jump.
+Known issues / follow-ups:
+  "EDITED QUOTED MESSAGE" - LIVE TEXT, NOT A SNAPSHOT (confirmed as the simpler and more sensible choice):
+    - Nothing is duplicated: the quote is read from the original when displayed, so there's one copy of every message, and there's nothing to keep in sync.
+    - Drift is tiny and visible: a message can only be edited for 1 hour (migration 031), so a quote can only ever differ from what the replier saw by a correction made in that hour, and the quote then shows "(edited)", so nobody is misled.
+    - A snapshot would preserve text the sender deliberately corrected (typos, a wrong date) and store every quoted message twice.
+    - When a snapshot WOULD matter (long-term editing, or a legal record of exactly what was quoted), it could be added later as an extra column without changing the rest.
+  ASSUMPTIONS:
+  1. Any message in the conversation can be replied to (either person's, including your own and other replies).
+  2. The quote shows a one-line snippet (about 90 characters) with the author ("You" for your own), not the whole message.
+  3. Jumping only works to messages already loaded on the page. Every message in a conversation is loaded, so that's all of them.
+  4. A reply to a reply shows only its direct quote (no nested quote chains), like WhatsApp.
+  5. There's no notification that someone replied to you specifically; replies count as normal unread messages.
+  Nothing has been committed to git yet, and migration 032 is not applied yet.
+-------------------------------------------
+
+[2026-09-25 00:05] Task: Applied migration 032 (message replies) to the live database; live checks
+Files changed/added: test.txt only
+What was done:
+  "npx supabase db push" applied 20260924000032_message_replies.sql (the dry run listed only that). "migration list" shows 001-032 on both local and remote. The messages.reply_to_message_id column exists.
+Automated tests run (LIVE; everything rolled back, nothing saved), as the test parent (jessiikong404+parent@gmail.com) in their existing conversation:
+  - A normal reply quoting the latest message in their own conversation -> OK.
+  - Quoting outside the conversation -> "You can only reply to a message in the same conversation." (live has only one conversation so far, so this used a made-up message id, which gets the same answer by design).
+  - A reply after a brand-new session was made current (conversation read-only) -> refused ("new row violates row-level security policy for table messages").
+  - Afterwards: still 5 messages, no temporary session left, and 2026/2027 is still the current session.
+How to test manually:
+  Step 2 of the 23:55 entry (reply, quote and jump in the browser). Once a second family has a conversation, step 3 of that entry tests quoting a REAL message from another conversation.
+Known issues / follow-ups:
+  None new.
+-------------------------------------------

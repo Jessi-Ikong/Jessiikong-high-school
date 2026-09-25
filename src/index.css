@@ -1514,3 +1514,63 @@ select {
 .message-edit-link {
   font-size: inherit;
 }
+
+/* Replies (quotes) */
+.message-quote,
+.reply-bar-quote {
+  display: grid;
+  gap: 0.1rem;
+  width: 100%;
+  margin-bottom: 0.25rem;
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: normal;
+  color: #1f2933;
+  background: #e6ebf1;
+  border: none;
+  border-left: 3px solid #1e3a5f;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.message.is-mine .message-quote {
+  background: #dbe4ef;
+}
+
+.quote-author {
+  font-weight: 600;
+  color: #1e3a5f;
+}
+
+.quote-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reply-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.reply-bar-quote {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.reply-bar-clear {
+  flex: none;
+  padding: 0 0.6rem;
+  background: transparent;
+  color: #52606d;
+  border: 1px solid #cbd2d9;
+}
+
+.message.is-highlighted .message-body {
+  outline: 3px solid #f6c343;
+  outline-offset: 2px;
+  transition: outline-color 0.3s;
+}

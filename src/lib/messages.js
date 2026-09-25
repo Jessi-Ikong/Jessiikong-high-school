@@ -21,7 +21,7 @@ export function fetchMessages(threadId) {
   return run(
     supabase
       .from('messages')
-      .select('id, sender_id, body, sent_at, read_at, edited_at')
+      .select('id, sender_id, body, sent_at, read_at, edited_at, reply_to_message_id')
       .eq('thread_id', threadId)
       .order('sent_at', { ascending: true }),
   )
@@ -39,9 +39,22 @@ export async function markThreadRead(threadId, myUserId) {
   if (error) throw error
 }
 
-export function sendMessage(threadId, myUserId, body) {
+// replyToId (optional): the message being replied to. The database only
+// accepts a message from the same conversation.
+export function sendMessage(threadId, myUserId, body, replyToId = null) {
   // sender_id is also forced to the signed-in user by the database.
-  return runWrite(supabase.from('messages').insert({ thread_id: threadId, sender_id: myUserId, body }).select('id'))
+  return runWrite(
+    supabase
+      .from('messages')
+      .insert({ thread_id: threadId, sender_id: myUserId, body, reply_to_message_id: replyToId })
+      .select('id'),
+  )
+}
+
+// A one-line preview of a message for quotes: 'Ada did well in the…'
+export function snippet(text, max = 90) {
+  const oneLine = (text ?? '').replace(/\s+/g, ' ').trim()
+  return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine
 }
 
 // Edits the text of one of your own messages. The database only allows it

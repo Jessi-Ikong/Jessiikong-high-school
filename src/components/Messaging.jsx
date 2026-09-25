@@ -11,6 +11,7 @@ import {
   fetchThreads,
   markThreadRead,
   sendMessage,
+  snippet,
   startThread,
 } from '../lib/messages'
 import { useAsyncData } from '../hooks/useAsyncData'
@@ -182,11 +183,29 @@ function Conversation({ thread, viewer, myUserId, onChanged, onBack }) {
     messagesQuery.reload()
   })
   const [editingId, setEditingId] = useState(null)
+  const [replyToId, setReplyToId] = useState(null) // message being replied to
+  const [highlightId, setHighlightId] = useState(null) // briefly highlighted after jumping to it
+  const composeRef = useRef(null)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState(null)
   const [sending, setSending] = useState(false)
   const endRef = useRef(null)
   const messages = messagesQuery.data
+  const byId = Object.fromEntries((messages ?? []).map((m) => [m.id, m]))
+  const authorOf = (m) => (m.sender_id === myUserId ? 'You' : thread.other_name)
+  const replyingTo = replyToId ? byId[replyToId] : null
+
+  function startReply(message) {
+    setReplyToId(message.id)
+    composeRef.current?.focus()
+  }
+
+  // Clicking a quote: scroll to the original and highlight it for a moment.
+  function jumpTo(id) {
+    document.getElementById(`msg-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightId(id)
+    setTimeout(() => setHighlightId((current) => (current === id ? null : current)), 2000)
+  }
 
   // Opening / refreshing the thread marks the other person's messages as read.
   const unreadFromOther = (messages ?? []).filter((m) => m.sender_id !== myUserId && !m.read_at).length
@@ -210,8 +229,9 @@ function Conversation({ thread, viewer, myUserId, onChanged, onBack }) {
     setSending(true)
     setError(null)
     try {
-      await sendMessage(thread.thread_id, myUserId, body)
+      await sendMessage(thread.thread_id, myUserId, body, replyingTo ? replyingTo.id : null)
       setDraft('')
+      setReplyToId(null)
       messagesQuery.reload()
       onChanged()
     } catch (err) {
@@ -255,6 +275,12 @@ function Conversation({ thread, viewer, myUserId, onChanged, onBack }) {
                 message={m}
                 mine={mine}
                 authorName={mine ? 'You' : thread.other_name}
+                quoted={m.reply_to_message_id ? (byId[m.reply_to_message_id] ?? null) : null}
+                quotedAuthor={m.reply_to_message_id && byId[m.reply_to_message_id] ? authorOf(byId[m.reply_to_message_id]) : null}
+                highlighted={highlightId === m.id}
+                onJump={jumpTo}
+                canReply={thread.can_send}
+                onReply={() => startReply(m)}
                 canEdit={canEdit}
                 editing={editingId === m.id}
                 onEdit={() => setEditingId(m.id)}
@@ -274,11 +300,23 @@ function Conversation({ thread, viewer, myUserId, onChanged, onBack }) {
       {thread.can_send ? (
         <form className="compose" onSubmit={handleSend}>
           {error && <p className="alert alert-error" role="alert">{error}</p>}
+          {replyingTo && (
+            <div className="reply-bar">
+              <button type="button" className="reply-bar-quote" onClick={() => jumpTo(replyingTo.id)}>
+                <span className="quote-author">Replying to {authorOf(replyingTo)}</span>
+                <span className="quote-text">{snippet(replyingTo.body)}</span>
+              </button>
+              <button type="button" className="reply-bar-clear" onClick={() => setReplyToId(null)} aria-label="Cancel reply" title="Cancel reply">
+                ✕
+              </button>
+            </div>
+          )}
           <label className="visually-hidden" htmlFor={`compose-${thread.thread_id}`}>
             Message to {thread.other_name}
           </label>
           <textarea
             id={`compose-${thread.thread_id}`}
+            ref={composeRef}
             rows={3}
             maxLength={MAX_MESSAGE_LENGTH}
             placeholder={`Write to ${thread.other_name}…`}
@@ -308,7 +346,22 @@ function Conversation({ thread, viewer, myUserId, onChanged, onBack }) {
 }
 
 // One message. Your own recent messages can be edited in place (Save / Cancel).
-function MessageItem({ message, mine, authorName, canEdit, editing, onEdit, onCancel, onSaved }) {
+function MessageItem({
+  message,
+  mine,
+  authorName,
+  quoted,
+  quotedAuthor,
+  highlighted,
+  onJump,
+  canReply,
+  onReply,
+  canEdit,
+  editing,
+  onEdit,
+  onCancel,
+  onSaved,
+}) {
   const [text, setText] = useState(message.body)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -331,7 +384,20 @@ function MessageItem({ message, mine, authorName, canEdit, editing, onEdit, onCa
   }
 
   return (
-    <div className={`message ${mine ? 'is-mine' : 'is-theirs'}${editing ? ' is-editing' : ''}`}>
+    <div
+      id={`msg-${message.id}`}
+      className={`message ${mine ? 'is-mine' : 'is-theirs'}${editing ? ' is-editing' : ''}${highlighted ? ' is-highlighted' : ''}`}
+    >
+      {/* The quote shows the original's CURRENT text; no quote if it isn't there. */}
+      {quoted && !editing && (
+        <button type="button" className="message-quote" onClick={() => onJump(quoted.id)} title="Go to the original message">
+          <span className="quote-author">{quotedAuthor}</span>
+          <span className="quote-text">
+            {snippet(quoted.body)}
+            {quoted.edited_at && <span className="muted"> (edited)</span>}
+          </span>
+        </button>
+      )}
       {editing ? (
         <form className="message-edit" onSubmit={save}>
           <label className="visually-hidden" htmlFor={`edit-${message.id}`}>
@@ -365,6 +431,14 @@ function MessageItem({ message, mine, authorName, canEdit, editing, onEdit, onCa
         {authorName} · {formatDateTime(message.sent_at)}
         {message.edited_at && <span title={`Edited ${formatDateTime(message.edited_at)}`}> (edited)</span>}
         {mine && (message.read_at ? ` · Read ${formatDateTime(message.read_at)}` : ' · Not read yet')}
+        {canReply && !editing && (
+          <>
+            {' · '}
+            <button type="button" className="button-link message-edit-link" onClick={onReply}>
+              Reply
+            </button>
+          </>
+        )}
         {canEdit && !editing && (
           <>
             {' · '}
