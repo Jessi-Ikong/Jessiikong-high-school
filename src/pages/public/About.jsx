@@ -6,7 +6,7 @@ import { PageHero, SectionHeading } from '../../components/public/PublicBits'
 export default function About() {
   return (
     <>
-      <PageHero eyebrow={`Since ${school.founded}`} title={`About ${school.name}`}>
+      <PageHero eyebrow={`Founded in ${school.founded}`} title={`About ${school.name}`}>
         {about.intro}
       </PageHero>
 
