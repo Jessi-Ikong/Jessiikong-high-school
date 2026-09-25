@@ -3255,3 +3255,38 @@ How to test manually:
 Known issues / follow-ups:
   None.
 -------------------------------------------
+
+[2026-09-25 15:45] Task: Ran the 15:02 manual checks for the public website content on the LIVE project (news, gallery, admissions inquiries), then removed all test data
+Files changed/added: test.txt only (live data: test items created and deleted)
+What was done:
+  - How: signed-out visitor checks used real calls to the live public API with the site's public anon key (as a visitor's browser would). Test content was created directly in the database as the project owner, so the audit log shows "no user" rather than attributing it to an admin. The test image was a generated 16x16 plain blue square (no people), uploaded with no-cache so no cached copy would linger.
+    The admin checks (3c, 4) ran the admin pages' exact queries and saves under the REAL super admin (Ikong Jessi) and limited admin (Admin One) accounts' permissions, plus a teacher account as a control, inside a transaction that was ROLLED BACK. Confirmed afterwards that nothing from it was kept (no data changes, no audit entries). I couldn't view the pages in a browser (no admin passwords).
+  - 1 NEWS: created "[TEST] ... (published)" and "[TEST] ... (draft)". Signed out:
+      the listing showed ONLY the published post;
+      asking for the draft by its ID returned nothing;
+      trying to publish the draft was refused (401). PASS.
+  - 2 GALLERY: uploaded the test image to gallery/photos/ and added it UNPUBLISHED.
+      Signed-out listing: [] (hidden).
+      After publishing: listed (caption, category, path), and the image itself loaded by its public address (HTTP 200, image/png).
+      Listing the bucket's files while signed out: []. PASS.
+  - 3 INQUIRY, signed out:
+      (a) submitted (HTTP 201).
+      (b) reading inquiries back -> "permission denied" (401), even filtering by the test email.
+          Submitting while asking for the row back -> refused (and nothing was stored).
+          Submitting with status "enrolled" / internal notes -> refused (row-level security).
+          Changing or deleting inquiries -> refused (401).
+      (c) with the admins' permissions, the Admissions Inquiries page query showed it as the newest, stored tidily: "[TEST] Verification Parent" (spaces trimmed), email lower-cased, phone, child, JSS1, message, status New, no notes. Neither refused attempt was stored. PASS.
+  - 4 BOTH TIERS: the super admin AND the limited admin each succeeded at every action on all three pages:
+      News: create a draft, see drafts, publish, edit, unpublish, delete.
+      Gallery: upload permission in the bucket, add, edit caption/category, publish + reorder, unpublish, delete.
+      Inquiries: see it, set status Contacted + internal notes (saved), delete.
+    Control: the teacher saw no inquiries and no drafts, and was refused creating news and uploading to the gallery; their status change affected 0 inquiries. PASS.
+  - CLEAN-UP: deleted the 2 test posts, the test photo (row and file) and the test inquiry.
+      Afterwards, signed out: news [], gallery []; the old image address returns HTTP 400.
+      All three tables and the gallery bucket are empty.
+      The temporary local image copies were deleted.
+      The audit log keeps its entries for the test items (created / deleted with no user, the inquiry submitted with no user), by design: the audit log is never edited.
+Automated tests run: the live checks above.
+How to test manually: nothing further needed; to see the pages themselves, sign in as each admin and repeat 15:02 steps 1-3 in the browser.
+Known issues / follow-ups: none found.
+-------------------------------------------
