@@ -3,6 +3,7 @@ import { run } from './db'
 
 // Human labels for each table: [singular, plural].
 export const ENTITY_LABELS = {
+  admissions_inquiries: ['admissions inquiry', 'admissions inquiries'],
   announcements: ['announcement', 'announcements'],
   assessment_components: ['assessment component', 'assessment components'],
   assignments: ['assignment', 'assignments'],
@@ -10,11 +11,13 @@ export const ENTITY_LABELS = {
   classes: ['class', 'classes'],
   enrollments: ['enrollment', 'enrollments'],
   fee_structures: ['fee item', 'fee items'],
+  gallery_photos: ['gallery photo', 'gallery photos'],
   grading_scale: ['grade band', 'grade scale'],
   id_cards: ['ID card', 'ID cards'],
   invoices: ['invoice', 'invoices'],
   message_threads: ['message thread', 'message threads'],
   messages: ['message', 'messages'],
+  news_posts: ['news post', 'news posts'],
   parent_students: ['parent–student link', 'parent–student links'],
   parents: ['parent', 'parents'],
   payments: ['payment', 'payments'],
@@ -43,6 +46,8 @@ const FIELD_LABELS = {
   graded_by: 'Graded by',
   issued_by: 'Issued by',
   paid_by: 'Paid by',
+  uploaded_by: 'Uploaded by',
+  internal_notes: 'Internal notes',
   sender_id: 'Sender',
   author_id: 'Author',
   auth_id: 'Login',
@@ -61,7 +66,7 @@ const FIELD_LABELS = {
 // Columns that point at another record, and which lookup map resolves them.
 const REF_FIELDS = {
   user_id: 'users', marked_by: 'users', entered_by: 'users', created_by: 'users', graded_by: 'users',
-  issued_by: 'users', paid_by: 'users', sender_id: 'users', author_id: 'users', original_marked_by: 'users',
+  issued_by: 'users', paid_by: 'users', uploaded_by: 'users', sender_id: 'users', author_id: 'users', original_marked_by: 'users',
   student_id: 'students', teacher_id: 'teachers', parent_id: 'parents', class_id: 'classes', section_id: 'sections',
   subject_id: 'subjects', session_id: 'sessions', admission_session_id: 'sessions', term_id: 'terms',
   period_id: 'periods', timetable_slot_id: 'timetable_slots', component_id: 'assessment_components',
@@ -132,6 +137,10 @@ export function targetLabel(entry, names, rowsByEntity) {
       const [enrollmentId, subjectId] = String(id).split(':')
       return `${names.enrollments?.[enrollmentId] ?? shortId(enrollmentId)}: ${names.subjects?.[subjectId] ?? shortId(subjectId)}`
     }
+    case 'gallery_photos':
+      return row.caption ?? row.image_url ?? shortId(id)
+    case 'admissions_inquiries':
+      return row.parent_name ? `${row.parent_name} (for ${row.child_name})` : shortId(id)
     case 'messages':
       return `from ${names.users?.[row.sender_id] ?? 'someone'}`
     case 'timetable_slots':
@@ -221,6 +230,9 @@ export async function resolveNames(entries) {
     subjects: (ids) => run(supabase.from('subjects').select('id, name').in('id', ids)).then((r) => r.map((s) => [s.id, s.name])),
     sessions: (ids) => run(supabase.from('sessions').select('id, name').in('id', ids)).then((r) => r.map((s) => [s.id, s.name])),
     terms: (ids) => run(supabase.from('terms').select('id, name, sessions(name)').in('id', ids)).then((r) => r.map((t) => [t.id, `${t.name}, ${t.sessions.name}`])),
+    news_posts: (ids) => run(supabase.from('news_posts').select('id, title').in('id', ids)).then((r) => r.map((p) => [p.id, p.title])),
+    gallery_photos: (ids) => run(supabase.from('gallery_photos').select('id, caption, image_url').in('id', ids)).then((r) => r.map((p) => [p.id, p.caption ?? p.image_url])),
+    admissions_inquiries: (ids) => run(supabase.from('admissions_inquiries').select('id, parent_name, child_name').in('id', ids)).then((r) => r.map((i) => [i.id, `${i.parent_name} (for ${i.child_name})`])),
     periods: (ids) => run(supabase.from('periods').select('id, name').in('id', ids)).then((r) => r.map((p) => [p.id, p.name])),
     assessment_components: (ids) => run(supabase.from('assessment_components').select('id, name, subjects(name)').in('id', ids)).then((r) => r.map((c) => [c.id, `${c.subjects.name} ${c.name}`])),
     fee_structures: (ids) => run(supabase.from('fee_structures').select('id, name, classes(name)').in('id', ids)).then((r) => r.map((f) => [f.id, `${f.classes.name} ${f.name}`])),

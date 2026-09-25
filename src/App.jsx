@@ -46,6 +46,9 @@ import IdCards from './pages/admin/IdCards'
 import CorrectAttendance from './pages/admin/CorrectAttendance'
 import CorrectScores from './pages/admin/CorrectScores'
 import CorrectAssignmentGrades from './pages/admin/CorrectAssignmentGrades'
+import PublicNews from './pages/admin/PublicNews'
+import PublicGallery from './pages/admin/PublicGallery'
+import AdmissionsInquiries from './pages/admin/AdmissionsInquiries'
 
 export default function App() {
   return (
@@ -79,6 +82,9 @@ export default function App() {
           <Route path="correct-attendance" element={<CorrectAttendance />} />
           <Route path="correct-scores" element={<CorrectScores />} />
           <Route path="correct-grades" element={<CorrectAssignmentGrades />} />
+          <Route path="website-news" element={<PublicNews />} />
+          <Route path="website-gallery" element={<PublicGallery />} />
+          <Route path="admissions-inquiries" element={<AdmissionsInquiries />} />
           <Route path="audit-log" element={<AuditLog />} />
           <Route path="*" element={<NotFound />} />
         </Route>

@@ -3099,3 +3099,159 @@ How to test manually:
 Known issues / follow-ups:
   None.
 -------------------------------------------
+
+[2026-09-25 15:02] Task: Public website content: news & events, photo gallery, admissions inquiries (database + admin screens; the public pages come next)
+Files changed/added:
+  supabase/migrations/20260925000040_public_website_content.sql (new)
+  NEW pages: src/pages/admin/PublicNews.jsx, src/pages/admin/PublicGallery.jsx, src/pages/admin/AdmissionsInquiries.jsx
+  NEW helpers: src/lib/publicContent.js, src/lib/publicContentRules.js
+  CHANGED: src/App.jsx, src/components/AdminLayout.jsx, src/lib/audit.js (labels for the new tables), src/index.css
+What was done:
+  - DATABASE (migration 040), separate from the internal system:
+      news_posts (title, body, cover image, published / publish date, author).
+        Anyone, signed out too, can read PUBLISHED posts once their publish date has arrived (a future date = scheduled).
+        Admins (both tiers) see and manage everything, drafts included.
+      gallery_photos (image, caption, category: Events / Facilities / Sports / Academics / Other, display order, published, uploader).
+        Anyone can read PUBLISHED photos; admins manage all.
+      admissions_inquiries (parent name, email, phone, child name, class wanted, message, status new / contacted / enrolled / declined, internal notes, submitted at).
+        ANYONE can submit (signed out too): status must be "new", no internal notes, submission time always "now", fields trimmed, email lower-cased.
+        Only admins can read, update or delete them. Signed-out visitors get "permission denied" on reading; signed-in non-admins (even the parent who submitted) see none.
+        A brake on repeated submissions: at most 3 per email address per hour.
+      Signed-out visitors only have SELECT on news/gallery and INSERT on inquiries; everything else is refused.
+      Author / uploader and times are stamped by the database.
+      Sizes are capped (title 200, body 20,000, message 2,000 characters...).
+  - STORAGE: new PUBLIC bucket "gallery", max 10 MB, JPEG / PNG / WebP only.
+      Only admins can upload, replace or delete, and only into photos/ (gallery) or news/ (cover images).
+      Nobody else can list the files; anyone can open a file by its address (it's a public bucket).
+      Files get random names.
+  - AUDIT: migration 19 attached the generic audit trigger ONCE, to the tables that existed then (it does NOT pick up new tables automatically), so 040 attaches it to the three new tables. Confirmed in tests:
+      insert/update/delete_news_posts, _gallery_photos and _admissions_inquiries, each with the admin who did it;
+      public submissions logged with no user.
+    The audit-log page shows readable labels for them ("news post", "gallery photo", "admissions inquiry" with the family's name).
+  - SIDEBAR (both admin tiers): "Website: News & Events", "Website: Gallery", "Admissions Inquiries".
+  - NEWS & EVENTS page:
+      create / edit (title, text, optional cover image, "Published", optional publish date: empty = now, future = scheduled);
+      Publish / Unpublish buttons; delete (also removes the cover file);
+      badges Draft / Scheduled / Published.
+      Reordering = changing the publish date (the website lists newest first).
+  - GALLERY page:
+      upload (photo, caption, category, "Publish now"), with the required reminder shown in the upload form, word for word, plus a tick box "This photo is appropriate for public display" that must be ticked to upload;
+      thumbnails with caption/category editing, Publish / Unpublish, ↑ ↓ to reorder, delete (removes the file too);
+      category filter; hidden photos shown faded.
+  - ADMISSIONS INQUIRIES page:
+      newest first, filter by status, "N new" count, new ones in bold;
+      "View" shows email (click to email), phone (click to call), child, class, message;
+      change the status and add INTERNAL NOTES (staff only, never public), Save; delete (e.g. spam).
+Automated tests run:
+  - NEW database suite "public_content_test": 61 checks, 61 passed.
+      NEWS:
+        the limited admin creates a draft, a published post and a future-dated one; author and publish date stamped; bad cover path / blank title refused.
+        SIGNED OUT sees ONLY the published post (not the draft or the scheduled one) and can't create / edit / delete.
+        A teacher also sees only published and can't edit.
+        The super admin unpublishes: gone for signed-out visitors; re-publishes (author kept); deletes.
+        All logged, with the admin.
+      GALLERY:
+        the limited admin adds 3 (2 published); uploader stamped; unknown category / wrong path refused.
+        SIGNED OUT sees only the 2 published, in display order, and can't add.
+        The super admin reorders / unpublishes -> hidden.
+        Logged.
+      STORAGE:
+        bucket public, 10 MB, JPEG/PNG/WebP;
+        the admin uploads to photos/ but not other folders, and can delete;
+        a teacher and a signed-out visitor can't upload;
+        signed out can't list files.
+      INQUIRIES:
+        SIGNED OUT submits.
+        Signed out can NOT read them back (permission denied), change or delete them, set a status other than new, or write internal notes.
+        Invalid email refused; a backdated submission time is replaced by the real time; the 4th inquiry from one email in an hour is refused (case-insensitive).
+        A TEACHER sees none; a signed-in PARENT can submit but sees none (not even their own).
+        The LIMITED admin sees all (email lower-cased, names trimmed, status new), sets status + internal notes (logged new -> contacted by them); the submission time can't be changed; unknown status refused.
+        The SUPER admin updates and deletes (logged).
+        Public submissions are logged with no user.
+  - New Node test (public content rules): 13 checks, 13 passed.
+      the consent reminder's exact wording;
+      categories / statuses match the database;
+      image type/size rules match the bucket;
+      draft / scheduled / published;
+      reordering (renumbering, only changed rows written, ends).
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - FULL database suite: all 31 suites pass, 895 checks (834 before + 61 new), on a freshly built database with migrations 001-040. Node: 138 (125 + 13). 1,033 in total.
+How to test manually:
+  0. Apply first:
+       npx supabase db push --dry-run    (expected: only 20260925000040_public_website_content.sql)
+       npx supabase db push              (type Y)
+     Then deploy the site.
+     The public pages aren't built yet, so "without logging in" is checked by calling the API directly with the site's PUBLIC anon key: the value of VITE_SUPABASE_ANON_KEY in .env.local (it is public by design; it's in the website's code). In the commands below replace <ANON> with it. (In Git Bash; on Windows cmd use ^ instead of \ at line ends.)
+  1. NEWS: publish and visibility
+       a) Admin > Website: News & Events > New post: title "Test news", some text, optionally a cover image, tick "Published" > Create post. Badge: Published.
+       b) Create a second post WITHOUT ticking Published ("Test draft"). Badge: Draft.
+       c) Signed out:
+            curl -s "https://drrapyknckdzsdhqcxka.supabase.co/rest/v1/news_posts?select=title,published_at" -H "apikey: <ANON>"
+          Expected: [{"title":"Test news",...}] only. "Test draft" is NOT there.
+       d) Click "Unpublish" on "Test news" and repeat c): [] (empty).
+       e) Edit a post and set a publish date in the FUTURE with Published ticked: badge "Scheduled"; the curl in c) doesn't show it until that time.
+       f) Cover image: open the image address from the page (right-click > open image): it loads in a private window (public bucket).
+       g) Audit Log: "Created news post" / "Updated news post" entries, by you.
+  2. GALLERY: publish and visibility
+       a) Admin > Website: Gallery. The upload form shows the reminder: "Only upload photos appropriate for public display (group activities, events, facilities). Do not upload identifiable close-up photos of individual students without separate parental consent obtained outside this system."
+       b) Choose a photo (e.g. of the school building), caption "Main building", category Facilities.
+            Without ticking the confirmation box: "Please confirm the photo is appropriate for public display."
+            Tick it, leave "Publish now" unticked > Upload photo -> "Photo uploaded (hidden until you publish it)", shown faded with "Hidden".
+       c) Signed out:
+            curl -s "https://drrapyknckdzsdhqcxka.supabase.co/rest/v1/gallery_photos?select=caption,category,image_url&order=display_order" -H "apikey: <ANON>"
+          Expected: [] (hidden).
+       d) Click "Publish", repeat c): the photo is listed. The image itself:
+            https://drrapyknckdzsdhqcxka.supabase.co/storage/v1/object/public/gallery/<image_url from c)>
+          opens in a private window.
+       e) Upload a second photo, publish it, use ↑ / ↓: the order in c) follows.
+       f) A GIF or a file over 10 MB is refused with a clear message.
+       g) Delete a photo: it disappears from c) at once. Its address stops working, though a copy the CDN already cached can be served for up to an hour (as seen with the avatar photo earlier).
+  3. ADMISSIONS INQUIRY WITHOUT LOGGING IN
+       a) Submit, signed out:
+            curl -s -i -X POST "https://drrapyknckdzsdhqcxka.supabase.co/rest/v1/admissions_inquiries" -H "apikey: <ANON>" -H "Content-Type: application/json" -H "Prefer: return=minimal" \
+              -d "{\"parent_name\":\"Test Parent\",\"email\":\"jessiikong11+inquiry@gmail.com\",\"phone\":\"08030000000\",\"child_name\":\"Test Child\",\"desired_class\":\"JSS1\",\"message\":\"Testing the form\"}"
+          Expected: HTTP 201 Created.
+       b) Try to read it back, signed out:
+            curl -s "https://drrapyknckdzsdhqcxka.supabase.co/rest/v1/admissions_inquiries?select=*" -H "apikey: <ANON>"
+          Expected: an error ("permission denied for table admissions_inquiries"), NOT the data.
+          Also try asking for the row back while submitting: "Prefer: return=representation" in a) -> refused. The submitter can't read it either.
+       c) Try to sneak in staff fields: add "status":"enrolled" or "internal_notes":"x" to a) -> refused (row-level security).
+       d) Submit the same email 3 more times within an hour: the 4th says "We have already received several inquiries from this email address in the last hour..."
+       e) Admin > Admissions Inquiries: "Test Parent" at the top, in bold, status New. "View": email / phone / message. Set status Contacted, add an internal note > Save. Audit Log: "Updated admissions inquiry", by you.
+       f) Signed in as a teacher or a parent, the API returns no inquiries (and there's no menu for it).
+       g) Delete the test inquiries afterwards (Delete on each).
+  4. BOTH TIERS: repeat 1a, 2b and 3e as the LIMITED admin (jessiikong16+admin@gmail.com): all three pages are in the sidebar and everything works the same. The audit entries show the limited admin.
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. Categories are a fixed list: Events, Facilities, Sports, Academics, Other (easy to extend in the migration + publicContentRules.js).
+  2. cover_image_url / image_url store the file's PATH in the "gallery" bucket (e.g. photos/<random>.jpg), not a full URL; the address is built from it (safer: only files in this bucket can be used).
+  3. Public bucket: an UNPUBLISHED photo's file can still be opened by anyone who has its exact address (random, unlisted, never shown publicly), which is how public buckets work. Only published photos are ever listed. Deleting the photo deletes the file (a CDN-cached copy can linger up to an hour).
+  4. News order = publish date (newest first); "reorder" = change the date. A publish date in the future schedules the post.
+  5. Inquiries: phone and message optional; everything else required. "Class wanted" is free text (the public can't read the class list; the public form in the next task can offer a fixed list).
+  6. The 3-per-hour-per-email brake is basic spam protection. The public form (next task) should add a CAPTCHA / honeypot, since anyone can post to the API.
+  7. Audit entries for inquiries contain the family's contact details (admins only, like the inquiries). Deleting an inquiry doesn't remove its audit history.
+  8. Signed-in users who aren't admins (teachers, students, parents) can read published news/photos (like the public) and submit inquiries, but never read inquiries.
+  Nothing has been committed to git yet. Migration 040 is NOT applied yet: until it is, the three new admin pages will show an error.
+-------------------------------------------
+
+[2026-09-25 15:20] Task: Applied migration 040 (public website content) to the live database
+Files changed/added: test.txt only (live database: migration 040)
+What was done:
+  - "npx supabase db push --dry-run" listed only 20260925000040_public_website_content.sql; then "npx supabase db push" applied it.
+  - No Edge Function changed, so there was nothing to deploy.
+Automated tests run (LIVE, read-only; nothing was submitted or created):
+  - "npx supabase migration list": local and remote match, 001-040.
+  - Database check:
+      news_posts, gallery_photos and admissions_inquiries exist with row-level security ON, 14 table policies;
+      signed-out visitors (anon) have ONLY: SELECT on news_posts and gallery_photos, INSERT on admissions_inquiries;
+      the "gallery" bucket is public, 10 MB (10485760 bytes), JPEG/PNG/WebP, with its 4 storage policies;
+      the audit trigger is attached to all 3 tables.
+  - Through the public API, signed out (with the site's public anon key, not printed):
+      news_posts -> [] (nothing published yet);
+      gallery_photos -> [];
+      admissions_inquiries -> HTTP 401 "permission denied for table admissions_inquiries".
+How to test manually:
+  - Follow "How to test manually" steps 1-4 of the 15:02 entry (step 0 is now done). The admin pages need the site deployed with the new code; the curl checks work now.
+Known issues / follow-ups:
+  None.
+-------------------------------------------

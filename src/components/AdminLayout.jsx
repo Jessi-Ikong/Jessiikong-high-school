@@ -24,6 +24,9 @@ const NAV_LINKS = [
   { to: '/admin/stuck-payments', label: 'Stuck Payments' },
   { to: '/admin/announcements', label: 'Announcements' },
   { to: '/admin/id-cards', label: 'ID Cards' },
+  { to: '/admin/website-news', label: 'Website: News & Events' },
+  { to: '/admin/website-gallery', label: 'Website: Gallery' },
+  { to: '/admin/admissions-inquiries', label: 'Admissions Inquiries' },
   { to: '/admin/audit-log', label: 'Audit Log' },
 ]
 
