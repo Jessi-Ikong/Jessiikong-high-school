@@ -2678,26 +2678,169 @@ Known issues / follow-ups:
   1. The CDN-cached copy of the one pre-035 photo (see FINDING above) is being watched until it expires.
 -------------------------------------------
 
-[2026-09-25 03:35] Task: Replaced the one pre-migration-035 photo so its CDN-cached public copy is orphaned immediately
-Files changed/added: test.txt only (live data: one student's photo file)
+  [2026-09-25 03:35] Task: Replaced the one pre-migration-035 photo so its CDN-cached public copy is orphaned immediately
+  Files changed/added: test.txt only (live data: one student's photo file)
+  What was done:
+    - WHOSE PHOTO: the only photo on live belonged to the STUDENT Ikong Kahen (jessiikong404@gmail.com), set at 07:42 UTC while the avatars bucket was still public. After 035 its plain public address was still served from Supabase's CDN cache ("CF-Cache-Status: HIT", max-age 3600).
+    - HOW: I can't sign in to My Profile or the admin page (no passwords), so I used the Supabase CLI's storage commands ("npx supabase storage ... --linked --experimental"), which call the same Storage API with the project's server credentials:
+        1. downloaded the CURRENT image (122 KB) to a temporary local file;
+        2. uploaded the same image under a NEW random name in the student's folder, and confirmed it was in storage;
+        3. switched the student's photo_url to the new file (only if it still pointed at the old one), and confirmed the switch;
+        4. deleted the OLD file through the Storage API (not by editing database rows). The folder now holds only the new file.
+        Then deleted the temporary local copy of the image and the temporary CLI settings copied to the scratch folder.
+      The student's photo looks exactly the same (the same image, under a new name).
+    - MISTAKE ALONG THE WAY (fixed): my first attempt's copy commands failed (Git Bash rewrote the "ss:///..." storage paths, and the CLI took the Windows "C:/..." path for a storage address), but the script still switched photo_url to the new, not-yet-existing file. I noticed at once and switched it back to the original. The photo was broken for about a minute (08:28-08:29 UTC) and nothing was deleted. The retry went step by step and only switched after confirming the new file existed.
+  Automated tests run (LIVE):
+    - The OLD file's plain public address -> HTTP 400 (JSON error), CDN "BYPASS": no cached copy is served any more (before: HTTP 200 image/jpeg, CDN "HIT"). The same with a cache-busting parameter -> 400.
+    - The NEW file's plain public address -> HTTP 400 (private bucket, as intended).
+    - The student's photo_url points at the new file, inside their own folder (checked).
+    - Checked at 08:32 UTC.
+  How to test manually:
+    - Sign in as the student (jessiikong404@gmail.com) > My Profile: the photo still shows (through a signed link).
+    - Admin > Students: the student's photo still shows.
+  Known issues / follow-ups:
+    None. Photos uploaded after migration 035 were never publicly cached.
+  -------------------------------------------
+
+[2026-09-25 09:57] Task: Real dashboard home pages for all four roles (admin, teacher, student, parent)
+Files changed/added: supabase/migrations/20260925000037_dashboard_summaries.sql (new), src/lib/dashboard.js (new), src/lib/dashboardData.js (new), src/components/DashboardParts.jsx (new), src/pages/AdminDashboard.jsx, src/pages/TeacherDashboard.jsx, src/pages/StudentDashboard.jsx, src/pages/ParentDashboard.jsx, src/pages/teacher/Assignments.jsx (link straight to one assignment), src/lib/announcements.js (optional limit), src/index.css (dashboard styles)
 What was done:
-  - WHOSE PHOTO: the only photo on live belonged to the STUDENT Ikong Kahen (jessiikong404@gmail.com), set at 07:42 UTC while the avatars bucket was still public. After 035 its plain public address was still served from Supabase's CDN cache ("CF-Cache-Status: HIT", max-age 3600).
-  - HOW: I can't sign in to My Profile or the admin page (no passwords), so I used the Supabase CLI's storage commands ("npx supabase storage ... --linked --experimental"), which call the same Storage API with the project's server credentials:
-      1. downloaded the CURRENT image (122 KB) to a temporary local file;
-      2. uploaded the same image under a NEW random name in the student's folder, and confirmed it was in storage;
-      3. switched the student's photo_url to the new file (only if it still pointed at the old one), and confirmed the switch;
-      4. deleted the OLD file through the Storage API (not by editing database rows). The folder now holds only the new file.
-      Then deleted the temporary local copy of the image and the temporary CLI settings copied to the scratch folder.
-    The student's photo looks exactly the same (the same image, under a new name).
-  - MISTAKE ALONG THE WAY (fixed): my first attempt's copy commands failed (Git Bash rewrote the "ss:///..." storage paths, and the CLI took the Windows "C:/..." path for a storage address), but the script still switched photo_url to the new, not-yet-existing file. I noticed at once and switched it back to the original. The photo was broken for about a minute (08:28-08:29 UTC) and nothing was deleted. The retry went step by step and only switched after confirming the new file existed.
-Automated tests run (LIVE):
-  - The OLD file's plain public address -> HTTP 400 (JSON error), CDN "BYPASS": no cached copy is served any more (before: HTTP 200 image/jpeg, CDN "HIT"). The same with a cache-busting parameter -> 400.
-  - The NEW file's plain public address -> HTTP 400 (private bucket, as intended).
-  - The student's photo_url points at the new file, inside their own folder (checked).
-  - Checked at 08:32 UTC.
+  - DATABASE (migration 037): four READ-ONLY summary functions, because adding up attendance or invoices in the browser would mean downloading thousands of rows (and the API stops at 1,000 per request, so totals would be silently wrong):
+      attendance_by_section(from, to)          marks per class section: present / late / absent / excused
+      student_attendance_rates(from, to, ids)  attendance rate per student
+      fee_totals(term)                         invoices, billed, collected, paid/partial/unpaid/overdue counts, overdue balance
+      timetable_gaps(term)                     subjects students take that have no slot on the timetable
+    All four run with the VIEWER'S OWN permissions (security invoker), so the existing row rules decide what is counted: an admin's totals cover the school, a parent's only their own children, a student's only themselves, a teacher's only what their attendance rules already show them. No new access path; they change nothing. Signed-out visitors can't call them.
+  - ADMIN (built from scratch; the old link list is covered by the sidebar):
+      Headline numbers: active students (enrolled this session), active teachers, classes, attendance % today, fees collected and outstanding for the current term.
+      "Needs attention": overdue invoices (all terms), timetable slots with no teacher this term, and subjects students take that aren't timetabled (e.g. "JSS1 A Literature (1 student)").
+      "Attendance by class": for each class section, TODAY / THIS WEEK (from Monday) / THIS TERM so far, plus term absences. Rates under 80% are highlighted.
+      "Students below 80% this term": lowest first, with class, rate, absences and lessons counted (up to 50).
+      "Recent activity": the newest 8 audit-log entries, read straight from the audit log so the existing rules apply. A limited admin sees only their own and non-admin actions, a super admin sees everything. Links to the full audit log.
+  - TEACHER: "Today's classes" unchanged. Added:
+      "Waiting to be graded": the total number of handed-in, ungraded submissions, and each assignment with its count. Each links to the Assignments page with that class selected and that assignment opened (new ?class=...&open=... link).
+      "Coming up": their next 5 assignment due dates.
+      "Messages": unread count and the 3 latest conversations (each opens that conversation).
+  - STUDENT (built from scratch):
+      Attendance % this term; class position ("2 of 31", average %) when the class ranking has one.
+      "Today's timetable": only subjects they take.
+      "Upcoming deadlines": soonest first, with Submitted / Not submitted / Graded (offline work shows "No hand-in").
+      "Recent grades": component scores and graded assignments together, newest first.
+      "Announcements": the 3 newest, linking to the feed.
+  - PARENT: the per-child cards are kept (name, class, admission no., "School fees →"). Each card now also shows:
+      attendance % this term (lessons attended, absences, excused);
+      the 3 most recent grades;
+      fees still to pay, with the balance and due date ("overdue since ..." if past due).
+    Below the cards: Messages preview and Announcements preview.
+    All children's data is fetched together, then split strictly by student ID for each card.
+  - Every panel loads on its own, with its own "Loading…" / error / empty message, so one failing panel doesn't blank the page.
+Automated tests run:
+  - NEW database test suite "dashboard_test": 35 checks, 35 passed. Test school: SS1 A (Ada, Ben, Chi) and SS1 B (Dan); parent Pat has TWO children in different sections (Ada + Dan); parent Ola has Ben.
+      Exact numbers: section A = 8 marks (4 present, 1 late, 2 absent, 1 excused); single-day and empty-day ranges.
+      Rates: Ada 100% (her excused absence doesn't count against her); Chi 100% (late counts as attending); Ben 0%; Dan 0%.
+      "Below 80%" = exactly Ben (SS1 A) and Dan (SS1 B).
+      Fee totals: 4 invoices, ₦200,000 billed, ₦20,000 collected, 1 partial, 2 unpaid, 1 overdue (₦50,000).
+      Timetable gap: exactly "A Literature (1)".
+      LIMITED ADMIN: sees all attendance and fee totals; the activity feed shows their own action and the teacher's, and NOTHING by the super admin. The super admin sees both admins' actions.
+      MULTI-CHILD PARENT: Pat gets exactly two rates, Ada 100% and Dan 0%, never Ben/Chi. Asking for Ben's rate by ID returns nothing. Fee totals cover only her 2 children. Attendance counts only her children's 6 marks. The timetable gap (Ben's subject) is not visible to her. Ola sees only Ben.
+      STUDENT: only her own rate, marks and invoice.
+      TEACHER: the summary counts exactly the attendance rows they can already read; no invoice totals.
+      SIGNED OUT: can't call them.
+      All four functions confirmed to be caller's-permissions and read-only.
+  - New Node test (dashboard helpers): 21 checks, 21 passed. Covers:
+      the rate rule matches the database (incl. "only excused" -> "—", not 0%);
+      weeks start on Monday (weekends -> the Monday just gone);
+      "term so far" before, during and after the term;
+      grading counts per assignment;
+      due dates soonest first;
+      grades merged newest first;
+      outstanding fees (paid left out, earliest due first, balance);
+      per-child grouping never mixes children.
+  - "npm run lint": 0 problems. "npm run build": built successfully (the "chunk larger than 500 kB" notice was already there before this change).
+  - FULL database suite: all 28 suites pass, 733 checks (698 before + 35 new), each on a freshly built database with every migration 001-037. Node: 113. 846 in total.
+  - Earlier Node suites unchanged: 21, 13, 24, 9, 18, 7. Node total now 113.
 How to test manually:
-  - Sign in as the student (jessiikong404@gmail.com) > My Profile: the photo still shows (through a signed link).
-  - Admin > Students: the student's photo still shows.
+  0. Apply first (this dashboard needs migration 037):
+       npx supabase db push --dry-run    (expected: only 20260925000037_dashboard_summaries.sql)
+       npx supabase db push              (type Y)
+     Then deploy the site as usual. To spot-check numbers, run SQL in the Supabase dashboard > SQL Editor (it runs as the owner, so it sees everything, like a super admin).
+  1. ADMIN (super admin jessiikong11@gmail.com):
+       Admin home shows the numbers, "Needs attention", "Attendance by class", "Students below 80% this term" and "Recent activity".
+       SPOT-CHECK "Active students":
+         select count(*) from enrollments e join sessions s on s.id = e.session_id where s.is_current and e.status = 'active';
+       SPOT-CHECK "Fees collected / outstanding":
+         select sum(amount_paid), sum(amount_due) - sum(amount_paid) from invoices where term_id = (select id from terms where is_current);
+       SPOT-CHECK "Overdue invoices":
+         select count(*) from invoices where status = 'overdue';
+  2. ATTENDANCE OVERVIEW SURFACES LOW ATTENDANCE:
+       a) Sign in as a teacher (e.g. jessiikong11+jhs-teacher@gmail.com, Mathematics) and mark attendance for one of today's classes, with the student ABSENT.
+       b) Back as admin, refresh the home page. Expected:
+            "Attendance today" shows a percentage (0% if that was the only mark);
+            the JSS1 A row shows Today / This week / This term figures, highlighted in orange when under 80%;
+            Ikong Kahen appears under "Students below 80% this term" with the rate and absence count.
+       c) SPOT-CHECK the student's rate:
+            select round(100.0 * count(*) filter (where status in ('present','late')) / nullif(count(*) filter (where status <> 'excused'), 0), 1)
+            from attendance_records ar join enrollments e on e.id = ar.enrollment_id join students s on s.id = e.student_id
+            where s.admission_number = 'STU/2026/0001' and ar.date between '2026-09-16' and current_date;
+       d) Mark the same lesson PRESENT again (or EXCUSED): after a refresh the student drops off the list (an excused absence doesn't count against them).
+  3. LIMITED ADMIN AUDIT SCOPING IN THE FEED:
+       a) As the super admin, make a small change (e.g. edit a subject's description).
+       b) Sign in as the limited admin (jessiikong16+admin@gmail.com) and make a change of your own.
+       c) Limited admin's home > "Recent activity". Expected:
+            their own change and teachers'/parents' actions are listed;
+            the super admin's change is NOT;
+            the same holds in "Full audit log →".
+       d) The super admin's home shows both changes.
+  4. TEACHER (jessiikong16@gmail.com or jessiikong11+jhs-teacher@gmail.com):
+       "Today's classes" as before.
+       "Waiting to be graded":
+         a) Have the student hand in an assignment: it appears with "1 to grade".
+         b) Click it: the Assignments page opens on that class with that assignment expanded.
+         c) Grade it: after returning to the home page it's gone.
+       "Coming up": lists due dates, soonest first.
+       "Messages": the unread count matches the Messages page; clicking a conversation opens it.
+  5. STUDENT (jessiikong404@gmail.com):
+       "Attendance this term" matches the SQL in step 2c.
+       "Today's timetable" lists only JSS1 A lessons for their subjects.
+       "Upcoming deadlines": soonest first, with status.
+       "Recent grades": newest score / graded assignment first.
+       "Class position": shows once ranking has data for the term (same as Admin > Class Ranking).
+       "Announcements": the 3 newest; "See all" opens the feed.
+  6. PARENT WITH SEVERAL CHILDREN (separated data):
+       Live has only one child linked to jessiikong404+parent@gmail.com. To test two:
+         a) Admin > Students: add a second test student (a "+" alias of your Gmail), enrolled in JSS1 A (or another section).
+         b) Admin > Parents: link them to the same parent.
+         c) Mark the two children differently (one present, one absent), and give only one of them a score.
+       Expected: one card per child, each with ITS OWN attendance %, grades and fees. The score shows only on that child's card, and "School fees →" opens that child.
+       SPOT-CHECK each child's balance:
+         select s.admission_number, sum(i.amount_due - i.amount_paid) from invoices i join students s on s.id = i.student_id where i.status <> 'paid' group by 1;
+       Also: "Messages" shows only this parent's conversations; "Announcements" only those meant for parents / their children's class.
 Known issues / follow-ups:
-  None. Photos uploaded after migration 035 were never publicly cached.
+  ASSUMPTIONS:
+  1. Attendance rate = (present + late) / (all marks − excused). Late counts as attending; excused counts neither way. It is per LESSON marked (attendance is taken per timetabled lesson), not per day.
+  2. "Low attendance" threshold = 80% of the term so far (start of the current term up to today). It is one constant (LOW_ATTENDANCE_THRESHOLD in src/lib/dashboard.js). A student with no countable marks yet is never flagged.
+  3. "This week" = Monday of the current week up to today. "Today" uses the browser's date (as the teacher dashboard already did).
+  4. "Active students" = active enrollments in the current session. "Teachers" = teacher accounts that are active. "Classes" = all classes.
+  5. Fee figures are for the CURRENT term. The overdue-invoice alert counts ALL terms, so older debts aren't hidden.
+  6. "Empty timetable slots" = slots with no teacher, plus subjects that enrolled students take but that have no slot in their section this term. Free periods with no lesson at all aren't flagged: a section may legitimately have free periods.
+  7. Limited admins see the same school-wide numbers as super admins (they can already read all those rows). Only the activity feed is scoped, by the existing audit-log rule.
+  8. "Recent grades" = component scores and graded assignments, newest first, as soon as they are entered. The row rules already let students and parents read them; no "publish results" step exists yet.
+  9. Class position uses the existing ranking function. It is shown only when the student has a position this term.
+  10. Dashboards load when opened (no auto-refresh); reload the page to update.
+  NOTE: the previous entry (03:35) in test.txt was re-indented by two spaces after it was committed. That wasn't part of this task; I left it as it is.
+  Nothing has been committed to git yet. Migration 037 is NOT applied yet: until it is, the admin dashboard, the student's attendance figure and the parent cards will show an error.
+-------------------------------------------
+
+[2026-09-25 10:10] Task: Applied migration 037 (dashboard summaries) to the live database
+Files changed/added: test.txt only (live database: migration 037)
+What was done:
+  - "npx supabase db push --dry-run" listed only 20260925000037_dashboard_summaries.sql; then "npx supabase db push" applied it.
+  - No Edge Function changed in the dashboards task, so there was nothing to deploy.
+Automated tests run (LIVE, read-only):
+  - "npx supabase migration list": local and remote match, 001-037.
+  - Live check of the four functions (attendance_by_section, fee_totals, student_attendance_rates, timetable_gaps): all run with the CALLER's permissions (not security definer), read-only (stable), callable by signed-in users, NOT callable by signed-out visitors.
+How to test manually:
+  - Follow "How to test manually" steps 1-6 of the 09:57 entry (step 0 is now done). The dashboards need the site deployed with the new code.
+Known issues / follow-ups:
+  None.
 -------------------------------------------

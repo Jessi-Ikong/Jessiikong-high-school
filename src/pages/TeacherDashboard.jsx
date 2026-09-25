@@ -5,6 +5,10 @@ import { formatDate, formatTime } from '../lib/format'
 import { capitalise, schoolDayOf, toIsoDate } from '../lib/dates'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { useAuth } from '../hooks/useAuth'
+import { formatDateTime } from '../lib/assignments'
+import { pendingByAssignment, upcomingByDue } from '../lib/dashboard'
+import { fetchTeacherWork } from '../lib/dashboardData'
+import { DashPanel, Loaded, MessagesPreview } from '../components/DashboardParts'
 
 // Today's classes for the signed-in teacher, and whether attendance is marked.
 async function fetchToday(userId, todayIso, day) {
@@ -112,6 +116,78 @@ export default function TeacherDashboard() {
           )}
         </>
       )}
+
+      <div className="dash-grid">
+        <TeacherWork userId={profile.id} />
+        <MessagesPreview base="/teacher" />
+      </div>
     </>
+  )
+}
+
+// Link to one assignment on the Assignments page (its class preselected, expanded).
+function assignmentLink(a) {
+  return `/teacher/assignments?class=${a.term_id}:${a.section_id}:${a.subject_id}&open=${a.id}`
+}
+
+const classLabel = (a) => `${a.subjects.name} — ${a.sections.classes.name} ${a.sections.name}`
+
+// Handed-in work still waiting for a grade, and the next due dates.
+function TeacherWork({ userId }) {
+  const query = useAsyncData(() => fetchTeacherWork(userId), `teacher-work:${userId}`)
+  return (
+    <Loaded query={query}>
+      {(data) => {
+        if (!data) return null
+        const pending = pendingByAssignment(data.ungraded, data.assignments)
+        const total = data.ungraded.length
+        const upcoming = upcomingByDue(data.assignments, new Date(), 5)
+        return (
+          <>
+            <DashPanel title="Waiting to be graded" to="/teacher/assignments" linkText="All assignments →">
+              {pending.length === 0 ? (
+                <p className="muted small">Nothing to grade — every handed-in submission has a mark.</p>
+              ) : (
+                <>
+                  <p className="small">
+                    <strong>
+                      {total} {total === 1 ? 'submission' : 'submissions'}
+                    </strong>{' '}
+                    across {pending.length} {pending.length === 1 ? 'assignment' : 'assignments'}.
+                  </p>
+                  <ul className="dash-list">
+                    {pending.slice(0, 6).map(({ assignment: a, count }) => (
+                      <li key={a.id} className="dash-row">
+                        <span>
+                          <Link to={assignmentLink(a)}>{a.title}</Link>
+                          <span className="muted small"> · {classLabel(a)}</span>
+                        </span>
+                        <span className="badge badge-warning">{count} to grade</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </DashPanel>
+            <DashPanel title="Coming up" to="/teacher/assignments" linkText="All assignments →">
+              {upcoming.length === 0 ? (
+                <p className="muted small">No assignments due soon.</p>
+              ) : (
+                <ul className="dash-list">
+                  {upcoming.map((a) => (
+                    <li key={a.id}>
+                      <Link to={assignmentLink(a)}>{a.title}</Link>
+                      <div className="muted small">
+                        {classLabel(a)} · due {formatDateTime(a.due_at)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DashPanel>
+          </>
+        )
+      }}
+    </Loaded>
   )
 }

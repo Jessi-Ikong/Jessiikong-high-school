@@ -1,19 +1,137 @@
 import { Link } from 'react-router-dom'
+import { formatDate, formatTime } from '../lib/format'
+import { capitalise, schoolDayOf, toIsoDate } from '../lib/dates'
+import { formatDateTime, submissionStatus } from '../lib/assignments'
+import { fullName } from '../lib/people'
+import { formatPercent, isLow, recentGrades } from '../lib/dashboard'
+import { fetchCurrentTerm, fetchStudentHome } from '../lib/dashboardData'
+import { useAsyncData } from '../hooks/useAsyncData'
 import { useAuth } from '../hooks/useAuth'
+import { AnnouncementsPreview, DashPanel, GradeList, Loaded, Stat } from '../components/DashboardParts'
 
-// Student home. More sections (timetable, results...) come in later tasks.
+// Student home: today's lessons, what's due, recent marks, class position,
+// attendance this term and the latest announcements. Everything is the
+// student's own (the row rules only return their own records).
 export default function StudentDashboard() {
   const { profile } = useAuth()
+  const now = new Date()
+  const todayIso = toIsoDate(now)
+  const day = schoolDayOf(now)
+  const query = useAsyncData(async () => {
+    const term = await fetchCurrentTerm()
+    return { term, ...(await fetchStudentHome(profile.id, term, day, todayIso)) }
+  }, `student-home:${profile.id}:${todayIso}`)
 
   return (
     <>
       <h1>Welcome, {profile.first_name}</h1>
-      <ul className="link-list">
-        <li>
-          <Link to="/student/assignments">Assignments</Link>
-          <span className="muted small"> — see work set for your subjects, hand it in, and read your marks and feedback.</span>
-        </li>
-      </ul>
+      <Loaded query={query}>
+        {(data) =>
+          data.problem === 'no-student' ? (
+            <p className="alert alert-error" role="alert">
+              Your account isn&apos;t set up as a student record yet. Please contact the school office.
+            </p>
+          ) : (
+            <StudentHome data={data} day={day} todayIso={todayIso} />
+          )
+        }
+      </Loaded>
+      <AnnouncementsPreview base="/student" />
+    </>
+  )
+}
+
+function StudentHome({ data, day, todayIso }) {
+  const { term, enrollment, slots, assignments, scores, graded, rank, rate } = data
+  const grades = recentGrades(scores, graded, 5)
+  const now = new Date()
+
+  return (
+    <>
+      <p className="muted">
+        {capitalise(day ?? '')} {formatDate(todayIso)}
+        {enrollment && ` · ${enrollment.sections.classes.name} ${enrollment.sections.name}`}
+        {term && ` · ${term.name}, ${term.sessions.name}`}
+      </p>
+      {!enrollment && (
+        <p className="alert alert-info-plain">You aren&apos;t enrolled in a class this session yet. Please contact the school office.</p>
+      )}
+
+      <div className="dash-stats">
+        <Stat
+          label="Attendance this term"
+          value={formatPercent(rate?.rate)}
+          hint={rate ? `${Number(rate.attended)} of ${Number(rate.records) - Number(rate.excused)} lessons` : 'nothing marked yet'}
+          tone={isLow(rate?.rate) ? 'warn' : undefined}
+        />
+        <Stat
+          label="Class position"
+          value={rank ? `${rank.position} of ${rank.class_size}` : '—'}
+          hint={rank ? `average ${Number(rank.average_score).toFixed(1)}% · ${term.name}` : 'not ranked yet this term'}
+        />
+      </div>
+
+      <div className="dash-grid">
+        <DashPanel title="Today's timetable">
+          {!term ? (
+            <p className="muted small">No term is marked as current yet.</p>
+          ) : !day ? (
+            <p className="muted small">It&apos;s the weekend — no lessons today.</p>
+          ) : todayIso < term.start_date || todayIso > term.end_date ? (
+            <p className="muted small">Today is outside {term.name}.</p>
+          ) : slots.length === 0 ? (
+            <p className="muted small">No lessons scheduled for you today.</p>
+          ) : (
+            <ul className="dash-list">
+              {slots.map((s) => (
+                <li key={s.id} className="dash-row">
+                  <span>
+                    <strong>{s.subjects.name}</strong>
+                    {s.teachers?.users && <span className="muted small"> · {fullName(s.teachers.users)}</span>}
+                  </span>
+                  <span className="muted small">
+                    {s.periods.name} · {formatTime(s.periods.start_time)}–{formatTime(s.periods.end_time)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DashPanel>
+
+        <DashPanel title="Upcoming deadlines" to="/student/assignments" linkText="All assignments →">
+          {assignments.length === 0 ? (
+            <p className="muted small">Nothing due — you&apos;re all caught up.</p>
+          ) : (
+            <ul className="dash-list">
+              {assignments.map((a) => {
+                // offline work (no hand-in) is just a date to know about
+                const offline = a.requires_submission === false
+                const status = submissionStatus(a, a.mine, now)
+                return (
+                  <li key={a.id} className="dash-row">
+                    <span>
+                      <Link to="/student/assignments">{a.title}</Link>
+                      <span className="muted small">
+                        {' '}
+                        · {a.subjects.name} · due {formatDateTime(a.due_at)}
+                      </span>
+                    </span>
+                    {offline ? (
+                      <span className="badge badge-muted">No hand-in</span>
+                    ) : (
+                      <span className={`badge${status.key === 'not-submitted' ? ' badge-warning' : ''}`}>{status.label}</span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </DashPanel>
+
+        <DashPanel title="Recent grades">
+          <GradeList items={grades} />
+        </DashPanel>
+      </div>
     </>
   )
 }

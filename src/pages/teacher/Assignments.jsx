@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabaseClient'
 import { friendlyDbError, run, runWrite } from '../../lib/db'
 import { fullName, byName } from '../../lib/people'
@@ -89,9 +90,13 @@ export default function Assignments() {
   )
 }
 
+// ?class=<term:section:subject>&open=<assignment id> (links from the dashboard)
+// preselect a class and expand one assignment.
 function ClassPicker({ teacherId, terms, classes }) {
-  const [chosenTermId, setChosenTermId] = useState(null)
-  const [chosenKey, setChosenKey] = useState(null)
+  const [params] = useSearchParams()
+  const linked = classes.find((c) => c.key === params.get('class'))
+  const [chosenTermId, setChosenTermId] = useState(linked?.termId ?? null)
+  const [chosenKey, setChosenKey] = useState(linked?.key ?? null)
   const term = terms.find((t) => t.id === chosenTermId) ?? terms.find((t) => t.is_current) ?? terms[0]
   const termClasses = classes.filter((c) => c.termId === term.id)
   const cls = termClasses.find((c) => c.key === chosenKey) ?? termClasses[0]
@@ -130,15 +135,21 @@ function ClassPicker({ teacherId, terms, classes }) {
       {termClasses.length === 0 ? (
         <p className="empty-state">You have no classes on the timetable for {term.name}.</p>
       ) : (
-        <ClassAssignments key={cls.key} cls={cls} term={term} teacherId={teacherId} />
+        <ClassAssignments
+          key={cls.key}
+          cls={cls}
+          term={term}
+          teacherId={teacherId}
+          initialOpenId={cls.key === linked?.key ? params.get('open') : null}
+        />
       )}
     </>
   )
 }
 
-function ClassAssignments({ cls, term, teacherId }) {
+function ClassAssignments({ cls, term, teacherId, initialOpenId }) {
   const query = useAsyncData(() => fetchClassAssignments(cls, term, teacherId), `class-assignments:${cls.key}`)
-  const [openId, setOpenId] = useState(null)
+  const [openId, setOpenId] = useState(initialOpenId)
   const [message, setMessage] = useState(null)
 
   if (query.loading) return <p className="muted">Loading assignments…</p>
