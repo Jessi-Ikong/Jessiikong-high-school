@@ -20,6 +20,7 @@ const NAV_LINKS = [
   { to: '/admin/fees', label: 'Fees', superAdminOnly: true },
   { to: '/admin/stuck-payments', label: 'Stuck Payments' },
   { to: '/admin/announcements', label: 'Announcements' },
+  { to: '/admin/id-cards', label: 'ID Cards' },
   { to: '/admin/audit-log', label: 'Audit Log' },
 ]
 

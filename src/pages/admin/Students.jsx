@@ -6,6 +6,7 @@ import { callFunction } from '../../lib/functions'
 import { formatDate } from '../../lib/format'
 import { fullName, byName } from '../../lib/people'
 import { useAsyncData } from '../../hooks/useAsyncData'
+import PhotoUpload from '../../components/PhotoUpload'
 
 const STATUSES = ['active', 'promoted', 'repeated', 'graduated', 'withdrawn']
 
@@ -58,7 +59,7 @@ function StudentsPage({ setup }) {
           .from('enrollments')
           .select(
             'id, status, class_id, section_id, classes(name, level), sections(name), ' +
-              'students(id, admission_number, gender, date_of_birth, users(first_name, middle_name, last_name, email))',
+              'students(id, admission_number, gender, date_of_birth, users(id, first_name, middle_name, last_name, email, photo_url))',
           )
           .eq('session_id', sessionId),
       ),
@@ -165,6 +166,7 @@ function StudentsPage({ setup }) {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th>Photo</th>
                   <th>Name</th>
                   <th>Admission no.</th>
                   <th>Class</th>
@@ -176,6 +178,10 @@ function StudentsPage({ setup }) {
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.id}>
+                    <td>
+                      {/* No student edit screen yet: the photo is set right here. */}
+                      <PhotoUpload userId={row.person.id} name={fullName(row.person)} path={row.person.photo_url} label="Change" onChanged={enrollments.reload} />
+                    </td>
                     <td>{fullName(row.person)}</td>
                     <td>{row.student.admission_number}</td>
                     <td>

@@ -18,6 +18,7 @@ export default function StudentLayout() {
           </NavLink>
           <NavLink to="/student/assignments">Assignments</NavLink>
           <NavLink to="/student/announcements">Announcements</NavLink>
+          <NavLink to="/student/profile">My Profile</NavLink>
         </nav>
         <div className="portal-user">
           <span className="muted small">{fullName(profile)}</span>

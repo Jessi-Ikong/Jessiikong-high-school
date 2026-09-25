@@ -40,6 +40,9 @@ import PaymentCallback from './pages/parent/PaymentCallback'
 import ParentMessages from './pages/parent/Messages'
 import ParentAnnouncements from './pages/parent/Announcements'
 import NotFound from './pages/NotFound'
+import Profile from './pages/Profile'
+import Verify from './pages/Verify'
+import IdCards from './pages/admin/IdCards'
 
 export default function App() {
   return (
@@ -48,6 +51,8 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/set-password" element={<SetPassword />} />
+      {/* Public: ID card QR verification (no login) */}
+      <Route path="/verify/:token" element={<Verify />} />
 
       <Route element={<ProtectedRoute allowedRoles={[ROLES.ADMIN]} />}>
         <Route path="/admin" element={<AdminLayout />}>
@@ -67,6 +72,7 @@ export default function App() {
           <Route path="fees" element={<FeeStructures />} />
           <Route path="stuck-payments" element={<StuckPayments />} />
           <Route path="announcements" element={<AdminAnnouncements />} />
+          <Route path="id-cards" element={<IdCards />} />
           <Route path="audit-log" element={<AuditLog />} />
           <Route path="*" element={<NotFound />} />
         </Route>
@@ -79,6 +85,7 @@ export default function App() {
           <Route path="assignments" element={<TeacherAssignments />} />
           <Route path="messages" element={<TeacherMessages />} />
           <Route path="announcements" element={<TeacherAnnouncements />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
@@ -87,6 +94,7 @@ export default function App() {
           <Route index element={<StudentDashboard />} />
           <Route path="assignments" element={<StudentAssignments />} />
           <Route path="announcements" element={<StudentAnnouncements />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
@@ -97,6 +105,7 @@ export default function App() {
           <Route path="payment-callback" element={<PaymentCallback />} />
           <Route path="messages" element={<ParentMessages />} />
           <Route path="announcements" element={<ParentAnnouncements />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>

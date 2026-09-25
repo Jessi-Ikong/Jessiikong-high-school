@@ -2476,3 +2476,88 @@ How to test manually:
 Known issues / follow-ups:
   None new.
 -------------------------------------------
+
+[2026-09-25 01:30] Task: Profile pictures + ID cards with QR verification
+Files changed/added: supabase/migrations/20260925000034_avatars_id_cards.sql (new), src/lib/avatars.js (new), src/components/PhotoUpload.jsx (new), src/lib/idCardPdf.js (new), src/lib/idCards.js (new), src/pages/Profile.jsx (new), src/pages/Verify.jsx (new), src/pages/admin/IdCards.jsx (new), src/pages/admin/Staff.jsx, src/pages/admin/Students.jsx, src/App.jsx, src/components/AdminLayout.jsx, src/components/TeacherLayout.jsx, src/components/StudentLayout.jsx, src/components/ParentLayout.jsx, src/index.css, package.json / package-lock.json (qrcode, jspdf)
+What was done:
+  - ALREADY IN PLACE (migrations 007/009): users.photo_url, with a rule that people can change only their own photo and phone; the id_cards table (user, session, card number JHS-000001..., random verification_token, issued at/by, is_active, revoked at/reason, at most ONE active card per person per session); a public verify_id_card() function; admins manage cards.
+  - DECISIONS (your "A, A"):
+      A) The QR code carries the card's random VERIFICATION TOKEN: /verify/<token>. The sequential card number is printed on the card but never used in the link, so nobody can type in JHS-000001, -000002... and harvest every student's name and photo.
+      A) Photos are in a PUBLIC-READ "avatars" bucket under random file names (<user id>/<random>.jpg), so the no-login verification page can show them. A photo can only be opened by someone who already has its link.
+  - MIGRATION 034:
+      "avatars" bucket: public-read, 5 MB, JPG / PNG / WebP only. Uploading / replacing / deleting: yourself, or an admin allowed to edit that person (super admins: anyone; limited admins: anyone except admin accounts, as for their other edits). Nobody can list other people's files.
+      users.photo_url now holds the storage PATH and must be inside that person's OWN folder. Nobody can point their photo at an outside URL (e.g. a tracking image) or at someone else's picture.
+      issue_my_id_card(): a signed-in teacher or student gets their card for the CURRENT session, reused if it's active, otherwise issued. Parents and admins get "ID cards are only issued to teachers and students."
+      issue_id_cards(user ids): ADMINS (both tiers) issue or reuse cards for many teachers/students at once. No card for a deactivated person, and a clear message if no session is current.
+      id_card_details(card ids): what's printed on the card, only for cards you may see (your own; admins: all). Teachers' cards list the department, or the subjects they teach this session.
+      verify_id_card(token): now returns NOTHING for a revoked card, a deactivated person or an unknown token. Before, a revoked card still returned the name and photo. It can only ever return: name, photo, role, class/section (students) or department (teachers), session, card number. No email, phone, date of birth, admission number, grades, etc.
+  - PAGES:
+      MY PROFILE (new menu item for teachers, students and parents): name, role, email, and the photo with "Add photo" / "Change photo". Not a full profile editor; name and email are changed by the school office. Teachers and students also get an "ID card" box with "Download my ID card" (with a nudge to add a photo first).
+      ADMIN > STUDENTS and ADMIN > STAFF: a new first column "Photo" (the photo or initials + "Add photo"/"Change") on every student / teacher row. See "No edit screen" below.
+      ADMIN > ID CARDS (both tiers): "Generate cards for: All staff (active teachers) / Class X (active students)" > "Issue & download PDF", giving ONE PDF with one card per page. Below it, every card issued this session, with status (Active / Revoked + reason), "Download" (a single card) and "Revoke" (with an optional reason; the QR then shows "not valid").
+      /verify/<token> (PUBLIC, no login): "✅ Valid ID card" with photo, name, role, class or department, session and card number, or "❌ This ID card is not valid" (unknown, revoked, or the person is deactivated), with nothing else shown.
+  - THE CARD: drawn in the browser (jsPDF + qrcode), with no server needed for something this small; the photo is already public. It's standard ID-1 size, 85.6 × 54 mm, landscape: navy header with the school name, "STUDENT / STAFF IDENTITY CARD" and "Session 2026/2027"; photo (or initials); name; Admission No + Class, or Staff ID + Department / Subjects (wrapping to 2 lines); issue date; card number; the QR code with "Scan to verify". Bulk = one multi-page PDF (easy to print or send to a card printer), which I chose over a zip.
+      The PDF/QR libraries (~140 KB compressed) are only downloaded when someone actually makes a card, not on every page load.
+      jsPDF 3.x has published security advisories, so the latest 4.2.1 is used ("npm audit": 0 vulnerabilities).
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully (the card code is its own chunk).
+  - New database test (local copy, all 34 migrations): 37 checks, 37 passed.
+      PHOTOS: bucket public-read, 5 MB, JPG/PNG/WebP. A student uploads into her own folder, but NOT into another student's or outside any folder. She sets it as her photo; an outside URL, or someone else's picture, is refused, and she can't change another student's photo. A limited admin sets a student's and a teacher's photo but NOT the super admin's; the super admin can set anyone's. A parent sets their own and can't delete their child's.
+      CARDS: a student's first download issues card JHS-...; the second REUSES it (still one card). A teacher gets theirs; a parent gets the clear refusal. A teacher can't issue cards for others or insert card rows. A limited admin issues cards for the whole class (the existing card is reused, the missing one issued). Bulk refuses parents/admins and deactivated people. After a card is revoked, issuing again creates a NEW card (the old one stays revoked; still one active).
+      DETAILS: student "Ada Adeyemi | student | JHS/2026/0001 | JSS1 A | 2026/2027"; teacher "STF/001 | Sciences | Biology, Mathematics". A student gets details only for her own card; a parent gets none.
+      VERIFY (no login): a valid card shows exactly name, photo, role, class, session, valid. The function can only return name / photo / role / class / section / department / session / card number / valid. Reading id_cards / users / students directly without logging in returns nothing. An unknown token, a revoked card, and a deactivated person's active card all return NOTHING.
+      AUDIT: issued cards are logged with who issued them.
+  - WITHOUT migration 034 the photo checks FAIL and the card functions don't exist.
+  - New Node test of the card drawing (the app's own code, rendering real PDFs): 21 checks, 21 passed. 2 cards give 2 pages at 85.6 × 54 mm; all fields present (school, card type, session, name, admission no., class, staff ID, subjects wrapped onto 2 lines, issue date, card no., "Scan to verify"); initials when there's no photo; a QR image on each card whose payload is exactly https://<site>/verify/<random token>, never the card number. I also opened the rendered sample PDF and checked both cards visually.
+  - One older test was updated on purpose: the original RLS test set a photo to "me.jpg", which the new own-folder rule refuses. It now uses "<own id>/me.jpg" and passes (63/63).
+  - FULL database suite: 63, 33, 28, 17, 20, 25, 18, 15, 21, 24, 18, 29, 13, 11, 47, 28, 31, 29, 35, 16, 24, 11, 26, 23, 19, 26, plus 37 new = 687 checks, all passing. Node checks: 51 + 21 = 72. 759 in total.
+  - NOT tested by me in a browser (needs migration 034 applied and logins); scanning a printed QR code with a phone is for you.
+How to test manually:
+  1. Apply the migration (or ask me to):
+       npx supabase db push --dry-run    (expected: only 20260925000034_avatars_id_cards.sql)
+       npx supabase db push              (type Y)
+     Then Supabase > Storage shows a PUBLIC bucket "avatars".
+  2. PROFILE PICTURES:
+       AS ADMIN: Admin > Students: the new first column shows initials + "Add photo" for each student. Click it and choose a JPG/PNG/WebP under 5 MB; the photo appears in the row. Same on Admin > Staff for teachers. Try a 6 MB photo or a PDF: a clear message and nothing uploaded. (A LIMITED admin can set students' and teachers' photos; admin accounts' photos only by a super admin.)
+       AS THE USER: sign in as the student (jessiikong404@gmail.com) > My Profile > "Change photo" > pick an image. It updates straight away. The same works for a teacher and for the parent (parents have a photo but no ID card).
+  3. INDIVIDUAL ID CARD: as the student > My Profile > "Download my ID card". Expected: a PDF "ID-card-JHS-000001.pdf" (number may differ) with one card: header "Jessiikong High School / STUDENT IDENTITY CARD / Session 2026/2027", the photo, name, Admission No, Class (e.g. JSS1 A), Issued date, Card No, and a QR code. Click it again: the SAME card number (reused).
+       As a teacher (e.g. jessiikong16@gmail.com): STAFF IDENTITY CARD with Staff ID and Department or Subjects.
+       SCAN THE QR CODE with a phone camera. Expected: it opens <site>/verify/<long code> showing "✅ Valid ID card" with the photo, name, role, class, session and card number.
+       Note: the QR code points to the address the app was opened on when the card was made. Cards made on http://localhost only work on that computer. For printed cards, generate them from the deployed site, or set VITE_PUBLIC_APP_URL=https://your-site in .env.local before building.
+  4. PUBLIC VERIFICATION SHOWS ONLY SAFE FIELDS, AND REJECTS BAD CARDS:
+       Open the verify link in a PRIVATE window (not signed in). Expected: only photo, name, role, class/department, session, card number. No email, phone, date of birth, admission number, grades or anything else.
+       Change one character of the code in the address. Expected: "❌ This ID card is not valid". Try /verify/JHS-000001 (a card number instead of the code): the same "not valid".
+       REVOKE: Admin > ID Cards > find the card > Revoke (reason "lost") > confirm. The row shows "Revoked · lost". Reload the verify link (or re-scan): "❌ This ID card is not valid", with no name or photo. As the student, "Download my ID card" now gives a NEW card number with a NEW QR code, and the old QR stays invalid.
+  5. BULK FOR A CLASS: Admin > ID Cards > "For: Class JSS1 (active students)" > "Issue & download PDF". Expected: "ID-cards-JSS1-2026-2027.pdf" with one page per active JSS1 student, and a message such as "Downloaded N ID cards for JSS1 (one per page). X without a photo (initials shown instead)." Everyone who already had an active card keeps the SAME card number. The list below shows all cards issued this session. "All staff" does the same for active teachers.
+Known issues / follow-ups:
+  "NO EDIT SCREEN YET" (as you noted): there's still no student/teacher edit screen. Rather than build one, the photo control sits on each row of the existing Admin > Students and Admin > Staff tables (the "Photo" column). That's the smallest workable addition, and it reuses the same upload component as My Profile. A full edit screen (name, class change, etc.) remains a separate task. Admins' own photos: admins have no profile page yet (only teachers/students/parents do). A super admin can set any admin's photo through the database rules, but there's no button for it yet.
+  ASSUMPTIONS:
+  1. ID cards are for teachers and students only (per README); parents get a profile photo but no card. Admins get no card.
+  2. A card belongs to one session. In a new session everyone downloads/gets issued a new card; old-session cards stay in the records (they verify as valid for their session until revoked).
+  3. Revoking is manual (Admin > ID Cards). Deactivating a person makes their card fail verification automatically.
+  4. The verification page shows "Staff (teacher)" / "Student", the class for students, and the department (if set) for teachers. The teacher's subjects list is printed on the card but not on the public page.
+  5. Photos are cropped to the card's photo box (centred, slightly favouring the top, where faces usually are). Very small photos will look soft.
+  6. The QR code uses the site address the card was made on (or VITE_PUBLIC_APP_URL). If the site moves to a new address, old printed QR codes point to the old one.
+  7. No school logo yet (the card uses the school name); a logo could be added once one exists.
+  8. The public "avatars" bucket means anyone who has a photo's link can view it. Links are long and random, and only appear on the card, in the app, and on the verification page for a valid card. A private bucket with signed links would be the stricter alternative (option B, not chosen).
+  Nothing has been committed to git yet, and migration 034 is not applied yet.
+-------------------------------------------
+
+[2026-09-25 01:45] Task: Applied migration 034 (avatars + ID cards) to the live database; live checks
+Files changed/added: test.txt only
+What was done:
+  "npx supabase db push" applied 20260925000034_avatars_id_cards.sql (the dry run listed only that). "migration list" shows 001-034 on both local and remote.
+  On live: the "avatars" bucket is public-read, 5 MB, JPG/PNG/WebP; its 4 upload/replace/delete rules exist; issue_my_id_card, issue_id_cards, id_card_details and verify_id_card exist.
+Automated tests run (LIVE; everything rolled back, nothing kept):
+  - The student (jessiikong404@gmail.com) downloads their card twice: the SAME card both times. Details: "Ikong Kahen | student | STU/2026/0001 | JSS1 A | 2026/2027 | JHS-000001".
+  - The parent: "ID cards are only issued to teachers and students."
+  - Verifying that card while LOGGED OUT: "Ikong Kahen | student | JSS1 A | 2026/2027 | valid". After revoking it: 0 rows (the page shows "not valid").
+  - The limited admin (jessiikong16+admin) bulk-issues for all active teachers: 2 cards.
+  - Afterwards: 0 ID cards on live (nothing kept).
+  - The public API answers /rest/v1/rpc/verify_id_card with the anonymous key: 200 [] for an unknown code (reachable without login, returns nothing).
+  NOTE: card numbers come from a counter that isn't rolled back, so this check used up JHS-000001..3. The first real card will be about JHS-000004. That's harmless (numbers only need to be unique).
+How to test manually:
+  Steps 2-5 of the 01:30 entry (photos, individual card + QR scan, verification/revoke, bulk for JSS1).
+Known issues / follow-ups:
+  None new.
+-------------------------------------------

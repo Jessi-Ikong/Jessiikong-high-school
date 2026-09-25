@@ -1613,3 +1613,121 @@ select {
 .announcement-table td {
   vertical-align: top;
 }
+
+/* ---------- Photos, profile, ID card verification ---------- */
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #e4e7eb;
+  color: #52606d;
+  font-weight: 600;
+}
+
+.photo-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.photo-upload-actions {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.profile-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.profile-panel h2 {
+  margin: 0;
+}
+
+.verify-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: #f5f7fa;
+}
+
+.verify-card {
+  width: 100%;
+  max-width: 26rem;
+  padding: 1.5rem;
+  background: #ffffff;
+  border: 1px solid #e4e7eb;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.verify-school {
+  margin: 0 0 0.75rem;
+  color: #1e3a5f;
+  font-weight: 600;
+}
+
+.verify-status {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.verify-status.is-valid {
+  background: #def7ec;
+  color: #03543f;
+}
+
+.verify-status.is-invalid {
+  background: #fde2e2;
+  color: #9b1c1c;
+}
+
+.verify-person {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.verify-photo {
+  width: 6rem;
+  height: 7.5rem;
+  flex: none;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #cbd2d9;
+}
+
+.verify-photo-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e4e7eb;
+  color: #52606d;
+  font-size: 0.8rem;
+}
+
+.verify-person dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+}
+
+.verify-person dt {
+  color: #52606d;
+  font-size: 0.85rem;
+}
+
+.verify-person dd {
+  margin: 0;
+  font-weight: 600;
+}

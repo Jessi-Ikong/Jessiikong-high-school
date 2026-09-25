@@ -5,12 +5,13 @@ import { callFunction } from '../../lib/functions'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useAuth } from '../../hooks/useAuth'
 import { fullName, byName } from '../../lib/people'
+import PhotoUpload from '../../components/PhotoUpload'
 
 const EMPTY_FORM = { account: 'teacher', full_name: '', email: '', staff_id: '', department: '' }
 
 async function fetchStaff() {
   const [teachers, admins] = await Promise.all([
-    run(supabase.from('teachers').select('id, staff_id, department, users(first_name, middle_name, last_name, email, is_active)')),
+    run(supabase.from('teachers').select('id, staff_id, department, users(user_id:id, first_name, middle_name, last_name, email, is_active, photo_url)')),
     run(supabase.from('users').select('id, first_name, middle_name, last_name, email, admin_level, is_active').eq('role', 'admin')),
   ])
   return {
@@ -114,6 +115,7 @@ export default function Staff() {
               <table className="data-table">
                 <thead>
                   <tr>
+                    <th>Photo</th>
                     <th>Name</th>
                     <th>Email</th>
                     <th>Staff ID</th>
@@ -123,6 +125,10 @@ export default function Staff() {
                 <tbody>
                   {data.teachers.map((t) => (
                     <tr key={t.id}>
+                      <td>
+                        {/* No staff edit screen yet: the photo is set right here. */}
+                        <PhotoUpload userId={t.user_id} name={fullName(t)} path={t.photo_url} label="Change" onChanged={reload} />
+                      </td>
                       <td>
                         {fullName(t)}
                         {!t.is_active && <span className="muted small"> (deactivated)</span>}
