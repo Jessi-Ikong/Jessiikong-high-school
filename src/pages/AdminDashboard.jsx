@@ -121,6 +121,14 @@ function Alerts({ o, term }) {
       </li>,
     )
   }
+  if (o.inactiveTeacherSlots > 0) {
+    items.push(
+      <li key="inactive">
+        <strong>{o.inactiveTeacherSlots}</strong> timetable {o.inactiveTeacherSlots === 1 ? 'slot is' : 'slots are'} still assigned to a
+        deactivated teacher this term. <Link to="/admin/timetable">Timetable →</Link>
+      </li>,
+    )
+  }
   if (o.gaps.length > 0) {
     items.push(
       <li key="gaps">

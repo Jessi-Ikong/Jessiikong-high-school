@@ -96,7 +96,7 @@ function TimetableBuilder({ setup }) {
       run(
         supabase
           .from('timetable_slots')
-          .select('id, period_id, day_of_week, subject_id, teacher_id, subjects(name, code), teachers(users(first_name, middle_name, last_name))')
+          .select('id, period_id, day_of_week, subject_id, teacher_id, subjects(name, code), teachers(users(first_name, middle_name, last_name, is_active))')
           .eq('term_id', term.id)
           .eq('section_id', section.id),
       ),
@@ -250,6 +250,9 @@ function TimetableCell({ entries, term, section, sectionLabel, period, day, subj
               <li key={slot.id} className="slot-chip">
                 <span>
                   <strong>{slot.subjects.name}</strong> — {teacherName ?? <em>No teacher yet</em>}
+                  {slot.teachers && !slot.teachers.users.is_active && (
+                    <span className="badge badge-warning" title="This teacher is deactivated: give the class to someone else">deactivated</span>
+                  )}
                 </span>
                 <DeleteAction
                   itemName={`${slot.subjects.name} (${sectionLabel}, ${dayLabel(day)} ${period.name})`}

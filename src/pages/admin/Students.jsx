@@ -7,6 +7,7 @@ import { formatDate } from '../../lib/format'
 import { fullName, byName } from '../../lib/people'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import PhotoUpload from '../../components/PhotoUpload'
+import { ActiveToggle, EditStudentDialog, StudentSubjectsDialog } from '../../components/PersonEdit'
 
 const STATUSES = ['active', 'promoted', 'repeated', 'graduated', 'withdrawn']
 
@@ -51,6 +52,8 @@ function StudentsPage({ setup }) {
   const [sectionFilter, setSectionFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [sortBy, setSortBy] = useState('name')
+  // { kind: 'details' | 'subjects', row }
+  const [editing, setEditing] = useState(null)
 
   const enrollments = useAsyncData(
     () =>
@@ -59,7 +62,7 @@ function StudentsPage({ setup }) {
           .from('enrollments')
           .select(
             'id, status, class_id, section_id, classes(name, level), sections(name), ' +
-              'students(id, admission_number, gender, date_of_birth, users(id, first_name, middle_name, last_name, email, photo_url))',
+              'students(id, admission_number, gender, date_of_birth, users(id, first_name, middle_name, last_name, email, photo_url, is_active))',
           )
           .eq('session_id', sessionId),
       ),
@@ -79,6 +82,8 @@ function StudentsPage({ setup }) {
 
   const filterSections = sections.filter((s) => s.class_id === classFilter)
   const sessionName = sessions.find((s) => s.id === sessionId)?.name
+  // Subjects can only be changed for the current session (the database enforces it too).
+  const isCurrentSession = sessions.find((s) => s.id === sessionId)?.is_current ?? false
 
   return (
     <>
@@ -173,16 +178,19 @@ function StudentsPage({ setup }) {
                   <th>Status</th>
                   <th>Email</th>
                   <th>Date of birth</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.id}>
                     <td>
-                      {/* No student edit screen yet: the photo is set right here. */}
                       <PhotoUpload userId={row.person.id} name={fullName(row.person)} path={row.person.photo_url} label="Change" onChanged={enrollments.reload} />
                     </td>
-                    <td>{fullName(row.person)}</td>
+                    <td>
+                      {fullName(row.person)}
+                      {!row.person.is_active && <span className="badge badge-muted">Deactivated</span>}
+                    </td>
                     <td>{row.student.admission_number}</td>
                     <td>
                       {row.classes.name} {row.sections.name}
@@ -190,12 +198,47 @@ function StudentsPage({ setup }) {
                     <td>{row.status}</td>
                     <td>{row.person.email}</td>
                     <td>{formatDate(row.student.date_of_birth) || <span className="muted">—</span>}</td>
+                    <td>
+                      <div className="row-actions">
+                        <button type="button" className="button-link" onClick={() => setEditing({ kind: 'details', row })}>
+                          Edit
+                        </button>
+                        {isCurrentSession && (
+                          <button type="button" className="button-link" onClick={() => setEditing({ kind: 'subjects', row })}>
+                            Subjects
+                          </button>
+                        )}
+                        <ActiveToggle
+                          person={{ userId: row.person.id, name: fullName(row.person), role: 'student', is_active: row.person.is_active }}
+                          onChanged={enrollments.reload}
+                        />
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </>
+      )}
+
+      {editing?.kind === 'details' && (
+        <EditStudentDialog
+          person={{ studentId: editing.row.student.id, ...editing.row.person, date_of_birth: editing.row.student.date_of_birth, gender: editing.row.student.gender }}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null)
+            enrollments.reload()
+          }}
+        />
+      )}
+      {editing?.kind === 'subjects' && (
+        <StudentSubjectsDialog
+          enrollmentId={editing.row.id}
+          studentName={fullName(editing.row.person)}
+          classLabel={`${editing.row.classes.name} ${editing.row.sections.name}, ${sessionName}`}
+          onClose={() => setEditing(null)}
+        />
       )}
     </>
   )

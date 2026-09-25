@@ -2844,3 +2844,134 @@ How to test manually:
 Known issues / follow-ups:
   None.
 -------------------------------------------
+
+[2026-09-25 12:55] Task: Admin edit screens for students and teachers (details, deactivate/reactivate, a student's current subjects)
+Files changed/added: supabase/migrations/20260925000038_edit_people.sql (new), src/components/PersonEdit.jsx (new), src/lib/peopleEdit.js (new), src/lib/people.js, src/pages/admin/Students.jsx, src/pages/admin/Staff.jsx, src/pages/admin/Timetable.jsx, src/pages/AdminDashboard.jsx, src/lib/dashboardData.js, src/index.css
+What was done:
+  - CHECKED FIRST:
+      No deactivate/reactivate action existed anywhere: is_active was only shown ("(deactivated)"), used to block sign-in, and used as a filter (Timetable teacher list, ID card issuing, dashboard teacher count).
+      Nothing could change a student's subjects after creation (the add form even said "assign subjects later").
+      Both admin tiers were ALREADY allowed by the database to update students, teachers, non-admin user accounts and student subjects (migration 9). Permissions are unchanged.
+  - STUDENTS page: each row now has "Edit", "Subjects" (current session only) and "Deactivate"/"Reactivate". Deactivated students get a "Deactivated" tag.
+      Edit: first name, middle name(s) (optional), last name, date of birth, gender. The email and class are shown as not editable.
+  - STAFF page (teachers): each row has "Edit" and "Deactivate"/"Reactivate".
+      Edit: first / middle / last name, staff ID, department.
+      Admin accounts are not part of this (not requested; super-admin-only as before).
+  - SAVING (migration 038):
+      update_student_details() / update_teacher_details() save the user row and the student/teacher row in ONE transaction, running with the admin's own permissions (no new access path). Only fields that really change are written, so an unchanged save adds nothing to the audit log.
+      Validation is the same as account creation: first + last name required, extra spaces removed, "Please enter both a first name and a last name."; staff ID required and unique, "Another teacher already has that staff ID."; gender female/male.
+      New: a date of birth can't be in the future.
+      Also: names and staff IDs can never be blank (database constraints; live data checked first: none blank).
+  - EMAIL IS FIXED: the database now refuses any signed-in change to an account's email (it's the login; changing only the profile copy would break sign-in). Server-side code is unaffected.
+  - NAMES: the edit form uses three fields (first / middle / last), the same split the app stores and shows. Account creation's single "Full name" box is split first word / middle words / last word; three boxes let you fix a wrong split (e.g. a two-word first name).
+  - DEACTIVATE / REACTIVATE: a confirmation explains the effects (below), then users.is_active is switched. For a teacher it also says how many timetable slots they teach this term. It uses the existing rules: both tiers can do it for students/teachers; a limited admin still can't deactivate an admin.
+  - DOWNSTREAM EFFECTS (what the app already did for inactive accounts, confirmed in tests; two gaps closed):
+      Sign-in blocked ("Your account has been deactivated...").
+      ALL access stops at once, even mid-session: every permission check requires an active account.
+      The ID card stops verifying as valid, and no new card can be issued.
+      Nothing is deleted.
+      A deactivated teacher disappears from the Timetable teacher list (for new slots) but KEEPS existing slots. NEW: those slots now show a "deactivated" tag on the Timetable, and the admin dashboard's "Needs attention" counts slots still assigned to a deactivated teacher, so they get reassigned.
+      A deactivated student stays enrolled (registers, fees unchanged); withdrawing is an enrollment change.
+  - SUBJECTS (current enrollment only): a checklist where each tick saves at once.
+      The database now refuses subject changes on a PAST session's enrollment, for everyone signed in (deleting an enrollment still removes its rows).
+      WARNING: removing a subject the student already has scores, attendance marks or assignment submissions for (this session) asks first, e.g. "Ada already has 1 score, 3 attendance marks and 1 assignment submission for Mathematics this session." Those records are NOT deleted (nothing cascades): they stop counting (ranking, registers, gradebook) and come back if the subject is ticked again. Subjects with records show "has records" in the list.
+      A confirmation, rather than a hard block like "Delete": removing an elective chosen by mistake is a legitimate correction, and nothing is lost.
+  - AUDIT: no new logging was needed. The generic trigger (migration 19) logs update_users (name, is_active), update_students (DOB, gender), update_teachers (staff ID, department) and insert/delete_student_subjects. Confirmed in tests, with the admin who did it.
+Automated tests run:
+  - NEW database suite "editpeople_test": 65 checks, 65 passed.
+      LIMITED admin edits a student (name, middle names, DOB, gender); spaces cleaned. Audit entries: update_users with old -> new name, by the limited admin; update_students with ONLY the changed field. An unchanged save writes no audit entry.
+      Rejected: blank first/last name (same message as creation); future DOB; invalid gender; a blank name even by direct update.
+      SUPER admin edits a teacher (name, staff ID, department; trimmed; department clearable), logged as update_teachers.
+      DUPLICATE staff ID rejected for BOTH tiers (nothing changed), also by direct update. Blank staff ID rejected. Limited admin can edit teachers.
+      A teacher can't edit their own staff record or a student; a student can't edit themselves; signed-out: permission denied.
+      Email: super admin and limited admin can NOT change an email.
+      DEACTIVATE (limited admin) a teacher: logged "Active true -> false" by that admin. He immediately sees 0 of his class's attendance and can't mark attendance. His timetable slot stays assigned; no ID card can be issued to him.
+      Deactivated student: enrollment untouched; she can't read even her own scores.
+      REACTIVATE: logged; access returns.
+      A limited admin can NOT deactivate the super admin. The super admin can deactivate/reactivate too.
+      SUBJECTS:
+        usage report (Maths: 1 score / 1 attendance / 1 submission; last session: none);
+        add French and remove Biology, both logged;
+        removing Maths after the warning KEEPS its score, attendance and submission, still reported, re-addable;
+        past-session add / remove / move REJECTED for limited AND super admin (last session unchanged);
+        a teacher can't change subjects;
+        server-side code unaffected.
+  - New Node test (name rule + warning text): 8 checks, 8 passed.
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - FULL database suite: all 29 suites pass, 798 checks (733 before + 65 new), each on a freshly built database with migrations 001-038. Node: 121 (113 + 8). 919 in total.
+How to test manually:
+  0. Apply first:
+       npx supabase db push --dry-run    (expected: only 20260925000038_edit_people.sql)
+       npx supabase db push              (type Y)
+     Then deploy the site as usual. Do steps 1-5 once as the SUPER admin (jessiikong11@gmail.com) and repeat the key ones as the LIMITED admin (jessiikong16+admin@gmail.com): both should behave the same.
+  1. EDIT A STUDENT'S NAME / DOB / GENDER:
+       Admin > Students > Ikong Kahen > "Edit". Change the middle name (e.g. add "Grace"), the date of birth and the gender > Save changes.
+       Expected: the dialog closes and the row shows the new name and date of birth.
+       Also try: an empty first name -> "Please enter both a first name and a last name."; a future date -> refused.
+       ID CARD: Admin > ID Cards > "For: Class JSS1" > Issue & download PDF (or the student > My Profile > Download my ID card). The card shows the NEW name, gender and DOB (it's drawn from the current details; the card number stays the same).
+       The public verification page (scan the QR) shows the new name too (still no gender/DOB there).
+       AUDIT: Admin > Audit Log shows "Updated user account" (old -> new name) and "Updated student" (the changed fields), by you.
+       Put the real details back afterwards.
+  2. EDIT A TEACHER'S STAFF ID / DEPARTMENT:
+       Admin > Staff > Test Teacher > "Edit". Change the department and the staff ID > Save. Expected: the row shows both.
+       DUPLICATE: Edit again and enter Ug Jessi's staff ID. Expected: "Another teacher already has that staff ID.", nothing saved.
+       Their ID card (download) shows the new staff ID.
+       Put the real staff ID back.
+  3. DEACTIVATE / REACTIVATE:
+       a) TEACHER: Admin > Staff > Test Teacher > "Deactivate". Expected:
+            the confirmation lists the effects and "teaches N timetable slots this term";
+            confirm -> a "Deactivated" tag on the row.
+          Then:
+            Admin > Timetable: their slots show a "deactivated" tag, and they're missing from the teacher list for new slots.
+            Admin dashboard > "Needs attention": "N timetable slots are still assigned to a deactivated teacher".
+            Signing in as that teacher (jessiikong11+jhs-teacher@gmail.com) shows "Your account has been deactivated. Please contact the school office."
+            Scanning their ID card QR / opening its /verify link: shown as NOT valid.
+            Admin > ID Cards: no new card can be issued for them.
+          "Reactivate" -> everything is back, and the card verifies again.
+       b) STUDENT: Admin > Students > Ikong Kahen > "Deactivate". Expected:
+            "Deactivated" tag;
+            the student can't sign in;
+            their card doesn't verify;
+            they still appear on the teacher's attendance register and the parent's fees are unchanged.
+          Reactivate.
+       c) Admin > Audit Log: "Updated user account — Active: Yes → No" and back, by you.
+       d) As the LIMITED admin: the same works for students/teachers. Admin accounts still can't be deactivated by a limited admin (they only see their own admin row, with no such button).
+  4. SUBJECTS:
+       Admin > Students (current session) > Ikong Kahen > "Subjects".
+       a) Tick a new subject -> "... added."; the teacher of that subject now sees the student on their register / gradebook.
+       b) Untick a subject with NO records -> removed at once.
+       c) Untick a subject that HAS records (one with a score or attendance, e.g. Mathematics once marked; it shows "has records"). Expected:
+            a warning: "... already has N scores, N attendance marks ... this session", explaining nothing is deleted;
+            Cancel keeps it;
+            "Remove" removes it and the records stay (tick it again and they reappear in the gradebook).
+       d) Choose an older session in the Students filter: there is no "Subjects" button (past sessions are fixed; the database also refuses).
+       e) Audit Log: "Created student subject" / "Deleted student subject" entries.
+  5. EMAIL: neither edit dialog offers the email (it's shown as not editable). The database refuses email changes from any signed-in user.
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. Names are edited as first / middle / last (the stored split) rather than one "Full name" box; the required-fields rule is the same as at creation.
+  2. Staff ID uniqueness is exact (as at creation): "stf/001" and "STF/001" count as different. Spaces at the ends are removed.
+  3. Deactivation only affects the ACCOUNT (sign-in, access, ID card). It doesn't withdraw a student, end enrollments or remove a teacher from the timetable; those are separate decisions, which the dashboard/timetable flags now point to.
+  4. A deactivated person's existing ID card isn't revoked (it just stops verifying); after reactivation it verifies again without reissuing.
+  5. Removing a subject with records is allowed after an explicit warning (not blocked), because nothing is deleted and it's reversible.
+  6. Subject changes are for the student's current-session enrollment only, whatever its status.
+  7. Admin accounts' details aren't editable here (not requested).
+  Nothing has been committed to git yet. Migration 038 is NOT applied yet: until it is, "Edit" saving and the "Subjects" dialog will show an error.
+-------------------------------------------
+
+[2026-09-25 13:10] Task: Applied migration 038 (editing students and teachers) to the live database
+Files changed/added: test.txt only (live database: migration 038)
+What was done:
+  - "npx supabase db push --dry-run" listed only 20260925000038_edit_people.sql; then "npx supabase db push" applied it.
+  - No Edge Function changed, so there was nothing to deploy.
+Automated tests run (LIVE, read-only):
+  - "npx supabase migration list": local and remote match, 001-038.
+  - Live check:
+      update_student_details, update_teacher_details and student_subject_usage run with the CALLER's permissions (security invoker), are callable by signed-in users and NOT by signed-out visitors;
+      the triggers users_keep_email and student_subjects_current_session_only exist;
+      the constraints users_names_not_blank and teachers_staff_id_not_blank exist (they were accepted, so no existing name or staff ID is blank).
+How to test manually:
+  - Follow "How to test manually" steps 1-5 of the 12:55 entry (step 0 is now done). The edit screens need the site deployed with the new code.
+Known issues / follow-ups:
+  None.
+-------------------------------------------

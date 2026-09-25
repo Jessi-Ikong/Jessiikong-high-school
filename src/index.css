@@ -1847,3 +1847,39 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Editing students / teachers ---------- */
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+}
+
+.dialog-form h2 {
+  margin-bottom: 0;
+}
+
+.dialog-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 500;
+}
+
+.dialog-form .dialog-actions,
+.dialog-form p {
+  margin: 0;
+}
+
+.subject-checklist-dialog {
+  grid-template-columns: 1fr;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.data-table td .badge-muted,
+.data-table td .badge-warning {
+  margin-left: 0.4rem;
+}

@@ -6,16 +6,21 @@ import { useAsyncData } from '../../hooks/useAsyncData'
 import { useAuth } from '../../hooks/useAuth'
 import { fullName, byName } from '../../lib/people'
 import PhotoUpload from '../../components/PhotoUpload'
+import { ActiveToggle, EditTeacherDialog } from '../../components/PersonEdit'
 
 const EMPTY_FORM = { account: 'teacher', full_name: '', email: '', staff_id: '', department: '' }
 
 async function fetchStaff() {
-  const [teachers, admins] = await Promise.all([
+  const [teachers, admins, slots] = await Promise.all([
     run(supabase.from('teachers').select('id, staff_id, department, users(user_id:id, first_name, middle_name, last_name, email, is_active, photo_url)')),
     run(supabase.from('users').select('id, first_name, middle_name, last_name, email, admin_level, is_active').eq('role', 'admin')),
+    // this term's timetable slots, to say what deactivating a teacher leaves behind
+    run(supabase.from('timetable_slots').select('teacher_id, terms!inner(is_current)').eq('terms.is_current', true).not('teacher_id', 'is', null)),
   ])
+  const slotCount = {}
+  for (const s of slots) slotCount[s.teacher_id] = (slotCount[s.teacher_id] ?? 0) + 1
   return {
-    teachers: teachers.map((t) => ({ ...t, ...t.users })).sort(byName),
+    teachers: teachers.map((t) => ({ ...t, ...t.users, slotsThisTerm: slotCount[t.id] ?? 0 })).sort(byName),
     admins: admins.sort(byName),
   }
 }
@@ -29,6 +34,7 @@ export default function Staff() {
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [editing, setEditing] = useState(null) // teacher being edited
 
   const isTeacher = form.account === 'teacher'
 
@@ -120,22 +126,38 @@ export default function Staff() {
                     <th>Email</th>
                     <th>Staff ID</th>
                     <th>Department</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.teachers.map((t) => (
                     <tr key={t.id}>
                       <td>
-                        {/* No staff edit screen yet: the photo is set right here. */}
                         <PhotoUpload userId={t.user_id} name={fullName(t)} path={t.photo_url} label="Change" onChanged={reload} />
                       </td>
                       <td>
                         {fullName(t)}
-                        {!t.is_active && <span className="muted small"> (deactivated)</span>}
+                        {!t.is_active && <span className="badge badge-muted">Deactivated</span>}
                       </td>
                       <td>{t.email}</td>
                       <td>{t.staff_id}</td>
                       <td>{t.department ?? <span className="muted">—</span>}</td>
+                      <td>
+                        <div className="row-actions">
+                          <button type="button" className="button-link" onClick={() => setEditing(t)}>
+                            Edit
+                          </button>
+                          <ActiveToggle
+                            person={{ userId: t.user_id, name: fullName(t), role: 'teacher', is_active: t.is_active }}
+                            extra={
+                              t.slotsThisTerm > 0
+                                ? `${fullName(t)} teaches ${t.slotsThisTerm} timetable ${t.slotsThisTerm === 1 ? 'slot' : 'slots'} this term.`
+                                : null
+                            }
+                            onChanged={reload}
+                          />
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -180,6 +202,17 @@ export default function Staff() {
             </div>
           )}
         </>
+      )}
+
+      {editing && (
+        <EditTeacherDialog
+          person={{ teacherId: editing.id, ...editing }}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null)
+            reload()
+          }}
+        />
       )}
     </>
   )

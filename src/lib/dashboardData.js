@@ -27,7 +27,7 @@ async function count(query) {
 // ---------- Admin ----------
 
 export async function fetchAdminOverview(term) {
-  const [students, teachers, classes, overdueInvoices, fees, gaps, unassignedSlots] = await Promise.all([
+  const [students, teachers, classes, overdueInvoices, fees, gaps, unassignedSlots, inactiveTeacherSlots] = await Promise.all([
     count(
       supabase
         .from('enrollments')
@@ -47,8 +47,18 @@ export async function fetchAdminOverview(term) {
           supabase.from('timetable_slots').select('id', { count: 'exact', head: true }).eq('term_id', term.id).is('teacher_id', null),
         )
       : 0,
+    // slots still assigned to a teacher who has been deactivated
+    term
+      ? count(
+          supabase
+            .from('timetable_slots')
+            .select('id, teachers!inner(users!inner(is_active))', { count: 'exact', head: true })
+            .eq('term_id', term.id)
+            .eq('teachers.users.is_active', false),
+        )
+      : 0,
   ])
-  return { students, teachers, classes, overdueInvoices, fees, gaps, unassignedSlots }
+  return { students, teachers, classes, overdueInvoices, fees, gaps, unassignedSlots, inactiveTeacherSlots }
 }
 
 // Per section: today, this week and this term so far; plus the students below
