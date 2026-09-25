@@ -2677,3 +2677,27 @@ How to test manually:
 Known issues / follow-ups:
   1. The CDN-cached copy of the one pre-035 photo (see FINDING above) is being watched until it expires.
 -------------------------------------------
+
+[2026-09-25 03:35] Task: Replaced the one pre-migration-035 photo so its CDN-cached public copy is orphaned immediately
+Files changed/added: test.txt only (live data: one student's photo file)
+What was done:
+  - WHOSE PHOTO: the only photo on live belonged to the STUDENT Ikong Kahen (jessiikong404@gmail.com), set at 07:42 UTC while the avatars bucket was still public. After 035 its plain public address was still served from Supabase's CDN cache ("CF-Cache-Status: HIT", max-age 3600).
+  - HOW: I can't sign in to My Profile or the admin page (no passwords), so I used the Supabase CLI's storage commands ("npx supabase storage ... --linked --experimental"), which call the same Storage API with the project's server credentials:
+      1. downloaded the CURRENT image (122 KB) to a temporary local file;
+      2. uploaded the same image under a NEW random name in the student's folder, and confirmed it was in storage;
+      3. switched the student's photo_url to the new file (only if it still pointed at the old one), and confirmed the switch;
+      4. deleted the OLD file through the Storage API (not by editing database rows). The folder now holds only the new file.
+      Then deleted the temporary local copy of the image and the temporary CLI settings copied to the scratch folder.
+    The student's photo looks exactly the same (the same image, under a new name).
+  - MISTAKE ALONG THE WAY (fixed): my first attempt's copy commands failed (Git Bash rewrote the "ss:///..." storage paths, and the CLI took the Windows "C:/..." path for a storage address), but the script still switched photo_url to the new, not-yet-existing file. I noticed at once and switched it back to the original. The photo was broken for about a minute (08:28-08:29 UTC) and nothing was deleted. The retry went step by step and only switched after confirming the new file existed.
+Automated tests run (LIVE):
+  - The OLD file's plain public address -> HTTP 400 (JSON error), CDN "BYPASS": no cached copy is served any more (before: HTTP 200 image/jpeg, CDN "HIT"). The same with a cache-busting parameter -> 400.
+  - The NEW file's plain public address -> HTTP 400 (private bucket, as intended).
+  - The student's photo_url points at the new file, inside their own folder (checked).
+  - Checked at 08:32 UTC.
+How to test manually:
+  - Sign in as the student (jessiikong404@gmail.com) > My Profile: the photo still shows (through a signed link).
+  - Admin > Students: the student's photo still shows.
+Known issues / follow-ups:
+  None. Photos uploaded after migration 035 were never publicly cached.
+-------------------------------------------
