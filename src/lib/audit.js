@@ -9,6 +9,7 @@ export const ENTITY_LABELS = {
   assignments: ['assignment', 'assignments'],
   attendance_records: ['attendance record', 'attendance records'],
   classes: ['class', 'classes'],
+  contact_messages: ['contact message', 'contact messages'],
   enrollments: ['enrollment', 'enrollments'],
   fee_structures: ['fee item', 'fee items'],
   gallery_photos: ['gallery photo', 'gallery photos'],
@@ -139,6 +140,8 @@ export function targetLabel(entry, names, rowsByEntity) {
     }
     case 'gallery_photos':
       return row.caption ?? row.image_url ?? shortId(id)
+    case 'contact_messages':
+      return row.name ? `${row.name}${row.subject ? `: ${row.subject}` : ''}` : shortId(id)
     case 'admissions_inquiries':
       return row.parent_name ? `${row.parent_name} (for ${row.child_name})` : shortId(id)
     case 'messages':
@@ -233,6 +236,7 @@ export async function resolveNames(entries) {
     news_posts: (ids) => run(supabase.from('news_posts').select('id, title').in('id', ids)).then((r) => r.map((p) => [p.id, p.title])),
     gallery_photos: (ids) => run(supabase.from('gallery_photos').select('id, caption, image_url').in('id', ids)).then((r) => r.map((p) => [p.id, p.caption ?? p.image_url])),
     admissions_inquiries: (ids) => run(supabase.from('admissions_inquiries').select('id, parent_name, child_name').in('id', ids)).then((r) => r.map((i) => [i.id, `${i.parent_name} (for ${i.child_name})`])),
+    contact_messages: (ids) => run(supabase.from('contact_messages').select('id, name, subject').in('id', ids)).then((r) => r.map((m) => [m.id, m.subject ? `${m.name}: ${m.subject}` : m.name])),
     periods: (ids) => run(supabase.from('periods').select('id, name').in('id', ids)).then((r) => r.map((p) => [p.id, p.name])),
     assessment_components: (ids) => run(supabase.from('assessment_components').select('id, name, subjects(name)').in('id', ids)).then((r) => r.map((c) => [c.id, `${c.subjects.name} ${c.name}`])),
     fee_structures: (ids) => run(supabase.from('fee_structures').select('id, name, classes(name)').in('id', ids)).then((r) => r.map((f) => [f.id, `${f.classes.name} ${f.name}`])),

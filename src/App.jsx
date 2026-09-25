@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Route, Routes } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import { ROLES } from './lib/roles'
 import Login from './pages/Login'
@@ -40,6 +40,17 @@ import PaymentCallback from './pages/parent/PaymentCallback'
 import ParentMessages from './pages/parent/Messages'
 import ParentAnnouncements from './pages/parent/Announcements'
 import NotFound from './pages/NotFound'
+import PublicLayout from './components/PublicLayout'
+import PublicHome from './pages/public/Home'
+import PublicAbout from './pages/public/About'
+import PublicAcademics from './pages/public/Academics'
+import PublicAdmissions from './pages/public/Admissions'
+import PublicNewsFeed from './pages/public/News'
+import PublicNewsPost from './pages/public/NewsPost'
+import PublicGalleryPage from './pages/public/Gallery'
+import PublicContact from './pages/public/Contact'
+import PublicNotFound from './pages/public/PublicNotFound'
+import ContactMessages from './pages/admin/ContactMessages'
 import Profile from './pages/Profile'
 import Verify from './pages/Verify'
 import IdCards from './pages/admin/IdCards'
@@ -53,7 +64,19 @@ import AdmissionsInquiries from './pages/admin/AdmissionsInquiries'
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      {/* The public school website: no login needed. The portal for staff,
+          students and parents is at /login. */}
+      <Route element={<PublicLayout />}>
+        <Route path="/" element={<PublicHome />} />
+        <Route path="/about" element={<PublicAbout />} />
+        <Route path="/academics" element={<PublicAcademics />} />
+        <Route path="/admissions" element={<PublicAdmissions />} />
+        <Route path="/news" element={<PublicNewsFeed />} />
+        <Route path="/news/:id" element={<PublicNewsPost />} />
+        <Route path="/gallery" element={<PublicGalleryPage />} />
+        <Route path="/contact" element={<PublicContact />} />
+        <Route path="*" element={<PublicNotFound />} />
+      </Route>
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/set-password" element={<SetPassword />} />
@@ -85,6 +108,7 @@ export default function App() {
           <Route path="website-news" element={<PublicNews />} />
           <Route path="website-gallery" element={<PublicGallery />} />
           <Route path="admissions-inquiries" element={<AdmissionsInquiries />} />
+          <Route path="contact-messages" element={<ContactMessages />} />
           <Route path="audit-log" element={<AuditLog />} />
           <Route path="*" element={<NotFound />} />
         </Route>
@@ -122,7 +146,6 @@ export default function App() {
         </Route>
       </Route>
 
-      <Route path="*" element={<NotFound />} />
     </Routes>
   )
 }

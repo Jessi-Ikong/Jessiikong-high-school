@@ -27,6 +27,7 @@ const NAV_LINKS = [
   { to: '/admin/website-news', label: 'Website: News & Events' },
   { to: '/admin/website-gallery', label: 'Website: Gallery' },
   { to: '/admin/admissions-inquiries', label: 'Admissions Inquiries' },
+  { to: '/admin/contact-messages', label: 'Contact Messages' },
   { to: '/admin/audit-log', label: 'Audit Log' },
 ]
 

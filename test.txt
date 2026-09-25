@@ -3290,3 +3290,158 @@ Automated tests run: the live checks above.
 How to test manually: nothing further needed; to see the pages themselves, sign in as each admin and repeat 15:02 steps 1-3 in the browser.
 Known issues / follow-ups: none found.
 -------------------------------------------
+
+[2026-09-25 15:45] Task: The PUBLIC school website (Home, About, Academics, Admissions, News, Gallery, Contact), no login
+Files changed/added:
+  supabase/migrations/20260925000041_public_site_catalog_contact.sql (new)
+  NEW: src/components/PublicLayout.jsx, src/components/public/Crest.jsx, src/components/public/PublicBits.jsx, src/styles/public.css,
+       src/content/siteContent.js (ALL placeholder text, in one place),
+       src/pages/public/Home.jsx, About.jsx, Academics.jsx, Admissions.jsx, News.jsx, NewsPost.jsx, Gallery.jsx, Contact.jsx, PublicNotFound.jsx,
+       src/lib/publicSite.js, src/lib/publicSiteText.js, src/pages/admin/ContactMessages.jsx, vercel.json
+  CHANGED: src/App.jsx (routes), index.html (fonts, description), src/components/AdminLayout.jsx, src/lib/audit.js, src/pages/Login.jsx (link back to the website), src/index.css
+What was done:
+  - ROUTES: "/" is now the public HOME page (the old "/" -> /login redirect is gone). Public pages:
+      /, /about, /academics, /admissions, /news, /news/<id>, /gallery, /contact;
+      unknown addresses show a public "page not found".
+    /login and the portals (/admin, /teacher, /student, /parent) are unchanged; /verify/<token> (ID cards) too.
+    The header's "Portal login" button goes to /login; for someone already signed in it says "My portal" and goes to their dashboard.
+    The login page has "← Back to the school website".
+  - LOOK: a separate identity from the internal dashboards (all its CSS is scoped to the public site, so the dashboards are unchanged):
+      colours: deep "school green" (#0e4a37) and marigold gold (#e0a526), with a terracotta accent (#b4532a), on warm cream paper;
+      type: Fraunces (a characterful serif) for headings, Plus Jakarta Sans for text, loaded from Google Fonts;
+      a drawn school CREST (shield, rising sun, open book), a subtle diamond pattern (inspired by printed textiles) in the green banners, and a tri-colour stripe under page titles;
+      generous spacing, rounded cards;
+      a mobile menu under 1020 px wide; single column on phones;
+      keyboard focus outlines and a "Skip to content" link; reduced motion respected.
+    No frontend-design guidance was among the tools available in this session, so the design follows general principles (a distinctive, consistent palette and type pairing; clear hierarchy; whitespace).
+  - HOME:
+      hero with the school name, tagline, "Apply for admission" and "Discover" buttons;
+      the hero picture is a collage of up to 3 published GALLERY photos, or the crest until photos are published;
+      quick-facts band (4 numbers); 3 highlight cards;
+      the 3 latest published news posts (or "News will appear here soon");
+      a call-to-action band to the admissions form.
+  - ABOUT: intro, mission and vision cards, "Our story" (history paragraphs), 4 values, a principal's message.
+  - ACADEMICS: intro and approach from the text file, plus the CLASSES and SUBJECTS read live from the database (Admin > Classes & Sections, Admin > Subjects), so the page stays accurate. Classes are grouped as Junior Secondary (JSS...), Senior Secondary (SS...) or Other; subjects show name, code and description.
+  - ADMISSIONS: intro, 4 steps, requirements checklist, fees note, "prefer to talk?" contacts, and the INQUIRY FORM.
+      Fields: parent name, email, phone, child's name, class (dropdown of the REAL classes from the database, plus "Not sure yet"), message.
+      Submits to admissions_inquiries (insert only, never read back), so it lands in Admin > Admissions Inquiries.
+      A thank-you panel replaces the form.
+      Clear messages for errors, e.g. "We have already received several inquiries from this email address in the last hour."
+  - SPAM PROTECTION (both public forms):
+      a HONEYPOT field named "website": hidden from people (off-screen, not reachable with the keyboard, hidden from screen readers), so only bots fill it in;
+      a TIMING check: a form sent within 2.5 seconds of appearing is treated as a bot.
+    A suspected bot is shown the normal "thank you" but NOTHING is sent (so it learns nothing). This comes on top of the database's 3-per-email-per-hour limit.
+  - NEWS: a feed of all published posts, newest first. The newest is shown large; the others as cards with cover image (or a patterned placeholder), date, title and excerpt.
+      Each post has its OWN PAGE (/news/<id>): worth it, so families can share one story as a link (e.g. on WhatsApp). It shows the date, title, cover image and full text, with the browser tab title set to the post.
+      Drafts and future-dated posts aren't found. Bodies are shown as plain text (paragraphs from blank lines), never as HTML, so nothing typed into a post can inject code.
+  - GALLERY: published photos in the admins' order, in a masonry layout with captions.
+      Category filter buttons appear when there's more than one category.
+      Click a photo to see it large (← → to browse, Esc or × to close).
+  - CONTACT: address with a "Get directions" link, phone and WhatsApp, emails, office hours (all from the text file), and a MESSAGE FORM (name, email, phone, subject, message; same spam protection).
+      Messages go to a NEW admin page, "Contact Messages" (both admin tiers): newest first, New / Replied / Closed, internal notes, delete. The email link starts a reply with "Re: <subject>".
+  - WHY A SEPARATE contact_messages TABLE rather than reusing admissions_inquiries:
+      a general message has no child or class (both required for inquiries);
+      its handling (new / replied / closed) isn't the admissions pipeline (new / contacted / enrolled / declined);
+      mixing them would muddy the Admissions Inquiries list.
+    It follows the same rules as inquiries: anyone can send, only admins can read, 3 per email per hour, audit-logged.
+  - DATABASE (migration 041):
+      (1) signed-out visitors may now READ classes and subjects (names, levels, codes, descriptions), for the Academics page and the admissions dropdown. Nothing else opens up: sections, sessions, timetable, people etc. stay closed.
+      (2) the contact_messages table as above.
+  - HOSTING: vercel.json sends every address to the app, so links like /about or /news/<id> work when opened directly (needed if the site is hosted on Vercel, as the README expects; other hosts need their equivalent "SPA fallback").
+Automated tests run:
+  - NEW database suite "public_site_test": 27 checks, 27 passed.
+      Signed out:
+        reads classes (in level order) and subjects;
+        can NOT add, change or delete them;
+        sections, people and sessions stay closed.
+      Contact messages, signed out:
+        sends one;
+        can NOT read it back, change, delete, set a status or write internal notes;
+        bad email / empty message refused;
+        4th from one email in an hour refused.
+      A teacher sees none; the limited admin sees all (stored tidily), marks one replied with a note (audited); the super admin deletes spam (audited).
+  - New Node test (public site helpers): 13 checks, 13 passed.
+      HONEYPOT filled -> bot (even with spaces); only spaces -> not;
+      sent within 0.8 s -> bot; exactly 2.5 s -> allowed; a person over 30 s -> fine;
+      news paragraphs split on blank lines; excerpts cut at a word; date format.
+  - Browser check (local dev server against the live project, before migration 041 was applied; no forms were submitted):
+      the Home page (hero with crest and pattern, highlight cards, empty-news state, call-to-action band, footer) and the Admissions page render as designed.
+      Found and FIXED: the required "*" dropped onto its own line in the form labels.
+      Screenshots of lower parts of pages were unreliable in the automation tool, and the phone-width view couldn't be tested there (the window wouldn't resize), so a phone check is listed below.
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - FULL database suite: all 32 suites pass, 922 checks (895 before + 27 new), on a freshly built database with migrations 001-041. Node: 151 (138 + 13). 1,073 in total.
+How to test manually:
+  0. Apply first, then deploy the site:
+       npx supabase db push --dry-run    (expected: only 20260925000041_public_site_catalog_contact.sql)
+       npx supabase db push              (type Y)
+     Until 041 is applied, the Academics class/subject lists show "will be published soon" and the admissions dropdown only offers "Not sure yet".
+  1. BROWSE EVERY PUBLIC PAGE SIGNED OUT (use a private/incognito window):
+       a) Open the site's address "/". Expected: the public HOME page, not the login page.
+            If news is published (Admin > Website: News & Events), the 3 newest appear under "Latest from the school".
+            If gallery photos are published, up to 3 appear as the hero collage; otherwise the crest.
+       b) Menu > About: mission, vision, story, values, principal's message.
+       c) Academics: the class list matches Admin > Classes & Sections (e.g. JSS1 under Junior Secondary) and the subject list matches Admin > Subjects.
+          Add a subject in the admin, refresh: it appears.
+       d) Admissions: steps, checklist, and the form. The "Class" dropdown lists the real classes + "Not sure yet".
+       e) News: all published posts, newest first. Click one: its own page with the full text and cover image; the tab title is the post title.
+          An unpublished or future-dated post's address shows "Post not found".
+       f) Gallery: published photos in the admin's order.
+            With photos in two categories, filter buttons appear and work.
+            Click a photo: large view, ← → keys browse, Esc closes.
+       g) Contact: address, phones, emails, hours, and the message form.
+       h) A made-up address like /hello: the public "We couldn't find that page".
+       i) PHONE: open the site on a phone (or narrow the browser window). The menu collapses behind the ☰ button and pages stack into one column.
+  2. ADMISSIONS INQUIRY FOR REAL:
+       a) Signed out, Admissions: fill in the form, e.g.
+            Parent: "Test Parent"; Email: jessiikong11+site-test@gmail.com; Phone: 0803...; Child: "Test Child"; Class: JSS1; a message.
+          Wait a few seconds, then "Send inquiry". Expected: "Inquiry received" with the thank-you text.
+       b) Sign in as an admin > Admissions Inquiries: "Test Parent" at the top, New, bold. "View" shows every field as typed (email lower-cased).
+       c) Repeat for the Contact form: it lands in Admin > Contact Messages.
+       d) Delete the test inquiry / message afterwards.
+  3. THE HONEYPOT BLOCKS A SIMULATED BOT:
+       a) On Admissions (signed out), open the browser's developer tools (F12) > Console and run:
+            const i = document.querySelector('input[name=website]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'http://spam.example'); i.dispatchEvent(new Event('input', { bubbles: true }))
+          (this fills the hidden field the way a bot would; the roundabout setter is needed so the page notices the change).
+       b) Fill in the visible fields with a DIFFERENT test email (e.g. jessiikong11+bot-test@gmail.com) and send. Expected: the same "Inquiry received" message.
+       c) Admin > Admissions Inquiries: there is NO inquiry from jessiikong11+bot-test@gmail.com. Nothing was sent (in F12 > Network, no request to admissions_inquiries was made).
+       d) Timing check: reload the page, fill the form with an auto-filler / paste everything and send within 2 seconds of the page appearing -> also shown "received" but not stored. (Hard to do by hand; covered by the automated test.)
+  4. "/" AND LOGIN:
+       a) "/" shows the public home page (1a).
+       b) "Portal login" (top right) -> the existing sign-in page. Sign in as a teacher, student or parent -> their dashboard as before.
+       c) While signed in, open "/" again: the button says "My portal" and goes back to the dashboard.
+       d) On the login page, "← Back to the school website" returns to "/".
+       e) Signing out still lands on the login page; old bookmarks to /login keep working.
+Known issues / follow-ups:
+  PLACEHOLDER CONTENT (made up; replace before going public). All of it is in ONE file: src/content/siteContent.js, marked "PLACEHOLDER":
+    motto and tagline; founding year (2010);
+    contact details: address, phone, WhatsApp, both emails, office hours, map link;
+    home: hero text, the 4 quick facts (15+ years, 1:20 ratio, 98% WAEC credit pass rate, 12 clubs: NOT real numbers), 3 highlights;
+    about: intro, mission, vision, history, values, principal's name and message;
+    academics: intro and approach;
+    admissions: intro, steps, requirements, fees note, thank-you text.
+  ASSUMPTIONS:
+  1. Individual news pages are included (shareable links); the feed shows excerpts.
+  2. Classes are grouped by name (JSS... = Junior Secondary, SS... = Senior Secondary, anything else = Other classes).
+  3. The spam guard is a honeypot + a 2.5-second timing check, on the website only, plus the database's per-email limit. Someone calling the API directly bypasses the website's checks (as with any honeypot); that is what the per-email limit is for. A CAPTCHA can be added later if spam appears.
+  4. Fonts come from Google Fonts (a third-party request). If preferred, they can be self-hosted later.
+  5. The hero shows the first 3 published gallery photos in the admin's order.
+  6. vercel.json assumes Vercel hosting (as the README expects).
+  7. The admissions dropdown saves the class NAME (e.g. "JSS1") as desired_class, as before.
+  Nothing has been committed to git yet. Migration 041 is NOT applied yet.
+-------------------------------------------
+
+[2026-09-25 16:05] Task: Applied migration 041 (public catalogue + contact messages) to the live database
+Files changed/added: test.txt only (live database: migration 041)
+What was done:
+  - "npx supabase db push --dry-run" listed only 20260925000041_public_site_catalog_contact.sql; then "npx supabase db push" applied it.
+  - No Edge Function changed, so there was nothing to deploy.
+Automated tests run (LIVE, read-only, signed out with the public anon key; nothing submitted):
+  - "npx supabase migration list": local and remote match, 001-041.
+  - classes -> [JSS1] and subjects -> [English Language (ENG), English Literature (EGL), Mathematics (MTH)]: the Academics page and the admissions dropdown now show the school's real lists.
+  - contact_messages -> HTTP 401 "permission denied" (can't be read back).
+  - sections, users, enrollments -> [] (still closed to the public).
+How to test manually:
+  - Follow "How to test manually" steps 1-4 of the 15:45 entry (step 0 is now done), once the site is deployed with the new code.
+Known issues / follow-ups:
+  None.
+-------------------------------------------

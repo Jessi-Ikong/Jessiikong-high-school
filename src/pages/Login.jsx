@@ -75,6 +75,9 @@ export default function Login() {
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
         <Link to="/forgot-password">Forgot password?</Link>
+        <Link to="/" className="auth-back">
+          ← Back to the school website
+        </Link>
       </form>
     </main>
   )

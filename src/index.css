@@ -2005,3 +2005,8 @@ select {
     aspect-ratio: 16 / 9;
   }
 }
+
+.auth-back {
+  margin-top: 0.25rem;
+  font-size: 0.9rem;
+}
