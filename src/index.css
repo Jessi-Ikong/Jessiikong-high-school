@@ -1883,3 +1883,21 @@ select {
 .data-table td .badge-warning {
   margin-left: 0.4rem;
 }
+
+/* ---------- Admin corrections ---------- */
+.roster li.is-changed {
+  background: #e8f1fb;
+}
+
+.roster-marked-by {
+  display: block;
+  font-weight: 400;
+}
+
+.roster-name .badge {
+  margin-left: 0.4rem;
+}
+
+.correction-slot {
+  min-width: min(100%, 420px);
+}

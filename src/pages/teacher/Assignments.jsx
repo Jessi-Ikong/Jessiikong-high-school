@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabaseClient'
 import { friendlyDbError, run, runWrite } from '../../lib/db'
-import { fullName, byName } from '../../lib/people'
+import { byName } from '../../lib/people'
 import {
   FILE_ACCEPT,
   FILE_RULES,
@@ -21,7 +21,8 @@ import { formatDate } from '../../lib/format'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useAuth } from '../../hooks/useAuth'
 import DeleteAction from '../../components/DeleteAction'
-import { FileLink, SubmissionBadges } from '../../components/SubmissionBadges'
+import { FileLink } from '../../components/SubmissionBadges'
+import { SubmissionsTable } from '../../components/AssignmentGrading'
 
 // This class's assignments (newest first), the students who TAKE the subject
 // in that section (same roster as attendance and the gradebook), their
@@ -428,145 +429,5 @@ function CreateAssignmentForm({ cls, term, teacherId, onCreated }) {
         </button>
       </div>
     </form>
-  )
-}
-
-function SubmissionsTable({ assignment, students, submissions, urls, locked, onGraded }) {
-  if (students.length === 0) {
-    return <p className="empty-state">No students in this section take this subject this session.</p>
-  }
-  const byStudent = Object.fromEntries(submissions.map((s) => [s.student_id, s]))
-  const offline = !assignment.requires_submission
-  return (
-    <div className="table-wrap">
-      <table className="data-table submissions-table">
-        <thead>
-          <tr>
-            <th>Student</th>
-            <th>Status</th>
-            {!offline && <th>Handed in</th>}
-            {!offline && <th>Work</th>}
-            <th>Mark and feedback</th>
-          </tr>
-        </thead>
-        <tbody>
-          {students.map((student) => {
-            const sub = byStudent[student.studentId]
-            const status = submissionStatus(assignment, sub)
-            return (
-              <tr key={student.studentId}>
-                <td>
-                  {fullName(student)} <span className="muted small">{student.admissionNumber}</span>
-                </td>
-                <td>
-                  <SubmissionBadges status={status} />
-                </td>
-                {!offline && (
-                  <td className="small">{sub ? formatDateTime(sub.submitted_at) : <span className="muted">—</span>}</td>
-                )}
-                {!offline && (
-                  <td>
-                    {sub ? (
-                      <>
-                        {sub.content && <div className="submission-text">{sub.content}</div>}
-                        <FileLink path={sub.attachment_url} urls={urls} />
-                      </>
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
-                  </td>
-                )}
-                <td>
-                  {(sub || offline) && locked ? (
-                    <LockedGrade assignment={assignment} submission={sub} />
-                  ) : sub || offline ? (
-                    // Offline work: graded directly, no submission needed first.
-                    <GradeForm
-                      key={`${student.studentId}:${sub?.graded_at ?? ''}`}
-                      assignment={assignment}
-                      studentId={student.studentId}
-                      submission={sub}
-                      onGraded={onGraded}
-                    />
-                  ) : (
-                    <span className="muted small">Nothing to grade yet</span>
-                  )}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function GradeForm({ assignment, studentId, submission, onGraded }) {
-  const [score, setScore] = useState(formatMark(submission?.score))
-  const [feedback, setFeedback] = useState(submission?.feedback ?? '')
-  const [error, setError] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const max = Number(assignment.max_score)
-  const isGraded = Boolean(submission?.graded_at)
-
-  async function handleSubmit(event) {
-    event.preventDefault()
-    setError(null)
-    const n = Number(score)
-    if (score.trim() === '' || Number.isNaN(n)) return setError('Enter a mark.')
-    if (n < 0 || (max && n > max)) return setError(`The mark must be between 0 and ${max}.`)
-    setSaving(true)
-    try {
-      const grade = { score: n, feedback: feedback.trim() || null }
-      if (submission) {
-        await runWrite(supabase.from('submissions').update(grade).eq('id', submission.id).select('id'))
-      } else {
-        // Offline work: the graded record is created here (no text or file).
-        await run(supabase.from('submissions').insert({ assignment_id: assignment.id, student_id: studentId, ...grade }))
-      }
-      onGraded()
-    } catch (err) {
-      setError(friendlyDbError(err))
-      setSaving(false)
-    }
-  }
-
-  return (
-    <form className="grade-form" onSubmit={handleSubmit}>
-      <label className="inline-field">
-        Mark
-        <input
-          className="score-input"
-          type="number"
-          min="0"
-          max={max || undefined}
-          step="any"
-          value={score}
-          onChange={(e) => setScore(e.target.value)}
-          aria-label="Mark"
-        />
-        <span className="muted small">/ {formatMark(assignment.max_score)}</span>
-      </label>
-      <textarea rows={2} placeholder="Feedback (optional)" value={feedback} onChange={(e) => setFeedback(e.target.value)} aria-label="Feedback" />
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
-      <button type="submit" disabled={saving}>
-        {saving ? 'Saving…' : isGraded ? 'Update grade' : 'Save grade'}
-      </button>
-      {isGraded && <span className="muted small">Graded {formatDateTime(submission.graded_at)}</span>}
-    </form>
-  )
-}
-
-// Read-only grade once the term is locked (only an admin can change it).
-function LockedGrade({ assignment, submission }) {
-  if (!submission?.graded_at) return <span className="muted small">🔒 Not graded (term locked)</span>
-  return (
-    <div>
-      <strong>
-        {formatMark(submission.score)} / {formatMark(assignment.max_score)}
-      </strong>
-      {submission.feedback && <div className="submission-text">{submission.feedback}</div>}
-      <span className="muted small">🔒 Graded {formatDateTime(submission.graded_at)}</span>
-    </div>
   )
 }

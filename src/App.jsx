@@ -43,6 +43,9 @@ import NotFound from './pages/NotFound'
 import Profile from './pages/Profile'
 import Verify from './pages/Verify'
 import IdCards from './pages/admin/IdCards'
+import CorrectAttendance from './pages/admin/CorrectAttendance'
+import CorrectScores from './pages/admin/CorrectScores'
+import CorrectAssignmentGrades from './pages/admin/CorrectAssignmentGrades'
 
 export default function App() {
   return (
@@ -73,6 +76,9 @@ export default function App() {
           <Route path="stuck-payments" element={<StuckPayments />} />
           <Route path="announcements" element={<AdminAnnouncements />} />
           <Route path="id-cards" element={<IdCards />} />
+          <Route path="correct-attendance" element={<CorrectAttendance />} />
+          <Route path="correct-scores" element={<CorrectScores />} />
+          <Route path="correct-grades" element={<CorrectAssignmentGrades />} />
           <Route path="audit-log" element={<AuditLog />} />
           <Route path="*" element={<NotFound />} />
         </Route>

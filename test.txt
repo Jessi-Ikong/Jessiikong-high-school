@@ -2975,3 +2975,127 @@ How to test manually:
 Known issues / follow-ups:
   None.
 -------------------------------------------
+
+[2026-09-25 14:12] Task: Admin correction screens for attendance, scores and assignment grades (instead of the Table / SQL Editor)
+Files changed/added:
+  supabase/migrations/20260925000039_admin_corrections.sql (new)
+  NEW pages: src/pages/admin/CorrectAttendance.jsx, src/pages/admin/CorrectScores.jsx, src/pages/admin/CorrectAssignmentGrades.jsx
+  NEW shared parts: src/components/AttendanceRoster.jsx, src/components/ScoreGradebook.jsx, src/components/AssignmentGrading.jsx, src/components/CorrectionConfirm.jsx, src/components/TermClassSectionPicker.jsx
+  NEW helpers: src/lib/attendance.js, src/lib/corrections.js
+  CHANGED: src/pages/teacher/MarkAttendance.jsx, src/pages/teacher/Gradebook.jsx, src/pages/teacher/Assignments.jsx (their roster / grid / grading parts moved into the shared components), src/App.jsx, src/components/AdminLayout.jsx, src/index.css
+What was done:
+  - REUSE, NOT REBUILD: the teacher's attendance roster, gradebook grid and assignment grading table were moved, unchanged in behaviour, into shared components. The teacher pages and the new admin pages use the same ones; the admin versions add an "admin" mode. Everything saves through the SAME tables, upserts and updates, with the admin's own sign-in: no service role, no bypass. So the database rules, the admin exemptions (7-day window, term lock) and the audit triggers work exactly as before.
+  - SIDEBAR (both admin tiers): "Correct Attendance", "Correct Scores", "Correct Grades".
+  - CORRECT ATTENDANCE: pick Term (any, incl. past sessions) > Class > Section > Class (subject, day, period, teacher) > Date. The date list has EVERY date that class met in the term up to today; 🔒 marks dates older than 7 days.
+      The roster shows each student's current mark and who marked it ("Marked by Musa Math"; after an edit, "was absent").
+      Only CHANGED marks are saved. Why: the database stamps marked_by with whoever saves, so re-saving an unchanged row would be logged as a "correction" of a mark nobody changed (proved in the tests). The teacher page now also saves only new or changed marks, for the same reason (same result for teachers, less noise).
+      Admins may correct single students; teachers still have to mark everyone.
+  - CORRECT SCORES: Term > Class > Section > Subject (those taken in that section) > the gradebook grid. Locked terms stay editable for admins. An admin can also CLEAR a saved score: empty the box and save (the database already let admins delete scores; teachers are told "ask an admin").
+  - CORRECT GRADES: Term > Class / Section ("All" allowed) lists every assignment (any teacher): subject, class, teacher, due date, maximum, "Offline work" tag, number of submissions/grades.
+      "View and grade submissions" (hand-in work) / "Grade students" (offline work) opens the teacher's grading table.
+      Offline work is graded straight from the roster; locked terms stay editable for admins.
+  - ROSTERS ON THE ADMIN SCREENS include students whose enrollment is no longer "active" (promoted, graduated, withdrawn...), tagged, so past sessions can be corrected. The teacher screens still list active students only.
+  - CONFIRMATION (speed bump, no new permission): saving a correction to a LOCKED record asks "Confirm this correction? This is outside the normal edit window." with what's changing (e.g. "Ada A's mark: 6 → 9", "change 2 marks"). Within the normal window, admins save without the extra step, like teachers.
+      Locked = attendance date more than 7 days ago; scores / assignment grades in a term more than 7 days past its end date. Same rules as the database.
+  - MIGRATION 039: one gap closed. An admin's ASSIGNMENT GRADE skipped ALL the grading checks, not just the term lock (scores and attendance already validated admins fully). Now an admin's grade follows the teacher's data rules:
+      the mark can't be above the assignment's maximum;
+      an offline grade can only be created for a student who takes the subject in that section (any enrollment status), with no text or file.
+    The admin exemption from the term lock is unchanged, and the admin is still recorded as the grader.
+  - AUDIT (unchanged, confirmed in tests):
+      ATTENDANCE corrections are logged ONCE as "correct_attendance" with old -> new status, the ORIGINAL marker's ID and name (migration 16), and the admin as the user. A missing mark added by an admin is logged as insert_attendance_records.
+      SCORES: update_scores (old -> new score, old entered_by kept in the entry) / insert_scores / delete_scores.
+      GRADES: update_submissions (old -> new mark, old graded_by kept) / insert_submissions.
+Automated tests run:
+  - NEW database suite "corrections_test": 36 checks, 36 passed. Setup: a teacher (Musa), a LOCKED term (last session's Third Term, ended 24 Jul) and marks older than 7 days in this term. Covers:
+      ATTENDANCE:
+        the teacher's correction of 7 Sep is refused;
+        the LIMITED admin's upsert of only the changed row works: marked_by = admin; correct_attendance absent -> present with original marker "Musa Math" (name and ID), by the admin, logged exactly once;
+        the unchanged student keeps Musa and gets no entry, and re-saving an unchanged row WOULD have logged a fake present -> present correction (why only changes are saved);
+        the SUPER admin corrects last session (a promoted student), also logged with the original marker;
+        adding a missing mark on an old date is logged as insert_attendance_records;
+        admins still can't use a wrong weekday or a student who doesn't take the subject.
+      SCORES (locked term):
+        the teacher is refused;
+        the LIMITED admin changes 12 -> 20, logged as update_scores 12 -> 20 with Musa as the old entered_by;
+        above the maximum refused;
+        the SUPER admin adds a missing score and clears it (delete_scores logged);
+        teachers can't clear.
+      GRADES (locked term):
+        the teacher is refused;
+        the LIMITED admin changes 6 -> 9: the admin becomes the grader, logged as update_submissions 6 -> 9 with Musa as the old grader;
+        NEW: above the maximum refused;
+        OFFLINE: the limited admin grades a promoted student 17/20 (insert_submissions logged, admin = grader); the super admin corrects 17 -> 18;
+        NEW: refused for a student who doesn't take the subject there, and above the maximum.
+  - New Node test (edit-window helper after the move): 4 checks, 4 passed.
+  - Earlier suites (including the teachers' attendance, gradebook, assignment, offline, lock and correction suites) all unchanged and passing.
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - FULL database suite: all 30 suites pass, 834 checks (798 before + 36 new), on a freshly built database with migrations 001-039. Node: 125 (121 + 4). 959 in total.
+How to test manually:
+  0. Apply first:
+       npx supabase db push --dry-run    (expected: only 20260925000039_admin_corrections.sql)
+       npx supabase db push              (type Y)
+     Then deploy the site. Do each step as the SUPER admin (jessiikong11@gmail.com), then repeat one save as the LIMITED admin (jessiikong16+admin@gmail.com): both tiers see all three sidebar links and can save.
+     NOTE ON LIVE DATA: the current term (First Term 2026/2027) began 16 Sep 2026, so lessons on 16-17 Sep are already older than 7 days: step 1 works today. But no term is LOCKED yet for scores/grades (that needs a term that ended more than 7 days ago; First Term locks on 26 Dec 2026).
+     To see the locked flow in steps 2-3 before then:
+       FIRST, while the term is still open, prepare the data:
+         a teacher enters a score;
+         the teacher creates one hand-in assignment and one OFFLINE assignment;
+         the student hands the hand-in one in;
+         the teacher grades it.
+       THEN temporarily lock the term: Admin > Terms > First Term > end date = 17 Sep 2026. Test steps 2-3.
+       Then set the end date back to 18 Dec 2026 the SAME DAY.
+     CAUTION: invoices whose fee item has no due date of its own follow the term's end date, so while the date is changed they look past due. Set it back well before 01:00 Nigerian time (the nightly overdue job runs at 00:00 UTC). Nothing else depends on the end date for this test.
+     Or simply test steps 2-3 once the term really locks.
+  1. ATTENDANCE OUTSIDE THE 7-DAY WINDOW:
+       a) As a teacher (e.g. jessiikong11+jhs-teacher@gmail.com), mark a lesson from 16/17 Sep if the timetable has one (or any date, then wait 8 days). Note who marked it.
+       b) Admin > Correct Attendance: Term = First Term 2026/2027, Class JSS1, Section A, pick that class, Date = the old date (shows 🔒). Expected:
+            the roster shows each mark with "Marked by <teacher>";
+            change one student (e.g. Absent -> Present) -> the row shows "was absent" -> "Save corrections (1)";
+            the dialog says "This is outside the normal edit window..." -> Save correction -> "Saved 1 mark ... (1 corrected)".
+       c) The teacher can no longer change that date (their page says only an admin can).
+       d) AUDIT: Admin > Audit Log shows "Corrected attendance record": Status absent → present, "Originally marked by <teacher>", by you. Only ONE entry, and none for the students you didn't change.
+          SQL check:
+            select action, user_id, changes from audit_log where action = 'correct_attendance' order by id desc limit 3;
+          -> original_marked_by / original_marked_by_name = the teacher.
+       e) A date within the last 7 days saves WITHOUT the confirmation.
+  2. SCORE IN A LOCKED TERM (First Term, temporarily locked as above):
+       Admin > Correct Scores: Term = First Term, 2026/2027, JSS1 A, the subject with the score.
+       a) The notice says the term is locked for teachers.
+       b) Change a score -> Save corrections -> the confirmation -> saved.
+       c) Empty a saved score -> Save -> "cleared 1".
+       d) A score above the maximum is refused ("above 30").
+       e) AUDIT: "Updated score" (Score old → new, by you); "Deleted score" for the cleared one.
+       f) As the teacher, Gradebook for that term: locked, read-only (unchanged).
+  3. ASSIGNMENT GRADES IN A LOCKED TERM (First Term, temporarily locked as above; the assignments were prepared while it was open):
+       a) Admin > Correct Grades: Term = First Term, 2026/2027. Every assignment is listed with teacher, class and counts, and a notice that the term is locked for teachers.
+       b) HAND-IN assignment: "View and grade submissions" -> change a mark -> Update grade -> the confirmation ("<student>'s mark: 6 → 9") -> saved; "Graded <time>" updates.
+       c) OFFLINE assignment: "Grade students" -> enter a mark for a student with none -> Save grade -> confirm -> saved. Correct it again -> confirm -> saved.
+       d) A mark above the maximum -> "The mark must be between 0 and <max>".
+       e) AUDIT: "Updated submission" (Score old → new, Graded by <teacher> → you) and "Created submission" for the offline grade.
+       f) The teacher sees the new marks on their Assignments page (read-only in the locked term).
+  4. BOTH TIERS: repeat one save on each screen as the limited admin. Same result; the audit entries show the limited admin.
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. "Locked" for the confirmation = the same rules as the database (attendance older than 7 days; scores/grades more than 7 days after the term's end). Inside the window, admins save without the extra step.
+  2. Only changed attendance marks are saved (teacher page too), so unchanged students keep their original marker and aren't logged.
+  3. Admin screens list every enrollment status (promoted, graduated, withdrawn...), so past sessions and leavers can be corrected. The teacher screens are unchanged (active only).
+  4. Admins can correct individual students' attendance without marking the whole class, and can clear a saved score. They can't delete a submission or clear an assignment grade from these screens (not requested; the database allows admins to delete submissions).
+  5. The admin is recorded as the new marker / enterer / grader (as the database already did for admin edits); the original person stays in the audit entry (original_marked_by for attendance; the old entered_by / graded_by in the change log for scores and grades).
+  6. Migration 039 only adds data checks to admin assignment grades (maximum; offline roster; no text/file on an offline grade). No permission changes.
+  Nothing has been committed to git yet. Migration 039 is NOT applied yet (the screens work without it; it only tightens admin grade validation).
+-------------------------------------------
+
+[2026-09-25 14:30] Task: Applied migration 039 (admin correction screens) to the live database
+Files changed/added: test.txt only (live database: migration 039)
+What was done:
+  - "npx supabase db push --dry-run" listed only 20260925000039_admin_corrections.sql; then "npx supabase db push" applied it.
+  - No Edge Function changed, so there was nothing to deploy.
+Automated tests run (LIVE, read-only):
+  - "npx supabase migration list": local and remote match, 001-039.
+  - Live check: protect_submission_columns is the migration-39 version (admin maximum-mark check and offline class-list check present), and the submissions_protect_columns trigger is still attached.
+    (A first check query reported false only because its search text used a single apostrophe, while the stored function body doubles it; re-checked with apostrophe-free markers: true.)
+How to test manually:
+  - Follow "How to test manually" steps 1-4 of the 14:12 entry (step 0 is now done). The screens need the site deployed with the new code.
+Known issues / follow-ups:
+  None.
+-------------------------------------------
