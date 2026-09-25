@@ -1,19 +1,19 @@
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
-import { run } from '../lib/db'
-import { photoUrl } from '../lib/avatars'
 import { useAsyncData } from '../hooks/useAsyncData'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ROLE_LABELS = { teacher: 'Staff (teacher)', student: 'Student' }
 
 // Public ID card verification (no login): /verify/<token from the QR code>.
-// The database function returns ONLY display-safe fields, and only for an
-// active card of an active person; otherwise nothing.
+// The verify-card Edge Function returns ONLY display-safe fields, and only for
+// an active card of an active person, with a 2-minute signed link to THAT
+// card's photo (the avatars bucket is private). Otherwise: not valid.
 async function verify(token) {
   if (!UUID_RE.test(token ?? '')) return null
-  const rows = await run(supabase.rpc('verify_id_card', { p_token: token }))
-  return rows[0] ?? null
+  const { data, error } = await supabase.functions.invoke('verify-card', { body: { token } })
+  if (error) throw error
+  return data?.valid ? data.card : null
 }
 
 export default function Verify() {
@@ -38,7 +38,7 @@ export default function Verify() {
             </p>
             <div className="verify-person">
               {card.photo_url ? (
-                <img className="verify-photo" src={photoUrl(card.photo_url)} alt={`Photo of ${card.full_name}`} />
+                <img className="verify-photo" src={card.photo_url} alt={`Photo of ${card.full_name}`} />
               ) : (
                 <div className="verify-photo verify-photo-empty" aria-hidden="true">
                   No photo

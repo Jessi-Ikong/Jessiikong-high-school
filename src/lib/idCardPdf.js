@@ -76,7 +76,8 @@ async function drawCard(doc, card, { photoSrc, baseUrl }) {
   const py = 14
   const pw = 21
   const ph = 26
-  const photo = await loadPhoto(photoSrc(card.photo_path), pw, ph)
+  // The link is created right now, just before loading (signed links expire).
+  const photo = await loadPhoto(await photoSrc(card.photo_path), pw, ph)
   if (photo) {
     doc.addImage(photo, 'JPEG', px, py, pw, ph)
   } else {
@@ -89,6 +90,18 @@ async function drawCard(doc, card, { photoSrc, baseUrl }) {
   }
   doc.setDrawColor(203, 210, 217)
   doc.rect(px, py, pw, ph)
+
+  // Students only: gender and date of birth, in the space under the photo.
+  // (Printed on the physical card only - never on the public verify page.)
+  if (isStudent) {
+    const facts = []
+    if (card.gender) facts.push(`Gender: ${card.gender[0].toUpperCase()}${card.gender.slice(1)}`)
+    if (card.date_of_birth) facts.push(`DOB: ${formatDate(card.date_of_birth)}`)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(5.8)
+    doc.setTextColor(31, 41, 51)
+    facts.forEach((line, i) => doc.text(line, px, py + ph + 3.4 + i * 2.8))
+  }
 
   // Details
   const tx = 28
@@ -143,7 +156,8 @@ async function drawCard(doc, card, { photoSrc, baseUrl }) {
   doc.setLineWidth(0.2)
 }
 
-// cards: rows from id_card_details(). photoSrc(path) -> image URL or null.
+// cards: rows from id_card_details(). photoSrc(path) -> image URL or null
+// (may be async; it's called for each card just before that card is drawn).
 export async function buildCardsPdf(cards, { photoSrc = () => null, baseUrl }) {
   if (cards.length === 0) throw new Error('There are no ID cards to download.')
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [CARD_H, CARD_W] })

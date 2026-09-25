@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient'
 import { run } from './db'
-import { photoUrl } from './avatars'
+import { freshSignedPhotoUrl } from './avatars'
 import { buildCardsPdf } from './idCardPdf'
 
 // Issuing / fetching ID cards (database) + downloading them as a PDF.
@@ -29,6 +29,8 @@ export async function issueCards(userIds) {
 // otherwise at the address this app is running on.
 export async function downloadCardsPdf(cards, fileName) {
   const baseUrl = import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin
-  const doc = await buildCardsPdf(cards, { photoSrc: photoUrl, baseUrl })
+  // Each photo gets a 60-second signed link created just before its card is
+  // drawn (so even a long class run never uses an expired link).
+  const doc = await buildCardsPdf(cards, { photoSrc: (path) => freshSignedPhotoUrl(path, 60), baseUrl })
   doc.save(fileName)
 }

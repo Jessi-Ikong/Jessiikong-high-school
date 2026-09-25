@@ -2561,3 +2561,119 @@ How to test manually:
 Known issues / follow-ups:
   None new.
 -------------------------------------------
+
+[2026-09-25 02:15] Task: Avatars bucket made PRIVATE; photos shown via short-lived signed links (minors' images)
+Files changed/added: supabase/migrations/20260925000035_private_avatars.sql (new), supabase/functions/verify-card/index.ts (new), supabase/functions/_shared/verifyCard.ts (new), supabase/config.toml, src/lib/avatars.js, src/components/PhotoUpload.jsx, src/lib/idCardPdf.js, src/lib/idCards.js, src/pages/Verify.jsx
+What was done:
+  - MIGRATION 035: the "avatars" bucket is now PRIVATE. A photo can't be opened by its plain address at all, guessed or not. Upload / replace / delete rules are unchanged (yourself, or an admin allowed to manage that person).
+    READ (= being able to create a signed link) uses the existing "avatars: see own / manageable files" rule from migration 034: your OWN photo, or, as an admin, photos of people you manage (limited admins: not admin accounts). Parents and teachers can't read other people's photo files. No page shows them one, so nothing changes for them.
+    verify_id_card() is no longer callable by visitors or signed-in users directly, only by the server (the new Edge Function below).
+  - PUBLIC VERIFICATION (/verify/<token>): the page has no login, so it can't sign links itself. It now calls a new PUBLIC Edge Function, "verify-card" (verify_jwt = false, like the Paystack webhook), which:
+      - accepts ONLY { token } (the random code from the QR). Anything that isn't a card token (a card number, a photo path, an object, nothing) is answered "not valid" without even asking the database;
+      - looks the card up (verify_id_card: a row only for an ACTIVE card of an ACTIVE person);
+      - only if the card is valid, signs THAT card's photo (the path comes from the database row, never from the request) for 2 minutes;
+      - returns name, role, class, section, department, session, card number and the SIGNED photo link. Never the storage path.
+    So it can't be used to fetch any photo except the one belonging to the valid card being checked.
+  - IN THE APP (admin Students/Staff photo column, My Profile, anywhere the photo/initials component is used): photos load through signed links created for 5 minutes, requested in ONE batch per page (not one request per photo) and reused while they still have more than a minute left. Initials show until the link arrives, or if a photo can't be signed. Replacing a photo drops the old link.
+  - ID CARD PDF (single and bulk): each photo gets its own 60-second signed link created right before THAT card is drawn (not all up front), so even a long class run never uses an expired link.
+  - EXPIRY TIMES (chosen):
+      App display: 5 minutes. Enough to load and look at the page; an image already on screen stays visible after the link expires, and a refresh gets a fresh one. Short enough that a copied link is useless soon after.
+      ID card PDF: 60 seconds per photo, created immediately before the image is loaded into the card. The PDF embeds the image itself, so the link isn't needed afterwards.
+      Public verification: 2 minutes. The page loads the photo straight away; a re-scan gets a new link.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - Database test (the ID card suite, updated for private photos; local copy, all 35 migrations): 43 checks, 43 passed. New checks: the bucket is PRIVATE; Ada can read (= sign) ONLY her own photo file, not Ben's, the teacher's or anyone else's; a parent can't read their child's photo file; a teacher can't read students' photo files; a limited admin can read students' and teachers' photos (admin lists, bulk cards) but not the super admin's; visitors AND signed-in users can't call verify_id_card directly; the server (as the Edge Function) still gets exactly the display fields, and nothing for unknown/revoked/deactivated. All previous checks (uploads, own-folder rule, issuing, reuse, bulk, revoke/re-issue, details, audit) still pass.
+      WITHOUT migration 035: the 3 new privacy checks FAIL (bucket still public, verify_id_card callable by visitors and by signed-in users).
+  - New Node test of the verify-card logic (fake server client) + the PDF: 13 checks, 13 passed.
+      A valid card signs EXACTLY ONE photo, its own, in avatars, for 120 s. The response contains the signed link and never the raw path, and only the listed fields. A revoked/unknown card is not valid and NOTHING is signed. Sending a card number, a photo path, an empty value, an object or nothing: not valid, the database isn't even asked, nothing is signed. A valid card without a photo gets no link. PDF: 3 cards give 3 pages with async links, and links are requested one card at a time, in order, just before each card is drawn.
+  - Earlier Node suites unchanged: 21 (card drawing), 24, 9, 18.
+  - One older test updated on purpose: the original RLS test had a visitor calling verify_id_card directly, which is now refused (that's the point). It now checks that refusal and runs the display check as the server (64/64).
+  - FULL database suite: 64, 33, 28, 17, 20, 25, 18, 15, 21, 24, 18, 29, 13, 11, 47, 28, 31, 29, 35, 16, 24, 11, 26, 23, 19, 26, 43 = 694 checks, all passing. Node: 85. 779 in total.
+  - NOT done yet: applying 035 and deploying verify-card.
+How to test manually:
+  1. DEPLOY THE FUNCTION FIRST, THEN APPLY (so the verification page never breaks in between):
+       npx supabase functions deploy verify-card --no-verify-jwt --use-api
+       npx supabase db push --dry-run    (expected: only 20260925000035_private_avatars.sql)
+       npx supabase db push              (type Y)
+     Supabase > Storage > avatars now shows the bucket as private (no "Public" badge).
+  2. THE BUCKET IS GENUINELY PRIVATE: set a photo first (as admin or on My Profile), then find its path in the SQL Editor:
+       select email, photo_url from public.users where photo_url is not null;
+     Open, in any browser (signed in or not):
+       https://drrapyknckdzsdhqcxka.supabase.co/storage/v1/object/public/avatars/<photo_url>
+     Expected: an error message (e.g. "Bucket not found" / not authorized), NOT the image. Before migration 035 this address showed the photo.
+     A signed link copied from the app (right-click the photo > Copy image address) stops working after 5 minutes: "Token expired" or similar.
+  3. EVERY PHOTO DISPLAY STILL WORKS:
+       Admin > Students and Admin > Staff: photos in the Photo column (briefly initials, then the photo).
+       My Profile (student / teacher / parent): your photo. Change it: the new one appears.
+       ID card PDF (My Profile > Download my ID card, and Admin > ID Cards > Issue & download PDF for a class): the photo is on the card. (If a card shows initials although the person has a photo, tell me: that would mean the link failed.)
+       Verification page: scan the QR / open the link: "✅ Valid ID card" with the photo.
+  4. THE VERIFICATION PAGE CAN'T LEAK OTHER PHOTOS:
+       It only accepts the card token. Try sending anything else to the function:
+         curl -s -X POST https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/verify-card -H "Content-Type: application/json" -d "{\"token\":\"<photo_url path of someone>\"}"
+         curl -s -X POST https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/verify-card -H "Content-Type: application/json" -d "{\"path\":\"<photo_url path>\"}"
+         curl -s -X POST https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/verify-card -H "Content-Type: application/json" -d "{\"token\":\"JHS-000004\"}"
+       Expected for all three: {"valid":false}, with no link.
+       Revoke a card (Admin > ID Cards > Revoke), then open its verify link: "❌ not valid" and NO photo (nothing is signed for a revoked card).
+       Direct database access is closed too: calling /rest/v1/rpc/verify_id_card with the public key is refused (permission denied).
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. "Who may see a photo in the app" = who may manage it: yourself, or admins for the people they manage. Teachers don't see students' photos and parents don't see their children's photos in the app. No current page needed that; if a future page does (e.g. a class register with photos, or a parent seeing their child), the storage read rule would need a matching addition.
+  2. A signed link, while valid, works for anyone who has it (that's how signed links work). Hence the short lifetimes.
+  3. Photos embedded in an already downloaded ID card PDF stay in that file (it's a printed/printable card by design).
+  4. The verify-card function has no rate limiting beyond Supabase's defaults. Guessing a valid 122-bit random token isn't practical.
+  5. The app caches display links in memory for their lifetime only. Nothing is stored in the browser beyond that.
+  Nothing has been committed to git yet, migration 035 is not applied, and verify-card is not deployed.
+-------------------------------------------
+
+[2026-09-25 02:45] Task: Gender and date of birth on STUDENT ID cards (physical card only, never the public check)
+Files changed/added: supabase/migrations/20260925000036_id_card_gender_dob.sql (new), src/lib/idCardPdf.js
+What was done:
+  - DATA: students.gender ('male'/'female') and students.date_of_birth already exist, but the card query didn't return them. Migration 036 adds EXACTLY those two fields to id_card_details() (what the PDF is drawn from), for STUDENT cards only (always empty for teachers). Nothing else new is fetched. Who can call it is unchanged (your own card, or admins).
+  - CARD LAYOUT (student cards only): two short lines in the empty space UNDER THE PHOTO: "Gender: Female" and "DOB: 21 Oct 2012". The details column, header and QR are untouched, so it isn't cluttered. A line is simply left out if the value isn't on file (never "Gender: null"). Teacher cards are unchanged, even if such data were somehow supplied.
+  - PUBLIC CHECK UNCHANGED: verify_id_card() and the verify-card Edge Function weren't touched and don't return gender or date of birth. The Edge Function copies only the approved fields by name, so even a future change to the database lookup couldn't leak extra fields through it. Explicit tests were added for this (below).
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - New Node test: 7 checks, 7 passed. The student card shows "Gender: Female" and "DOB: 21 Oct 2012". The teacher card shows no gender/DOB, even if given some. A student with nothing on file has the lines left out; only a DOB on file gives just the DOB line. PUBLIC CHECK: even if the database row contained gender, date of birth, email, phone and admission number, the verify-card response contains NONE of them. I also opened the rendered sample (a student and a teacher card) and checked it visually.
+  - Database test (the ID card / private photos suite, extended): 47 checks, 47 passed. New checks: student card details include gender + date of birth ("female | 2012-10-21"); teacher card details have neither. EXPLICIT: verify_id_card has no gender, date_of_birth, email, phone or admission_number output at all; Ada's actual verification record contains neither "female" nor "2012".
+      WITHOUT migration 036 the suite stops at the new checks (id_card_details has no gender).
+  - Earlier Node suites unchanged: 21 (card drawing), 13 (verify-card), 24, 9, 18.
+  - FULL database suite: all 27 suites pass, 698 checks. Node: 92. 790 in total.
+How to test manually:
+  1. Apply (together with 035 + the verify-card function from the 02:15 entry if they're not live yet):
+       npx supabase functions deploy verify-card --no-verify-jwt --use-api      (only if not done yet)
+       npx supabase db push --dry-run    (expected: 035 and/or 036)
+       npx supabase db push              (type Y)
+  2. STUDENT CARD SHOWS GENDER + DOB: Admin > ID Cards > "For: Class JSS1" > Issue & download PDF (or the student > My Profile > Download my ID card).
+       Expected: under the photo, "Gender: Female" and "DOB: 21 Oct 2012" (the test student's data on live: female, 2012-10-21). Everything else as before.
+       A student with no gender/DOB on file: those lines are absent (not "null").
+  3. TEACHER CARDS UNAFFECTED: Admin > ID Cards > "For: All staff" > Issue & download PDF. Expected: no Gender or DOB lines, same layout as before.
+  4. THE PUBLIC CHECK DOES NOT EXPOSE GENDER OR DOB (or anything beyond the approved fields):
+       Scan the student card's QR, or open its /verify/... link in a private window. Expected: photo, name, role, class, session, card number only. No gender, no date of birth, no admission number, email or phone.
+       To see exactly what the server sends (in the browser's F12 > Network tab, the "verify-card" request > Response), or from a terminal with the card's token (the code at the end of the verify link):
+         curl -s -X POST https://drrapyknckdzsdhqcxka.supabase.co/functions/v1/verify-card -H "Content-Type: application/json" -d "{\"token\":\"<code from the link>\"}"
+       Expected: {"valid":true,"card":{"full_name":...,"role":...,"class_name":...,"section_name":...,"department":...,"session_name":...,"card_number":...,"photo_url":...}}, and NO "gender" or "date_of_birth" keys, no "female", no birth date.
+Known issues / follow-ups:
+  ASSUMPTIONS:
+  1. Gender is printed as stored, capitalised ("Male" / "Female"); the database only allows those two values today.
+  2. Date format matches the rest of the card ("21 Oct 2012").
+  3. Printed only on the PHYSICAL student card. It isn't shown on the verification page, My Profile or admin lists (not requested).
+  4. Cards already downloaded keep their old layout; download again to get the new one. The card number and QR stay the same (the active card is reused).
+  Nothing has been committed to git yet. Migration 036 is not applied yet (and 035 + verify-card from the previous entry aren't either, unless done since).
+-------------------------------------------
+
+[2026-09-25 03:00] Task: Deployed verify-card; applied migrations 035 (private avatars) and 036 (gender/DOB on student cards); live checks
+Files changed/added: test.txt only
+What was done:
+  - Deployed verify-card FIRST (--no-verify-jwt; ACTIVE v1), so the verification page kept working once the bucket turned private. Then "db push" applied 035 and 036 (the dry run listed exactly those two). "migration list" shows 001-036 on both local and remote.
+Automated tests run (LIVE):
+  - The avatars bucket is PRIVATE. verify_id_card can be run only by the server (service role): visitors = no, signed-in users = no. id_card_details now returns gender and date_of_birth.
+  - Calling /rest/v1/rpc/verify_id_card with the public key -> 401 "permission denied for function verify_id_card".
+  - verify-card asked with a card number, or with the photo's storage path (as "token" and as "path") -> {"valid":false}. Nothing is signed or returned.
+  - The Storage API refuses the photo: the plain public address with a cache-busting parameter -> HTTP 400, and the bucket is "not found" for the public key.
+  - FINDING: the plain public address WITHOUT a parameter still returned the one live photo (HTTP 200), served from Supabase's CDN cache ("CF-Cache-Status: HIT", "Cache-Control: max-age=3600"). It's a copy cached while the bucket was still public (that photo was uploaded before 035). The cached copy expires at most 1 hour after it was cached; after that the address returns an error too. I'm watching it and will record when it stops. To remove it straight away, replace that photo (My Profile or the admin list): the old file is deleted. New photos uploaded from now on are never reachable by a plain address.
+How to test manually:
+  Steps 2-4 of the 02:15 entry (private photos, signed links, verification page) and steps 2-4 of the 02:45 entry (gender/DOB on student cards, teacher cards unchanged, public check shows neither).
+  There are no ID cards on live yet: issue one (My Profile > Download my ID card) to test the QR / verification page end to end.
+Known issues / follow-ups:
+  1. The CDN-cached copy of the one pre-035 photo (see FINDING above) is being watched until it expires.
+-------------------------------------------

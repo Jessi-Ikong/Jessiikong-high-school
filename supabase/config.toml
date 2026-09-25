@@ -445,3 +445,10 @@ verify_jwt = true
 [functions.reconcile-pending-payments]
 enabled = true
 verify_jwt = false
+
+# Public ID card check for /verify/<token> (see supabase/functions/verify-card/index.ts).
+# verify_jwt = false: people scanning a QR code aren't signed in. It accepts only a
+# card token and signs only that valid card's photo, for 2 minutes.
+[functions.verify-card]
+enabled = true
+verify_jwt = false

@@ -1,9 +1,27 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { friendlyDbError } from '../lib/db'
-import { PHOTO_ACCEPT, photoUrl, setPhoto } from '../lib/avatars'
+import { PHOTO_ACCEPT, getSignedPhotoUrl, setPhoto } from '../lib/avatars'
 
-// Round photo, or initials when there's none.
+// The photo's signed link (private bucket), or null while loading / if it
+// can't be signed (e.g. not allowed to see it).
+function useSignedPhoto(path) {
+  const [signed, setSigned] = useState({ path: null, url: null })
+  useEffect(() => {
+    if (!path) return undefined
+    let alive = true
+    getSignedPhotoUrl(path)
+      .then((url) => alive && setSigned({ path, url }))
+      .catch(() => alive && setSigned({ path, url: null }))
+    return () => {
+      alive = false
+    }
+  }, [path])
+  return signed.path === path ? signed.url : null
+}
+
+// Round photo, or initials when there's none (or while it loads).
 export function Avatar({ path, name, size = 40 }) {
+  const url = useSignedPhoto(path)
   const initials = (name ?? '')
     .split(/\s+/)
     .filter(Boolean)
@@ -11,8 +29,8 @@ export function Avatar({ path, name, size = 40 }) {
     .map((part) => part[0].toUpperCase())
     .join('')
   const style = { width: size, height: size, fontSize: size * 0.38 }
-  return path ? (
-    <img className="avatar" src={photoUrl(path)} alt={name ? `Photo of ${name}` : 'Photo'} style={style} />
+  return url ? (
+    <img className="avatar" src={url} alt={name ? `Photo of ${name}` : 'Photo'} style={style} />
   ) : (
     <span className="avatar avatar-initials" style={style} aria-hidden="true">
       {initials || '?'}

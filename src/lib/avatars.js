@@ -1,18 +1,53 @@
 import { supabase } from './supabaseClient'
 import { runWrite } from './db'
 
-// Profile photos live in the PUBLIC "avatars" bucket as <user id>/<random>.<ext>
-// (migration 34): the no-login ID card verification page must be able to show
-// them, and the random name means a photo can only be opened via its link.
-// users.photo_url stores that path. Who may change a photo: the person
-// themselves, or an admin allowed to edit them (checked by the database).
+// Profile photos live in the PRIVATE "avatars" bucket as <user id>/<random>.<ext>
+// (migrations 34 + 35). users.photo_url stores that path. Photos are only ever
+// shown through short-lived SIGNED links, which the database lets you create
+// only for your own photo, or as an admin for people you manage. (The public
+// ID card check signs its photo server-side: the verify-card Edge Function.)
+// Who may change a photo: the person themselves, or an admin allowed to edit
+// them.
 const BUCKET = 'avatars'
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024
 const TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }
 export const PHOTO_ACCEPT = '.jpg,.jpeg,.png,.webp'
 
-export function photoUrl(path) {
-  return path ? supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl : null
+// Signed links for showing photos in the app: valid 5 minutes, long enough to
+// load the page; an image already on screen stays visible after that. Links
+// are requested in ONE batch per render (not one request per photo) and
+// reused while they still have more than a minute left.
+export const DISPLAY_LINK_SECONDS = 300
+const cache = new Map() // path -> { url, expiresAt }
+let batch = null // { paths: Set, promise }
+
+export function getSignedPhotoUrl(path) {
+  const hit = cache.get(path)
+  if (hit && hit.expiresAt - Date.now() > 60_000) return Promise.resolve(hit.url)
+  if (!batch) {
+    const paths = new Set()
+    const promise = new Promise((resolve) => setTimeout(resolve, 0)).then(async () => {
+      batch = null
+      const list = [...paths]
+      const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(list, DISPLAY_LINK_SECONDS)
+      if (error) throw error
+      const expiresAt = Date.now() + DISPLAY_LINK_SECONDS * 1000
+      for (const item of data ?? []) {
+        if (item.signedUrl) cache.set(item.path, { url: item.signedUrl, expiresAt })
+      }
+    })
+    batch = { paths, promise }
+  }
+  batch.paths.add(path)
+  return batch.promise.then(() => cache.get(path)?.url ?? null)
+}
+
+// A fresh, single-use-length link for drawing a photo into an ID card PDF:
+// created right before the photo is loaded, valid 60 seconds.
+export async function freshSignedPhotoUrl(path, seconds = 60) {
+  if (!path) return null
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, seconds)
+  return error ? null : data.signedUrl
 }
 
 function extensionOf(name) {
@@ -45,6 +80,7 @@ export async function setPhoto(userId, file, oldPath) {
   }
   try {
     await runWrite(supabase.from('users').update({ photo_url: path }).eq('id', userId).select('id'))
+    if (oldPath) cache.delete(oldPath)
   } catch (err) {
     await supabase.storage.from(BUCKET).remove([path])
     throw err
