@@ -21,20 +21,24 @@ import Parents from './pages/admin/Parents'
 import AuditLog from './pages/admin/AuditLog'
 import FeeStructures from './pages/admin/FeeStructures'
 import StuckPayments from './pages/admin/StuckPayments'
+import AdminAnnouncements from './pages/admin/Announcements'
 import TeacherLayout from './components/TeacherLayout'
 import TeacherDashboard from './pages/TeacherDashboard'
 import MarkAttendance from './pages/teacher/MarkAttendance'
 import Gradebook from './pages/teacher/Gradebook'
 import TeacherAssignments from './pages/teacher/Assignments'
 import TeacherMessages from './pages/teacher/Messages'
+import TeacherAnnouncements from './pages/teacher/Announcements'
 import StudentLayout from './components/StudentLayout'
 import StudentDashboard from './pages/StudentDashboard'
 import StudentAssignments from './pages/student/Assignments'
+import StudentAnnouncements from './pages/student/Announcements'
 import ParentLayout from './components/ParentLayout'
 import ParentDashboard from './pages/ParentDashboard'
 import ParentFees from './pages/parent/Fees'
 import PaymentCallback from './pages/parent/PaymentCallback'
 import ParentMessages from './pages/parent/Messages'
+import ParentAnnouncements from './pages/parent/Announcements'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -62,6 +66,7 @@ export default function App() {
           <Route path="parents" element={<Parents />} />
           <Route path="fees" element={<FeeStructures />} />
           <Route path="stuck-payments" element={<StuckPayments />} />
+          <Route path="announcements" element={<AdminAnnouncements />} />
           <Route path="audit-log" element={<AuditLog />} />
           <Route path="*" element={<NotFound />} />
         </Route>
@@ -73,6 +78,7 @@ export default function App() {
           <Route path="gradebook" element={<Gradebook />} />
           <Route path="assignments" element={<TeacherAssignments />} />
           <Route path="messages" element={<TeacherMessages />} />
+          <Route path="announcements" element={<TeacherAnnouncements />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
@@ -80,6 +86,7 @@ export default function App() {
         <Route path="/student" element={<StudentLayout />}>
           <Route index element={<StudentDashboard />} />
           <Route path="assignments" element={<StudentAssignments />} />
+          <Route path="announcements" element={<StudentAnnouncements />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
@@ -89,6 +96,7 @@ export default function App() {
           <Route path="fees" element={<ParentFees />} />
           <Route path="payment-callback" element={<PaymentCallback />} />
           <Route path="messages" element={<ParentMessages />} />
+          <Route path="announcements" element={<ParentAnnouncements />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>

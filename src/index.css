@@ -1574,3 +1574,42 @@ select {
   outline-offset: 2px;
   transition: outline-color 0.3s;
 }
+
+/* ---------- Announcements ---------- */
+.announcement-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.announcement {
+  margin: 0;
+}
+
+.announcement-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.announcement-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.announcement-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.announcement-preview {
+  max-width: 32rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announcement-table td {
+  vertical-align: top;
+}

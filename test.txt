@@ -2378,3 +2378,101 @@ How to test manually:
 Known issues / follow-ups:
   None new.
 -------------------------------------------
+
+[2026-09-25 00:30] Task: Announcements: admin management page + a feed for teachers, students and parents
+Files changed/added: supabase/migrations/20260925000033_announcements.sql (new), src/pages/admin/Announcements.jsx (new), src/components/AnnouncementFeed.jsx (new), src/lib/announcements.js (new), src/pages/teacher/Announcements.jsx (new), src/pages/student/Announcements.jsx (new), src/pages/parent/Announcements.jsx (new), src/App.jsx, src/components/AdminLayout.jsx, src/components/TeacherLayout.jsx, src/components/StudentLayout.jsx, src/components/ParentLayout.jsx, src/index.css
+What was done:
+  - ALREADY IN PLACE (migrations 007/009): the announcements table (title, body, audience, class, author, optional publish and expiry times) and the visibility rules:
+      all -> every signed-in user; teachers -> teachers; students -> students; parents -> parents;
+      specific_class -> that class's students and their parents, AND the teachers who teach that class this session;
+      admins (BOTH tiers) see and manage everything.
+    Admins seeing everything: agreed. They manage announcements and need oversight of what each group was told.
+  - MIGRATION 033 (fixes):
+      1. A class announcement now reaches only students ACTIVELY enrolled in that class this session (any section), and their parents. Before, any enrollment status counted, so a WITHDRAWN student and their parent still got class notices.
+      2. The AUTHOR is always the admin who posted it (set by the database when posting, unchanged by edits). The page can't name someone else.
+      3. author_name: the poster's display name, stored when posting. Parents, students and teachers can't read admin accounts, and limited admins can't read other admins (migration 021), so "Posted by" would otherwise be blank in most feeds. It shows only the name the admin posted under.
+  - ADMIN > ANNOUNCEMENTS (both tiers, new menu item): a form with Title, Audience (Everyone / Teachers / Students / Parents / A specific class; the class picker appears only for the last), and Message (plain text, up to 5,000 characters). Below it, EVERY announcement (whatever its audience), newest first: title + a preview, audience ("Class: JSS1" etc.), posted by, posted (and "edited <time>" if changed later), plus Edit and Delete (with a confirmation).
+  - FEEDS: Teacher / Student / Parent > Announcements (new menu items): the announcements meant for you, newest first, with title, message, "Posted by <name> · <time>", and a small badge for group or class announcements (e.g. "Class: JSS1"; none for Everyone). The same page serves every role: the database only returns what each person may see.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - New database test (local copy, all 33 migrations): 26 checks, 26 passed.
+      People: Sade (super admin) and Lola (LIMITED admin); teachers Bola (teaches SS1 this session), Tunde (teaches JSS1) and Old (taught SS1 only LAST session); students Ada (SS1, active), Wale (SS1, WITHDRAWN) and Jide (JSS1); parents Paul (Ada's), Wara (Wale's) and Jane (Jide's).
+      Lola posts one announcement per audience (All, Teachers, Students, Parents, SS1, JSS1). The author is recorded as Lola ("Lola Limited") even when the request tried to name Sade. A class is required for "specific class" and refused for other audiences.
+      WHO SEES WHAT (exactly):
+        Sade, Lola ........ all six
+        Bola .............. All, Teachers, SS1        Tunde ..... All, Teachers, JSS1
+        Old ............... All, Teachers (NOT SS1: taught it only last session)
+        Ada ............... All, Students, SS1        Jide ...... All, Students, JSS1
+        Wale (withdrawn) .. All, Students (NOT SS1)
+        Paul .............. All, Parents, SS1         Jane ...... All, Parents, JSS1
+        Wara .............. All, Parents (NOT SS1: their child is withdrawn)
+        not signed in ..... nothing
+      MANAGING: Sade edits Lola's announcement (saved, author still Lola, even when the request tries to change it). Changing an audience from Parents to JSS1 moves who sees it (Jane yes, Paul no). Teachers can't post, edit or delete; parents can't delete; a limited admin can delete.
+      SCHEDULED/EXPIRED (existing columns): students don't see a not-yet-published or an expired announcement; admins still see both.
+      AUDIT: posting, editing and deleting are logged with who did it.
+  - WITHOUT migration 033 the new test can't run (no author_name column); the withdrawn-student cases were the behaviour it fixes.
+  - FULL database suite: 63, 33, 28, 17, 20, 25, 18, 15, 21, 24, 18, 29, 13, 11, 47, 28, 31, 29, 35, 16, 24, 11, 26, 23, 19, plus 26 new = 650 checks, all passing (plus 51 Node checks = 701 in total).
+      One older TEST was fixed, not the app: the audit-log test deleted the FRIDAY timetable slot and later marked attendance for "today", so it failed on Fridays (today). It now deletes a spare slot instead. 29/29.
+  - NOT tested by me in the browser (needs migration 033 applied and the different logins).
+How to test manually:
+  1. Apply the migration (or ask me to):
+       npx supabase db push --dry-run    (expected: only 20260925000033_announcements.sql)
+       npx supabase db push              (type Y)
+  2. POST ONE OF EACH (as an admin; either tier works) > Announcements:
+       "TEST Everyone" (Everyone), "TEST Teachers" (Teachers), "TEST Students" (Students), "TEST Parents" (Parents), and "TEST Class" (A specific class -> your test student's class, e.g. JSS1). Also "TEST Other class" (A specific class -> a DIFFERENT class).
+     Expected: all six are listed, newest first, "Posted by" = your name.
+  3. CHECK EACH ROLE'S FEED (sign in as each):
+       Teacher who teaches the test class (e.g. "Ug Jessi" or "Test Teacher"): TEST Everyone, TEST Teachers, TEST Class (badge "Class: JSS1"). NOT Students / Parents / Other class.
+       Student (jessiikong404@gmail.com): TEST Everyone, TEST Students, TEST Class. NOT Teachers / Parents / Other class.
+       Parent (jessiikong404+parent@gmail.com): TEST Everyone, TEST Parents, TEST Class. NOT Teachers / Students / Other class.
+       Limited admin (jessiikong16+admin@gmail.com): all six on Admin > Announcements.
+     Database check of EVERY account at once (nothing is saved; it just lists what each user would see):
+       do $$ declare r record; v_seen text; v_report text := ''; begin
+         for r in select u.auth_id, u.role, u.email from public.users u where u.auth_id is not null and u.is_active order by u.role, u.email loop
+           perform set_config('request.jwt.claims', json_build_object('sub', r.auth_id, 'role', 'authenticated')::text, true);
+           execute 'set local role authenticated';
+           select string_agg(title, ', ' order by title) into v_seen from public.announcements where title like 'TEST%';
+           execute 'reset role';
+           v_report := v_report || E'\n' || r.role || ' ' || r.email || ': ' || coalesce(v_seen, '(none)');
+         end loop;
+         raise exception 'Who sees the TEST announcements:%', v_report;
+       end $$;
+     Expected: one line per account, matching the lists above. (Or ask me to run it.)
+  4. A CLASS ANNOUNCEMENT REACHES ONLY THAT CLASS: "TEST Class" appears for the test student, their parent and the class's teachers, and for nobody in other classes. "TEST Other class" appears for none of them. To see the "withdrawn" rule (the Students page can only FILTER by status, not change it, so use the SQL Editor):
+       update public.enrollments set status = 'withdrawn' where student_id = (select s.id from public.students s join public.users u on u.id = s.user_id where lower(u.email) = 'jessiikong404@gmail.com') and session_id = (select id from public.sessions where is_current);
+     The student (and their parent) no longer see "TEST Class" but still see "TEST Everyone" / "TEST Students" / "TEST Parents". Put it back straight away (withdrawn students also lose other access, e.g. assignments):
+       update public.enrollments set status = 'active' where student_id = (select s.id from public.students s join public.users u on u.id = s.user_id where lower(u.email) = 'jessiikong404@gmail.com') and session_id = (select id from public.sessions where is_current);
+  5. EDIT / DELETE: edit "TEST Parents" to audience "A specific class" -> the test class. The parent still sees it (their child is in the class); a parent of another class no longer does. The admin list shows "edited <time>". Delete the TEST announcements when done (Delete -> confirm).
+Known issues / follow-ups:
+  TEACHERS AND CLASS ANNOUNCEMENTS (your choice "A"): KEPT. A class announcement also reaches the teachers who teach that class in the CURRENT session (timetable), not all staff, and not teachers who taught it in a past session.
+    Why: class notices usually affect lessons ("JSS1 excursion on Friday", "JSS1 exams start Monday"), and the teachers who take that class are exactly the staff who need to know. Everyone else in the school doesn't see it.
+    To exclude teachers instead, remove the timetable part of private.is_in_current_class (migration 033).
+  ASSUMPTIONS / SCOPE:
+  1. Plain text only (no formatting, images or attachments). A rich-text editor or file attachments (e.g. a PDF circular, using the Storage pattern from assignments) would be a reasonable follow-up.
+  2. No read/unread tracking. There's no existing pattern that makes it trivial (it would need a per-user "read" table), so the feed is simply newest first. Possible follow-up: an unread count on the menu item.
+  3. Announcements are published immediately. The table already supports scheduled publishing (published_at) and expiry (expires_at), and the rules honour them, but the page doesn't offer them yet.
+  4. Both admin tiers can edit or delete ANY announcement, including one posted by another admin (the author stays the original poster, and the audit log records who changed what).
+  5. The 5,000-character message limit is on the page only (the database requires text but sets no maximum).
+  6. No notifications (email/push) when something is posted.
+  Nothing has been committed to git yet, and migration 033 is not applied yet.
+-------------------------------------------
+
+[2026-09-25 00:45] Task: Applied migration 033 (announcements) to the live database; live visibility check
+Files changed/added: test.txt only
+What was done:
+  "npx supabase db push" applied 20260925000033_announcements.sql (the dry run listed only that). "migration list" shows 001-033 on both local and remote. The announcements.author_name column and the author trigger exist.
+Automated tests run (LIVE; everything rolled back, nothing saved):
+  - As the LIMITED admin (jessiikong16+admin@gmail.com), posted "TEST" announcements for Everyone, Teachers, Students, Parents and Class JSS1. Live has only ONE class (JSS1), so there was no "other class" to post to. "Posted by" was recorded automatically as the admin's own name ("Admin One").
+  - What every active account saw:
+      super admin (jessiikong11) ............... Class JSS1, Everyone, Parents, Students, Teachers  (all)
+      limited admin (jessiikong16+admin) ....... Class JSS1, Everyone, Parents, Students, Teachers  (all)
+      teacher Test Teacher (jessiikong11+jhs-teacher) ... Class JSS1, Everyone, Teachers  (teaches JSS1 this session)
+      teacher Ug Jessi (jessiikong16) .......... Class JSS1, Everyone, Teachers  (teaches JSS1 this session)
+      student (jessiikong404) .................. Class JSS1, Everyone, Students
+      parent (jessiikong404+parent) ............ Class JSS1, Everyone, Parents
+    Exactly as expected. Afterwards: 0 announcements (nothing saved).
+How to test manually:
+  Steps 2-5 of the 00:30 entry. The "other class" checks need a second class (Admin > Classes & Sections).
+Known issues / follow-ups:
+  None new.
+-------------------------------------------
