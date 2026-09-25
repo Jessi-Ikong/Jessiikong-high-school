@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 
-export default function SignOutButton() {
+// className: lets a layout style it (defaults to the old secondary button).
+export default function SignOutButton({ className = 'button-secondary' }) {
   const { signOut } = useAuth()
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
@@ -14,7 +15,7 @@ export default function SignOutButton() {
   }
 
   return (
-    <button type="button" className="button-secondary" onClick={handleClick} disabled={busy}>
+    <button type="button" className={className} onClick={handleClick} disabled={busy}>
       {busy ? 'Logging out…' : 'Log out'}
     </button>
   )

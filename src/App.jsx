@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import { ROLES } from './lib/roles'
@@ -51,6 +52,9 @@ import PublicGalleryPage from './pages/public/Gallery'
 import PublicContact from './pages/public/Contact'
 import PublicNotFound from './pages/public/PublicNotFound'
 import ContactMessages from './pages/admin/ContactMessages'
+
+// Development-only design previews (/__dev/...): left out of production builds.
+const DevPreview = import.meta.env.DEV ? lazy(() => import('./dev/DevPreview')) : null
 import Profile from './pages/Profile'
 import Verify from './pages/Verify'
 import IdCards from './pages/admin/IdCards'
@@ -64,6 +68,16 @@ import AdmissionsInquiries from './pages/admin/AdmissionsInquiries'
 export default function App() {
   return (
     <Routes>
+      {DevPreview && (
+        <Route
+          path="/__dev/*"
+          element={
+            <Suspense fallback={null}>
+              <DevPreview />
+            </Suspense>
+          }
+        />
+      )}
       {/* The public school website: no login needed. The portal for staff,
           students and parents is at /login. */}
       <Route element={<PublicLayout />}>

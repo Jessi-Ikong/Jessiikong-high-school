@@ -1,66 +1,14 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import SignOutButton from './SignOutButton'
+import AdminShell from './AdminShell'
 
-// Add new admin pages here and as child routes of /admin in App.jsx.
-const NAV_LINKS = [
-  { to: '/admin', label: 'Overview', end: true },
-  { to: '/admin/sessions', label: 'Sessions' },
-  { to: '/admin/terms', label: 'Terms' },
-  { to: '/admin/classes', label: 'Classes & Sections' },
-  { to: '/admin/subjects', label: 'Subjects' },
-  { to: '/admin/periods', label: 'Periods' },
-  { to: '/admin/timetable', label: 'Timetable' },
-  { to: '/admin/assessment', label: 'Assessment' },
-  { to: '/admin/grade-scale', label: 'Grade Scale' },
-  { to: '/admin/ranking', label: 'Class Ranking' },
-  { to: '/admin/correct-attendance', label: 'Correct Attendance' },
-  { to: '/admin/correct-scores', label: 'Correct Scores' },
-  { to: '/admin/correct-grades', label: 'Correct Grades' },
-  { to: '/admin/staff', label: 'Staff' },
-  { to: '/admin/students', label: 'Students' },
-  { to: '/admin/parents', label: 'Parents' },
-  { to: '/admin/fees', label: 'Fees', superAdminOnly: true },
-  { to: '/admin/stuck-payments', label: 'Stuck Payments' },
-  { to: '/admin/announcements', label: 'Announcements' },
-  { to: '/admin/id-cards', label: 'ID Cards' },
-  { to: '/admin/website-news', label: 'Website: News & Events' },
-  { to: '/admin/website-gallery', label: 'Website: Gallery' },
-  { to: '/admin/admissions-inquiries', label: 'Admissions Inquiries' },
-  { to: '/admin/contact-messages', label: 'Contact Messages' },
-  { to: '/admin/audit-log', label: 'Audit Log' },
-]
-
+// The admin portal: the design-system shell (AdminShell) around each admin
+// page. Pages are listed in src/lib/adminNav.js and routed in App.jsx.
 export default function AdminLayout() {
   const { profile } = useAuth()
-
   return (
-    <div className="admin-shell">
-      <aside className="admin-sidebar">
-        <div className="admin-brand">
-          Jessiikong High School
-          <span className="muted small">Admin</span>
-        </div>
-        <nav className="admin-nav" aria-label="Admin">
-          {NAV_LINKS.filter((link) => !link.superAdminOnly || profile.admin_level === 'super_admin').map((link) => (
-            <NavLink key={link.to} to={link.to} end={link.end}>
-              {link.label}
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-
-      <div className="admin-main">
-        <header className="admin-topbar">
-          <span className="muted">
-            {profile.first_name} {profile.last_name} ({profile.admin_level.replace('_', ' ')})
-          </span>
-          <SignOutButton />
-        </header>
-        <div className="admin-content">
-          <Outlet />
-        </div>
-      </div>
-    </div>
+    <AdminShell profile={profile}>
+      <Outlet />
+    </AdminShell>
   )
 }

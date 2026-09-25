@@ -3445,3 +3445,186 @@ How to test manually:
 Known issues / follow-ups:
   None.
 -------------------------------------------
+
+[2026-09-25 18:20] Task: Ran the 15:45 public-website checks against the LIVE project, plus one real inquiry and one real contact message (then deleted)
+Files changed/added: test.txt only (live data: 2 test entries created and deleted)
+What was done:
+  - The site isn't deployed yet, so it was run from this computer's dev server with network access (http://192.168.100.6:5173), connected to the LIVE database with the public anon key: exactly what a visitor would get. It was browsed in Chrome, signed out.
+  - "/": the public HOME page (address stays "/", no redirect to /login), nobody signed in.
+      Hero, the 4 quick facts, 3 highlights; "Portal login" -> /login.
+      Headings in Fraunces (the fonts load).
+      The hero shows the crest (no gallery photos are published on live); the news area says "News and upcoming events will appear here soon" (none published).
+  - About: mission, vision, 3 history paragraphs, 4 values, principal's message.
+  - Academics: LIVE data from the database: Junior Secondary: JSS1; subjects English Language (ENG), English Literature (EGL), Mathematics (MTH). No errors.
+  - News: "No news yet"; an unknown post address -> "Post not found".
+  - Gallery: "Photos coming soon". Contact: 4 detail cards and the form.
+  - A made-up address (/hello-there): the public "We couldn't find that page".
+  - ADMISSIONS INQUIRY (real): the class dropdown offered the real classes (JSS1, Not sure yet).
+      Filled in as a visitor ("[TEST] Verification Parent", jessiikong11+site-test@gmail.com, 08030000000, "[TEST] Verification Child", JSS1, a message) and sent -> "Inquiry received" with the thank-you text.
+      (The browser tool's first click missed the button; the form was then sent with the form's own submit, which runs the same code.)
+  - HONEYPOT: on a fresh Admissions page the visible fields were filled with jessiikong11+bot-test@gmail.com and the hidden "website" field was filled as a bot would. Waited 3 seconds, so only the honeypot (not the timing check) could stop it. Sent -> the bot was shown "Inquiry received", but NOTHING was stored: 0 rows with that email in the database or on either admin's page.
+  - CONTACT MESSAGE (real): "[TEST] Verification Visitor", jessiikong11+contact-test@gmail.com, 08030000001, subject "[TEST] Website check", a message -> "Message sent".
+  - ADMIN PAGES: the Admissions Inquiries and Contact Messages pages' exact queries were run under the REAL super admin and limited admin accounts' permissions, in a transaction rolled back afterwards (no admin passwords, so the pages themselves weren't opened).
+      Both saw the test inquiry at the top: every field as typed, class JSS1, status New.
+      Both saw the test contact message at the top: every field as typed, status New.
+      Neither saw a bot inquiry.
+  - LOGIN: "Portal login" -> /login (the sign-in page with email and password fields); its "← Back to the school website" -> "/" (public home).
+  - CLEAN-UP: deleted the test inquiry and the test contact message. Inquiries, contact messages, news and gallery are all empty on live. The audit log keeps its record of the two test submissions and their deletion (by design).
+Automated tests run: the live checks above. All PASSED.
+How to test manually:
+  - On a phone on the same Wi-Fi, while the dev server runs on this computer: http://192.168.100.6:5173
+    (Windows may ask to allow "Node.js" through the firewall on private networks; allow it. The address changes if the computer's Wi-Fi address changes.)
+Known issues / follow-ups:
+  - Not checked on a real phone by me; the phone link is for that.
+  - The site is not hosted yet (hosting TBD); this was the dev server.
+-------------------------------------------
+
+[2026-09-25 19:08] Task: Public website content: 3 confirmed facts locked in; the rest rewritten as clearly-labelled AI placeholder for a brand-new (2026) school
+Files changed/added: src/content/siteContent.js, src/pages/public/About.jsx (banner reads "Founded in 2026" instead of "Since ..."), index.html (search-engine description)
+What was done:
+  - Every field in siteContent.js now carries one of two labels:
+      ✅ CONFIRMED — real facts from the school;
+      🤖 AI PLACEHOLDER — a draft to review.
+    The file header explains both and lists what's confirmed.
+  - CONFIRMED (used exactly as given):
+      founding year 2026;
+      address "Oju Rd, Okah Idah, Wanihem, North Ukelle, Yala LGA, Cross River State" (shown on 3 lines);
+      phone +234 708 591 8344.
+  - CONSISTENCY (the school is brand new): removed every claim of an established school:
+      "15+ years", "1:20 ratio", "98% WAEC pass rate", "12 clubs";
+      the 2010 founding story and graduates;
+      "Since 2010" on the About banner.
+    The new quick facts are all true of a new school: 2026 founded / JSS1 founding class now admitting / Small classes / Online parent portal. The wording is positive: founding class, first chapter, growing one year at a time.
+  - Map link: a Google Maps SEARCH for the confirmed address (+ ", Nigeria"), not a guessed pin.
+  - Emails use a placeholder domain (info@ / admissions@jessiikonghighschool.ng), flagged in the file: the domain isn't decided and these mailboxes don't exist yet.
+  - The principal's name shows as "[Principal’s name — to be confirmed], Principal" on the site until replaced, so it can't be mistaken for final.
+Automated tests run:
+  - "npm run lint": 0 problems. "npm run build": built successfully.
+  - Searched the public pages and the content for leftover claims (15+, 98%, 1:20, 2010, "years of", alumni / graduates): none remain (only the warning comments in the file).
+  - The map link's search text decodes to exactly the confirmed address + ", Nigeria".
+How to test manually:
+  - Home: the eyebrow "Founded 2026 · Admissions open for our founding class"; the new hero title and text; the 4 new quick facts; the 3 highlights; "Join our founding class".
+  - Top bar and footer: the new phone number and motto "Arise and Shine"; the footer shows the 3-line address.
+  - About: "Founded in 2026"; the new mission, vision, founding story, values; "[Principal’s name — to be confirmed], Principal".
+  - Contact: the address; "Get directions" opens Google Maps searching for the address; tapping the phone number calls +234 708 591 8344; WhatsApp opens a chat with the same number.
+Known issues / follow-ups (TO REVIEW — all 🤖 AI PLACEHOLDER):
+  - school: motto ("Arise and Shine"), tagline.
+  - contact:
+      WhatsApp (assumed = phone number: confirm it has WhatsApp);
+      BOTH EMAILS (domain not chosen, mailboxes don't exist: emails will bounce);
+      office hours;
+      map link (replace with the school's own Google Maps share link once it's listed).
+  - home: hero eyebrow wording, hero title, hero text, the 4 quick-fact labels, the 3 highlights, the call-to-action title and text.
+  - about: intro, mission, vision, founding story (3 paragraphs), 4 values, PRINCIPAL'S NAME (needed) and welcome message.
+  - academics: intro and the 3 "approach" points.
+  - admissions:
+      intro, 4 steps, requirements checklist, fees note (no figures on purpose);
+      form intro and thank-you: both promise a reply "within two working days", a commitment to confirm.
+  - contact page: intro and thank-you text.
+  Not committed yet.
+-------------------------------------------
+
+[2026-09-25 19:33] Task: Dashboard design system (mobile-first), rolled out to the admin shell + Overview dashboard
+Files changed/added:
+  NEW: src/styles/brand.css (shared brand tokens), src/styles/app.css (the design system),
+       src/components/AdminShell.jsx, src/lib/adminNav.js, src/lib/statusTones.js,
+       src/components/ui/Icon.jsx, Primitives.jsx (Button, ButtonLink, PageHeader, Card, StatCard, Badge, LoadingState, EmptyState, Alert, ErrorState, QueryState), Form.jsx (Field, TextInput, TextArea, Select, Checkbox, RadioGroup), DataTable.jsx, Dialog.jsx,
+       src/dev/DevPreview.jsx (DEVELOPMENT-ONLY previews; not in the production build)
+  CHANGED: src/components/AdminLayout.jsx (now uses AdminShell), src/pages/AdminDashboard.jsx (rebuilt with the components; split into data loading + display),
+           src/styles/public.css (colours now come from brand.css; looks the same), src/components/public/Crest.jsx (brand colours, so it works in both), src/components/SignOutButton.jsx (optional className),
+           src/lib/format.js (formatNairaCompact: ₦6.2M), src/main.jsx (loads brand.css), src/App.jsx (dev-only /__dev routes)
+  NOT touched (as asked): every other admin page (Students, Staff, Fees, ...). They keep their old look, now inside the new shell.
+What was done:
+  - DESIGN GUIDANCE: /mnt/skills/public/frontend-design/SKILL.md is NOT available in this environment (checked). The design follows general principles instead:
+      mobile-first; one legible sans-serif; a 4px spacing grid and a 6-step type scale;
+      44px minimum touch targets; consistent semantic colours;
+      standard dashboard patterns (bottom nav, drawer, cards, table-to-card collapse).
+  - BRAND: one shared token file (brand.css): deep green, marigold gold, terracotta, cream. The public site now reads its colours from it too (no visual change there), so a brand colour changes in one place.
+    The crest is the logo mark in the dashboard header, sidebar and menu.
+    NOT reused from the public site (as asked): the serif display font, decorative patterns, marketing whitespace. The dashboards use Plus Jakarta Sans only, tight spacing, and a neutral green-grey background.
+  - SHELL (AdminShell), mobile-first:
+      PHONES (< 768px):
+        dark-green top bar: crest + the current page's name;
+        a fixed BOTTOM BAR with the four busiest pages (Overview, Students, Attendance [correction], Inquiries) and "Menu" — all reachable with one thumb, each about 72x63px;
+        "Menu" opens a FULL-SCREEN menu: your name, role and Log out at the top, a "Find a page…" search box, then all 25 admin pages in 9 groups (Home, People, School setup, Grading, Corrections, Fees, Communication, Website, System) with icons, each link at least 44px tall.
+        Esc, the × or choosing a page closes it; the page behind doesn't scroll while it's open; iPhone safe areas (notch, home bar) respected.
+      TABLETS AND DESKTOPS (>= 768px): the same grouped menu + search as a SIDEBAR (the old sidebar layout, kept and grouped); a white top bar with the page name, your initials, name, role and Log out. No bottom bar.
+      Limited admins don't see super-admin-only links (Fees), as before.
+      Adding an admin page now = one line in src/lib/adminNav.js (+ its route).
+  - COMPONENTS (use these for every page from now on):
+      buttons: primary / secondary / danger / ghost, 44px tall; a small 36px size for dense desktop toolbars only;
+      inputs, selects, text areas: 48px, 16px text so phones don't zoom in; labels, hints and error text wired for screen readers;
+      checkboxes and radios: in 44px rows;
+      cards (with a header action link); stat tiles (coloured edge for warning/danger; long amounts shown compact, e.g. ₦6.2M, with the exact amount on hover / to screen readers);
+      badges / status pills: one colour per status everywhere (lib/statusTones.js), e.g. graded/paid/published = green, late/partial/new = gold, overdue/absent/failed = red, submitted/excused = blue, locked/draft/deactivated = grey;
+      loading skeletons, empty states (icon + message), error states with "Try again", alerts;
+      DATA TABLE: a real table when it has room, and on phones each row becomes a CARD (the main column as its title, other columns as "Label  value" lines) — no sideways scrolling. The switch depends on the table's OWN width (a container query), so tables next to the tablet sidebar also collapse properly;
+      DIALOG: FULL SCREEN on phones, a centred panel from 640px; Esc closes; focus moves in and back.
+  - TYPOGRAPHY & SPACING: sizes 12 / 14 / 16 / 18 / 22 / 28 px; spacing 4 / 8 / 12 / 16 / 20 / 24 / 32 px; radii 8 / 12 / 16 px.
+  - OVERVIEW DASHBOARD, rebuilt:
+      page title + date/term;
+      stat tiles (2 across on phones, 3 on tablets, 6 on wide screens);
+      "Needs attention" as an alert list with coloured icons and a 44px link per item (Fees →, Timetable →, Fix →);
+      "Recent activity" as a feed with created / updated / deleted icons;
+      "Attendance by class" and "Students below 80%" as data tables (cards on phones). Low rates are shown as gold pills.
+    "Needs attention" and "Recent activity" sit side by side from 1024px.
+    Same data, queries and permissions as before (only the display changed). Each panel loads, empties and fails on its own.
+  - DEV PREVIEWS (only when running "npm run dev"; checked: 0 files in the production build):
+      /__dev/admin (shell + dashboard with SAMPLE data, no sign-in needed; ?state=empty | loading | error);
+      /__dev/ui (every component);
+      /__dev/frame?src=/__dev/admin&w=375&h=812 (a preview at an exact screen size).
+    This is how the widths were tested without admin passwords.
+Automated tests run:
+  - Tested in Chrome through the previews at 375 (phone), 768 (tablet), 1024 and 1280 (desktop):
+      NO horizontal overflow at any width (every element measured inside the right edge).
+        FOUND AND FIXED: at 768 the attendance table (5 columns beside the sidebar) overflowed by 28px. The table's card/table switch now uses the table's own width, not the screen's.
+      Phone: bottom bar shown, sidebar hidden, stats 2 across, tables as cards. Tablet+: sidebar shown, bottom bar hidden. Tables become real tables from 1024.
+      Tap targets (phone):
+        bottom bar items 72x63px; menu links >= 44px tall; buttons 44px; checkbox rows 44px; inputs and selects 48px (16px text).
+        FOUND AND FIXED: the "Fix →" link was 31px wide; row links now have a 44px minimum.
+      Menu: opens full screen; focus goes to "Close menu"; page scroll locked; search "fee" -> Fees, Stuck Payments; "zzz" -> "No page matches"; Esc closes and restores scrolling.
+      Dialog at phone width: fills the screen (375x560 in the test frame); focus in its first field.
+      Empty / loading / error: the empty preview shows 4 friendly empty messages; loading shows 5 skeletons; error shows 5 error messages each with "Try again".
+      ALSO FIXED during the visual check:
+        the crest rendered as a black shield in the dashboard (it used the public site's colour names; it now uses the shared tokens);
+        money amounts wrapped mid-number in stat tiles (now compact: ₦6.2M);
+        a stray gap above card titles (an old heading rule; neutralised);
+        uneven card-header heights (now uniform).
+  - "npm run lint": 0 problems. "npm run build": built successfully. Node tests: all 151 pass (no database changes in this task).
+  - Screenshots were taken during testing, not saved into the project. WHAT IT LOOKS LIKE NOW:
+      PHONE: a dark-green top bar with the gold-and-green crest and "Overview"; white rounded stat tiles two across, each with a thin green (or gold, for warnings) edge; "Needs attention" rows with a round tinted icon (red money / gold calendar / blue book) and a bold green "Fees →" link; attendance by class as one card per class ("Today 93.5% (62)" lines, low rates in gold pills); a white bottom bar with five icons + labels, the current one in green with a gold marker.
+      TABLET: a white sidebar headed by a dark-green crest block, a search box and grouped links (active link in pale green); stats three across; tables still as cards.
+      DESKTOP: the same sidebar; six stat tiles in one row; "Needs attention" and "Recent activity" side by side; real tables with small uppercase column headers.
+How to test manually:
+  0. Deploy the site (no database change). To see it without signing in, on your computer: npm run dev, then open the /__dev/... preview addresses above.
+  1. PHONE (375px) — on a real phone, or Chrome DevTools (F12 > device toolbar > iPhone SE / 375 wide). Sign in as an admin:
+       a) The Overview shows the crest + "Overview" in the top bar and the bottom bar with Overview / Students / Attendance / Inquiries / Menu.
+          Everything is reachable with your thumb; the current page is green with a gold marker.
+       b) Scroll the whole page: nothing is cut off and the page never scrolls sideways.
+          Stat tiles are 2 across; "Attendance by class" and "Students below 80%" show one card per row; the bottom bar never covers the last card.
+       c) Tap Menu:
+            the full-screen menu shows your name, role and Log out, the search box, and all pages in groups;
+            type "fee" -> only Fees / Stuck Payments;
+            tap one -> that page opens and the menu closes.
+          Reopen it and close with × (or the back gesture closes nothing unexpected).
+       d) Tap targets feel comfortable: bottom bar, menu links, "Fees →" / "Timetable →" links, Log out.
+       e) Other admin pages (e.g. Students) open inside the new shell with their OLD look (that's the next task). They should not break, though wide old tables may scroll sideways inside their own box.
+       f) As a LIMITED admin, Fees is not in the menu.
+  2. TABLET (768px) — DevTools "iPad Mini" or 768 wide:
+       sidebar on the left with search and groups, no bottom bar;
+       stats 3 across; tables still as cards (not enough room beside the sidebar); no sideways scrolling.
+  3. DESKTOP (1280px+):
+       sidebar; the top bar shows your initials, name, role and Log out;
+       6 stats in a row; "Needs attention" and "Recent activity" side by side;
+       real tables with column headers; the search in the sidebar filters the links.
+  4. Keyboard: Tab from the top -> "Skip to content" appears; menu links and buttons show a gold focus ring.
+Known issues / follow-ups:
+  ASSUMPTIONS about the design direction:
+  1. Phone navigation = bottom bar (4 most-used pages + Menu) plus a full-screen menu with search, rather than only a hamburger drawer. The bottom bar is the most one-hand-friendly; with 25 pages, search beats scrolling.
+     The 4 shortcuts (Overview, Students, Correct Attendance, Admissions Inquiries) are a guess at daily use; easy to change in src/lib/adminNav.js.
+  2. Sidebar from 768px (tablets get the desktop layout, as the brief asked). Tables switch by their own width, so a tablet can have a sidebar AND card-style tables.
+  3. Dashboard background is a neutral green-grey (not the public site's cream), to keep data-heavy screens calm and high-contrast.
+  4. The same bottom bar / menu pattern is intended for the teacher, student and parent portals when they're migrated (their shells will reuse AdminShell's pieces with their own links).
+  5. Other admin pages are unchanged (old styles) until the next task; old wide tables may scroll sideways inside their box on phones until then.
+  Not committed yet.
+-------------------------------------------

@@ -2,27 +2,28 @@
    PUBLIC WEBSITE — visual identity
    Scoped to .pub so the internal dashboards (index.css) are unaffected.
 
+   Colours and fonts come from styles/brand.css (shared with the dashboards).
    Palette: a deep "school green" and marigold gold, with a terracotta accent,
    on warm cream paper. Type: Fraunces (characterful serif) for headings,
    Plus Jakarta Sans for text. Fonts are loaded in index.html.
    ============================================================================= */
 
 .pub {
-  --pub-green: #0e4a37;
-  --pub-green-deep: #083326;
-  --pub-green-soft: #1d6a50;
-  --pub-gold: #e0a526;
-  --pub-gold-soft: #f3d27f;
-  --pub-clay: #b4532a;
-  --pub-cream: #fbf7ef;
-  --pub-sand: #f1e8d6;
-  --pub-ink: #1d2b25;
+  --pub-green: var(--brand-green);
+  --pub-green-deep: var(--brand-green-deep);
+  --pub-green-soft: var(--brand-green-soft);
+  --pub-gold: var(--brand-gold);
+  --pub-gold-soft: var(--brand-gold-soft);
+  --pub-clay: var(--brand-clay);
+  --pub-cream: var(--brand-cream);
+  --pub-sand: var(--brand-sand);
+  --pub-ink: var(--brand-ink);
   --pub-muted: #5d6b64;
   --pub-line: #e3d9c4;
   --pub-radius: 18px;
   --pub-shadow: 0 18px 40px -24px rgba(8, 51, 38, 0.45);
-  --pub-font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
-  --pub-font-body: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --pub-font-display: var(--brand-font-display);
+  --pub-font-body: var(--brand-font-sans);
 
   min-height: 100vh;
   background: var(--pub-cream);

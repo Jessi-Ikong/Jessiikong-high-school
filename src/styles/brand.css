@@ -1,0 +1,21 @@
+/* =============================================================================
+   BRAND TOKENS — shared by the public website (styles/public.css) and the
+   internal dashboards (styles/app.css). Change a brand colour here and both
+   follow.
+   ============================================================================= */
+:root {
+  --brand-green: #0e4a37;       /* deep school green */
+  --brand-green-deep: #083326;
+  --brand-green-soft: #1d6a50;
+  --brand-green-tint: #e6f0ec;
+  --brand-gold: #e0a526;        /* marigold */
+  --brand-gold-soft: #f3d27f;
+  --brand-gold-tint: #fdf3dc;
+  --brand-clay: #b4532a;        /* terracotta accent */
+  --brand-clay-tint: #fbe9e1;
+  --brand-cream: #fbf7ef;
+  --brand-sand: #f1e8d6;
+  --brand-ink: #1d2b25;
+  --brand-font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --brand-font-display: 'Fraunces', Georgia, 'Times New Roman', serif; /* public site only */
+}

@@ -23,3 +23,10 @@ const nairaFormatter = new Intl.NumberFormat('en-NG', { style: 'currency', curre
 export function formatNaira(amount) {
   return nairaFormatter.format(Number(amount ?? 0))
 }
+
+const nairaCompact = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', notation: 'compact', maximumFractionDigits: 1 })
+
+// 6150000 -> '₦6.2M' (for small spaces like stat tiles; show the exact amount nearby)
+export function formatNairaCompact(amount) {
+  return nairaCompact.format(Number(amount ?? 0))
+}
