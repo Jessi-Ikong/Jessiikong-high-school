@@ -3,6 +3,9 @@ import { supabase } from '../../lib/supabaseClient'
 import { friendlyDbError, run, runWrite } from '../../lib/db'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import DeleteAction from '../../components/DeleteAction'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, TextInput } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 const EMPTY_FORM = { name: '', code: '' }
 const ERRORS = { unique: 'Another subject already has that name or code.' }
@@ -54,59 +57,69 @@ export default function Subjects() {
 
   return (
     <>
-      <h1>Subjects</h1>
-      <p className="muted">All subjects taught at the school. Codes are optional short names, e.g. MTH.</p>
+      <PageHeader title="Subjects" subtitle="All subjects taught at the school. Codes are optional short names, e.g. MTH." />
 
-      <form className="panel form-grid" onSubmit={handleSubmit}>
-        <h2>{editingId ? 'Edit subject' : 'New subject'}</h2>
-        {formError && <p className="alert alert-error" role="alert">{formError}</p>}
-        <label>
-          Name
-          <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Mathematics" required />
-        </label>
-        <label>
-          Code (optional)
-          <input value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} placeholder="MTH" />
-        </label>
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create subject'}
-          </button>
-          {editingId && (
-            <button type="button" className="button-secondary" onClick={resetForm}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </form>
+      <Card title={editingId ? 'Edit subject' : 'New subject'}>
+        <form onSubmit={handleSubmit}>
+          {formError && <Alert tone="danger">{formError}</Alert>}
+          <div className="ds-form-grid">
+            <Field label="Name">
+              {(p) => <TextInput {...p} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Mathematics" required />}
+            </Field>
+            <Field label="Code" hint="Optional">
+              {(p) => <TextInput {...p} value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} placeholder="MTH" />}
+            </Field>
+          </div>
+          <div className="ds-form-actions">
+            {editingId && (
+              <Button variant="secondary" onClick={resetForm}>
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create subject'}
+            </Button>
+          </div>
+        </form>
+      </Card>
 
-      {loading ? (
-        <p className="muted">Loading subjects…</p>
-      ) : loadError ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(loadError)}</p>
-      ) : subjects.length === 0 ? (
-        <p className="empty-state">No subjects yet — create one above to get started.</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Code</th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {subjects.map((subject) => (
-                <tr key={subject.id} className={editingId === subject.id ? 'row-editing' : undefined}>
-                  <td>{subject.name}</td>
-                  <td>{subject.code ?? <span className="muted">—</span>}</td>
-                  <td className="row-actions">
-                    <button type="button" className="button-link" onClick={() => startEdit(subject)}>
+      <Card title="All subjects" flush>
+        {loading ? (
+          <LoadingState lines={4} />
+        ) : loadError ? (
+          <div className="ds-card-body">
+            <Alert tone="danger">{friendlyDbError(loadError)}</Alert>
+          </div>
+        ) : (
+          <DataTable
+            caption="Subjects"
+            rowKey={(s) => s.id}
+            rows={subjects}
+            empty={<EmptyState icon="book">No subjects yet — create one above to get started.</EmptyState>}
+            columns={[
+              {
+                key: 'name',
+                header: 'Name',
+                primary: true,
+                render: (s) => (
+                  <span className="ds-inline">
+                    {s.name}
+                    {editingId === s.id && <Badge tone="info">Editing</Badge>}
+                  </span>
+                ),
+              },
+              { key: 'code', header: 'Code', render: (s) => s.code ?? <span className="ds-muted">—</span> },
+              {
+                key: 'actions',
+                header: 'Actions',
+                render: (subject) => (
+                  <div className="ds-row-actions">
+                    <button type="button" className="ds-btn ds-btn-link" onClick={() => startEdit(subject)}>
                       Edit
                     </button>
                     <DeleteAction
                       itemName={subject.name}
+                      buttonClassName="ds-btn ds-btn-link ds-btn-link-danger"
                       dependencyChecks={[
                         { table: 'student_subjects', column: 'subject_id', value: subject.id, label: ['student taking it', 'students taking it'] },
                         { table: 'timetable_slots', column: 'subject_id', value: subject.id, label: ['timetable slot', 'timetable slots'] },
@@ -120,13 +133,13 @@ export default function Subjects() {
                         reload()
                       }}
                     />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Card>
     </>
   )
 }

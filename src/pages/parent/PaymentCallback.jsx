@@ -5,6 +5,7 @@ import { friendlyDbError } from '../../lib/db'
 import { callFunction } from '../../lib/functions'
 import { formatNaira } from '../../lib/format'
 import { InvoiceStatusBadge } from '../../components/PaymentBadges'
+import { Alert, Button, Card, PageHeader } from '../../components/ui/Primitives'
 
 // Paystack sends the parent here after checkout: /parent/payment-callback?reference=...
 // A payment is confirmed on our server either by Paystack's webhook
@@ -85,22 +86,25 @@ export default function PaymentCallback() {
   const invoice = state.payment?.invoices
 
   return (
-    <div className="payment-callback">
-      <h1>Payment</h1>
+    <div className="ds-narrow">
+      <PageHeader title="Payment" />
       {!reference ? (
-        <p className="alert alert-error" role="alert">
-          This page is opened by Paystack after a payment, but no payment reference was given.
-        </p>
+        <Alert tone="danger">This page is opened by Paystack after a payment, but no payment reference was given.</Alert>
       ) : state.phase === 'checking' ? (
-        <div className="panel payment-status" role="status" aria-live="polite">
-          <p className="spinner-line">
-            <span className="spinner" aria-hidden="true" /> Confirming your payment…
-          </p>
-          <p className="muted small">This usually takes a few seconds. Please don&apos;t close this page.</p>
-        </div>
+        <Card>
+          <div role="status" aria-live="polite">
+            <p className="ds-inline" style={{ marginTop: 0, fontWeight: 700 }}>
+              <span className="ds-spinner" aria-hidden="true" /> Confirming your payment…
+            </p>
+            <p className="ds-note" style={{ marginBottom: 0 }}>
+              This usually takes a few seconds. Please don&apos;t close this page.
+            </p>
+          </div>
+        </Card>
       ) : state.phase === 'successful' ? (
-        <div className="panel payment-status is-success" role="status">
-          <h2>✅ Payment successful</h2>
+        <Card className="ds-edge-success">
+          <div role="status">
+          <h2 className="ds-h2" style={{ fontSize: 'var(--ds-text-lg)' }}>✅ Payment successful</h2>
           <p>
             {formatNaira(state.payment.amount)} was paid for <strong>{invoice?.fee_structures?.name}</strong>.
           </p>
@@ -112,44 +116,47 @@ export default function PaymentCallback() {
               .
             </p>
           )}
-        </div>
+          </div>
+        </Card>
       ) : state.phase === 'failed' ? (
-        <div className="panel payment-status is-failed" role="alert">
-          <h2>Payment not completed</h2>
-          <p>
-            Paystack reported that this payment did not go through, so you have not been charged. You can try again from
-            the fees page.
-          </p>
-        </div>
+        <Card className="ds-edge-danger">
+          <div role="alert">
+            <h2 className="ds-h2" style={{ fontSize: 'var(--ds-text-lg)' }}>Payment not completed</h2>
+            <p style={{ marginBottom: 0 }}>
+              Paystack reported that this payment did not go through, so you have not been charged. You can try again from the fees page.
+            </p>
+          </div>
+        </Card>
       ) : state.phase === 'pending' ? (
-        <div className="panel payment-status" role="status">
-          <h2>Still waiting for confirmation</h2>
+        <Card className="ds-edge-warning">
+          <div role="status">
+          <h2 className="ds-h2" style={{ fontSize: 'var(--ds-text-lg)' }}>Still waiting for confirmation</h2>
           <p>
             Paystack hasn&apos;t confirmed this payment yet. If you completed the payment, it will show as
             &quot;Successful&quot; on the fees page within a few minutes; you don&apos;t need to pay again. If you
             closed the checkout without paying, nothing was charged.
           </p>
-          <button type="button" className="button-secondary" onClick={checkAgain}>
+          <Button variant="secondary" onClick={checkAgain}>
             Check again
-          </button>
-        </div>
+          </Button>
+          </div>
+        </Card>
       ) : state.phase === 'not-found' ? (
-        <p className="alert alert-error" role="alert">
-          We couldn&apos;t find a payment with reference {reference} on your account. If money was taken, please contact
-          the school with this reference.
-        </p>
+        <Alert tone="danger">
+          We couldn&apos;t find a payment with reference {reference} on your account. If money was taken, please contact the school with this reference.
+        </Alert>
       ) : (
-        <p className="alert alert-error" role="alert">
+        <Alert tone="danger">
           {state.error}{' '}
-          <button type="button" className="button-link" onClick={checkAgain}>
+          <button type="button" className="ds-btn ds-btn-ghost ds-btn-sm" onClick={checkAgain}>
             Try again
           </button>
-        </p>
+        </Alert>
       )}
-      {reference && <p className="muted small">Reference: {reference}</p>}
-      <p>
-        <Link to={feesLink}>← Back to school fees</Link>
-      </p>
+      {reference && <p className="ds-note" style={{ overflowWrap: 'anywhere' }}>Reference: {reference}</p>}
+      <Link to={feesLink} className="ds-btn ds-btn-link" style={{ paddingLeft: 0 }}>
+        ← Back to school fees
+      </Link>
     </div>
   )
 }

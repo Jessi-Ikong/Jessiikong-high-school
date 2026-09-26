@@ -8,6 +8,8 @@ import { fetchCorrectionSetup, fetchSectionSlots } from '../../lib/corrections'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { Roster } from '../../components/AttendanceRoster'
 import TermClassSectionPicker from '../../components/TermClassSectionPicker'
+import { Alert, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select } from '../../components/ui/Form'
 
 // Admins (both tiers) correct attendance for ANY class and ANY past date in a
 // term. It uses the teacher's roster and saves through the same table and
@@ -19,17 +21,18 @@ export default function CorrectAttendance() {
   const setup = useAsyncData(fetchCorrectionSetup, 'correction-setup')
   return (
     <>
-      <h1>Correct attendance</h1>
-      <p className="muted">
-        Fix attendance for any class and any date, including dates teachers can no longer change (older than 7 days). Each
-        change is recorded in the audit log, keeping who originally marked it.
-      </p>
+      <PageHeader
+        title="Correct attendance"
+        subtitle="Fix attendance for any class and any date, including dates teachers can no longer change (older than 7 days). Each change is recorded in the audit log, keeping who originally marked it."
+      />
       {setup.loading ? (
-        <p className="muted">Loading…</p>
+        <LoadingState lines={4} />
       ) : setup.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(setup.error)}</p>
+        <Alert tone="danger">{friendlyDbError(setup.error)}</Alert>
       ) : setup.data.terms.length === 0 ? (
-        <p className="empty-state">No terms exist yet.</p>
+        <Card>
+          <EmptyState icon="calendar">No terms exist yet.</EmptyState>
+        </Card>
       ) : (
         <Picker setup={setup.data} />
       )}
@@ -46,7 +49,9 @@ function Picker({ setup }) {
     <>
       <TermClassSectionPicker setup={setup} value={filters} onChange={setFilters} />
       {!filters.sectionId ? (
-        <p className="empty-state">Choose a class and section.</p>
+        <Card>
+          <EmptyState icon="check">Choose a class and section.</EmptyState>
+        </Card>
       ) : (
         <SlotPicker key={`${filters.termId}:${filters.sectionId}`} term={term} sectionId={filters.sectionId} />
       )}
@@ -64,11 +69,16 @@ function SlotPicker({ term, sectionId }) {
   const [slotId, setSlotId] = useState('')
   const [date, setDate] = useState('')
 
-  if (slotsQuery.loading) return <p className="muted">Loading the timetable…</p>
-  if (slotsQuery.error) return <p className="alert alert-error" role="alert">{friendlyDbError(slotsQuery.error)}</p>
+  if (slotsQuery.loading) return <LoadingState lines={3} label="Loading the timetable…" />
+  if (slotsQuery.error) return <Alert tone="danger">{friendlyDbError(slotsQuery.error)}</Alert>
   const slots = slotsQuery.data
-  if (slots.length === 0) return <p className="empty-state">This section has no classes on the timetable for {term.name}.</p>
-
+  if (slots.length === 0) {
+    return (
+      <Card>
+        <EmptyState icon="calendar">This section has no classes on the timetable for {term.name}.</EmptyState>
+      </Card>
+    )
+  }
   const slot = slots.find((s) => s.id === slotId)
   // Every date this class met in the term, up to today (newest first).
   const dates = slot ? recentDatesOn(slot.day_of_week, term.start_date, term.end_date, 60) : []
@@ -77,49 +87,51 @@ function SlotPicker({ term, sectionId }) {
 
   return (
     <>
-      <div className="filter-bar">
-        <label className="inline-field correction-slot">
-          Class (subject, day, period)
-          <select
-            value={slotId}
-            onChange={(e) => {
-              setSlotId(e.target.value)
-              setDate('')
-            }}
-          >
-            <option value="">Choose a class</option>
-            {slots.map((s) => (
-              <option key={s.id} value={s.id}>
-                {slotLabel(s)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {slot && dates.length > 0 && (
-          <label className="inline-field">
-            Date
-            <select value={chosenDate} onChange={(e) => setDate(e.target.value)}>
-              {dates.map((d) => (
-                <option key={d} value={d}>
-                  {formatDate(d)}
-                  {d === today ? ' (today)' : isEditable(d) ? '' : ' 🔒'}
+      <div className="ds-filters">
+        <Field label="Class (subject, day, period)">
+          {(p) => (
+            <Select
+              {...p}
+              value={slotId}
+              onChange={(e) => {
+                setSlotId(e.target.value)
+                setDate('')
+              }}
+            >
+              <option value="">Choose a class</option>
+              {slots.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {slotLabel(s)}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          )}
+        </Field>
+        {slot && dates.length > 0 && (
+          <Field label="Date" hint="🔒 = older than 7 days: teachers can't change it any more; you'll be asked to confirm a correction.">
+            {(p) => (
+              <Select {...p} value={chosenDate} onChange={(e) => setDate(e.target.value)}>
+                {dates.map((d) => (
+                  <option key={d} value={d}>
+                    {formatDate(d)}
+                    {d === today ? ' (today)' : isEditable(d) ? '' : ' 🔒'}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         )}
       </div>
       {!slot ? null : dates.length === 0 ? (
-        <p className="empty-state">
-          There is no {capitalise(slot.day_of_week)} in {term.name} up to today, so there is nothing to correct.
-        </p>
+        <Card>
+          <EmptyState icon="calendar">
+            There is no {capitalise(slot.day_of_week)} in {term.name} up to today, so there is nothing to correct.
+          </EmptyState>
+        </Card>
       ) : (
-        <>
-          <p className="muted small">
-            🔒 = older than 7 days: teachers can&apos;t change it any more; you&apos;ll be asked to confirm a correction.
-          </p>
+        <Card title={`${slot.subjects.name} · ${formatDate(chosenDate)}`}>
           <Roster key={`${slot.id}:${chosenDate}`} slot={slot} date={chosenDate} admin />
-        </>
+        </Card>
       )}
     </>
   )

@@ -212,12 +212,6 @@
   padding: var(--ds-space-4) var(--ds-space-4) calc(var(--ds-bottomnav-h) + env(safe-area-inset-bottom) + var(--ds-space-6));
 }
 
-/* Pages not yet migrated to the design system keep their old styles; just
-   stop anything overflowing the phone screen sideways. */
-.ds-content.admin-content {
-  max-width: 1200px;
-}
-
 .ds-content img,
 .ds-content table {
   max-width: 100%;
@@ -1010,6 +1004,19 @@
   content: none;
 }
 
+/* rich cells: label above, content full width (phones) */
+.ds-table td.ds-td-stack {
+  display: block;
+  text-align: left;
+  padding: var(--ds-space-2) 0;
+  border-top: 1px dashed var(--ds-border);
+}
+
+.ds-table td.ds-td-stack::before {
+  display: block;
+  margin-bottom: var(--ds-space-1);
+}
+
 .ds-table-num {
   font-variant-numeric: tabular-nums;
 }
@@ -1031,7 +1038,8 @@
 
   .ds-table th,
   .ds-table td,
-  .ds-table td.ds-td-primary {
+  .ds-table td.ds-td-primary,
+  .ds-table td.ds-td-stack {
     display: table-cell;
     padding: var(--ds-space-3) var(--ds-space-4);
     border-bottom: 1px solid var(--ds-border);
@@ -1356,8 +1364,8 @@
   }
 }
 
-/* Pages sit inside .admin-content, whose old heading margins (index.css)
-   must not leak into design-system headings. */
+/* Old global heading margins (index.css) must not leak into design-system
+   headings. */
 .ds .ds-h1,
 .ds .ds-h2,
 .ds .ds-sheet-header h2,
@@ -1373,4 +1381,1096 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* =============================================================================
+   PAGE LAYOUT HELPERS (used by the migrated admin pages)
+   ============================================================================= */
+/* Filters: one per row on phones, then as many as fit. */
+.ds-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 var(--ds-space-3);
+  margin-bottom: var(--ds-space-2);
+}
+
+.ds-filters .ds-field {
+  margin-bottom: var(--ds-space-3);
+}
+
+@media (min-width: 480px) {
+  .ds-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .ds-filters {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+
+/* Buttons / links in a table row or card: wrap, never overflow. */
+.ds-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ds-space-1) var(--ds-space-2);
+}
+
+@container (min-width: 600px) {
+  .ds-table td .ds-row-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* A compact "text-looking" button (Edit, Delete...) that still has a 44px tap area. */
+.ds-btn-link {
+  min-height: var(--ds-tap);
+  padding: 0 var(--ds-space-2);
+  background: transparent;
+  color: var(--ds-primary);
+  border: none;
+}
+
+.ds-btn-link:hover:not(:disabled) {
+  background: var(--ds-primary-tint);
+  color: var(--ds-primary);
+}
+
+.ds-btn-link-danger {
+  color: var(--ds-danger);
+}
+
+.ds-btn-link-danger:hover:not(:disabled) {
+  background: var(--ds-danger-bg);
+  color: var(--ds-danger);
+}
+
+/* Checkbox lists (e.g. subjects): 1 column on phones, more when there is room. */
+.ds-checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0 var(--ds-space-4);
+  padding: var(--ds-space-1) var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-2);
+}
+
+.ds-count {
+  margin: 0 0 var(--ds-space-2);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-muted);
+}
+
+.ds-stack > * + * {
+  margin-top: var(--ds-space-3);
+}
+
+.ds-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+
+.ds-text-danger {
+  color: var(--ds-danger);
+}
+
+.ds-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ds-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--ds-radius-sm);
+  display: block;
+  background: var(--ds-neutral-bg);
+}
+
+.ds-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: var(--ds-space-3);
+}
+
+.ds-gallery-grid .ds-card {
+  margin: 0;
+}
+
+/* Expandable rows (<details>), e.g. a class and its sections */
+.ds-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  min-height: 56px;
+  padding: var(--ds-space-2) var(--ds-space-4);
+  cursor: pointer;
+  list-style: none;
+}
+
+.ds-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ds-details > summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-right: 2px solid var(--ds-text-muted);
+  border-bottom: 2px solid var(--ds-text-muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.ds-details[open] > summary::after {
+  transform: rotate(-135deg);
+}
+
+.ds-details-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-details > summary .ds-muted {
+  margin-left: auto;
+}
+
+.ds-details-body {
+  padding: var(--ds-space-2) var(--ds-space-4) var(--ds-space-4);
+  border-top: 1px solid var(--ds-border);
+}
+
+/* A text field and a button on one line (wraps on narrow screens) */
+.ds-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  margin-top: var(--ds-space-3);
+}
+
+.ds-inline-form .ds-input {
+  flex: 1 1 180px;
+  width: auto;
+}
+
+/* Timetable cells */
+.ds-tt-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ds-space-1);
+  min-width: 0;
+}
+
+.ds-tt-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: grid;
+  gap: var(--ds-space-1);
+}
+
+.ds-tt-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-1);
+  padding: var(--ds-space-1) 0 var(--ds-space-1) var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-primary-tint);
+  font-size: var(--ds-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.ds-tt-teacher {
+  display: block;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-muted);
+}
+
+.ds-tt-remove {
+  display: inline-grid;
+  place-items: center;
+  width: var(--ds-tap);
+  height: var(--ds-tap);
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  background: transparent;
+  color: var(--ds-danger);
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+
+.ds-tt-remove:hover {
+  background: var(--ds-danger-bg);
+}
+
+/* Two-line preview of long text (e.g. announcement bodies in a table). */
+.ds .ds-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* Label / value facts (e.g. an inquiry's contact details): stacked on phones,
+   two columns from 480px. */
+.ds .ds-facts {
+  display: grid;
+  gap: var(--ds-space-1) var(--ds-space-4);
+  margin: 0 0 var(--ds-space-4);
+}
+
+.ds .ds-facts dt {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-muted);
+  font-weight: 600;
+}
+
+.ds .ds-facts dd {
+  margin: 0 0 var(--ds-space-2);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+@media (min-width: 480px) {
+  .ds .ds-facts {
+    grid-template-columns: max-content 1fr;
+  }
+
+  .ds .ds-facts dd {
+    margin: 0;
+  }
+}
+
+/* Audit log entries: a list inside a card; the raw JSON scrolls inside its box,
+   never the page. */
+.ds .ds-audit-changes {
+  margin: var(--ds-space-2) 0 0;
+  padding-left: var(--ds-space-5);
+  font-size: var(--ds-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.ds .ds-audit-raw summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-muted);
+}
+
+.ds .ds-audit-raw pre {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0;
+  padding: var(--ds-space-3);
+  background: var(--ds-neutral-bg);
+  border-radius: var(--ds-radius-sm);
+  font-size: 0.75rem;
+}
+
+.ds .ds-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  margin-top: var(--ds-space-3);
+}
+
+/* Phone top bar: your avatar opens the menu sheet (account, Log out, every
+   page). From 768px the name and Log out sit in the top bar instead. */
+.ds-topbar-account .ds-avatar {
+  width: 34px;
+  height: 34px;
+  font-size: var(--ds-text-xs);
+}
+
+@media (min-width: 768px) {
+  .ds-topbar-account {
+    display: none;
+  }
+}
+
+/* Round profile photo (or initials while it loads / when there is none). */
+.ds-photo {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--ds-neutral-bg);
+  color: var(--ds-text-muted);
+  font-weight: 700;
+}
+
+.ds-photo-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+
+.ds-photo-upload-actions {
+  display: grid;
+  gap: 2px;
+}
+
+/* A row of toggle buttons (e.g. choosing a child): wraps on narrow screens. */
+.ds .ds-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  margin-bottom: var(--ds-space-4);
+}
+
+.ds .ds-segmented button {
+  min-height: var(--ds-tap);
+  max-width: 100%;
+  padding: var(--ds-space-2) var(--ds-space-4);
+  border: 1.5px solid var(--ds-border-strong);
+  border-radius: 999px;
+  background: var(--ds-surface);
+  color: var(--ds-text);
+  font: inherit;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.ds .ds-segmented button[aria-pressed='true'] {
+  border-color: var(--ds-primary);
+  background: var(--ds-primary);
+  color: #fff;
+}
+
+.ds .ds-segmented-meta {
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+/* Attendance roster (teacher: Mark attendance; admin: Correct attendance).
+   Phones: name above a row of four 44px status buttons; wider: side by side.
+   Selected statuses use the statusTones colours (present green, absent red,
+   late gold, excused blue). */
+.ds-roster-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  margin: var(--ds-space-3) 0;
+}
+
+.ds .ds-roster {
+  list-style: none;
+  margin: 0 0 var(--ds-space-4);
+  padding: 0;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius);
+  overflow: hidden;
+}
+
+.ds .ds-roster > li {
+  display: grid;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.ds .ds-roster > li:last-child {
+  border-bottom: none;
+}
+
+.ds .ds-roster > li.ds-roster-unset {
+  background: var(--ds-warning-bg);
+}
+
+.ds .ds-roster > li.ds-roster-changed {
+  background: var(--ds-info-bg);
+}
+
+.ds-roster-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ds .ds-status-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--ds-space-1);
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.ds .ds-status-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--ds-tap);
+  padding: 0 var(--ds-space-1);
+  border: 1.5px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface);
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.ds .ds-status-option input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.ds .ds-status-option:has(input:focus-visible) {
+  outline: 3px solid var(--ds-accent);
+  outline-offset: 1px;
+}
+
+.ds .ds-status-option:has(input:disabled) {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.ds .ds-status-success:has(input:checked) { background: var(--ds-success-bg); border-color: var(--ds-success); color: var(--ds-success); }
+.ds .ds-status-danger:has(input:checked) { background: var(--ds-danger-bg); border-color: var(--ds-danger); color: var(--ds-danger); }
+.ds .ds-status-warning:has(input:checked) { background: var(--ds-warning-bg); border-color: var(--ds-warning); color: var(--ds-warning); }
+.ds .ds-status-info:has(input:checked) { background: var(--ds-info-bg); border-color: var(--ds-info); color: var(--ds-info); }
+.ds .ds-status-neutral:has(input:checked) { background: var(--ds-neutral-bg); border-color: var(--ds-neutral); }
+
+@media (min-width: 720px) {
+  .ds .ds-roster > li {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+    align-items: center;
+  }
+}
+
+/* Score boxes in the gradebook: full width on phone cards, compact in the table. */
+.ds .ds-score-input {
+  min-width: 72px;
+}
+
+@container (min-width: 600px) {
+  .ds .ds-score-input {
+    max-width: 110px;
+  }
+}
+
+/* Grading one student's work: mark + feedback + save, stacked. */
+.ds-grade-form {
+  display: grid;
+  gap: var(--ds-space-2);
+  min-width: 0;
+}
+
+.ds-grade-mark {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+
+.ds-grade-mark .ds-score-input {
+  width: 110px;
+}
+
+@container (min-width: 600px) {
+  .ds-grade-form {
+    min-width: 240px;
+  }
+}
+
+/* =============================================================================
+   MESSAGING (teacher + parent): thread list + conversation.
+   The switch uses the component's OWN width (container query): below 720px
+   (phones, and tablets beside the sidebar) only ONE pane shows: the list, or
+   the open conversation with "← All conversations"; wider, both side by side.
+   ============================================================================= */
+.ds-messaging {
+  container-type: inline-size;
+}
+
+.ds-messaging-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ds-space-4);
+  align-items: start;
+}
+
+.ds-messaging-grid.has-open-thread .ds-thread-panel,
+.ds-messaging-grid:not(.has-open-thread) .ds-conversation-panel {
+  display: none;
+}
+
+.ds .ds-thread-panel,
+.ds .ds-conversation-panel {
+  margin: 0;
+  min-width: 0;
+}
+
+.ds .ds-thread-list,
+.ds .ds-contact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ds-thread-item {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--ds-tap);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: none;
+  border-bottom: 1px solid var(--ds-border);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ds-thread-item:hover {
+  background: var(--ds-surface-2);
+}
+
+.ds-thread-item.is-open {
+  background: var(--ds-primary-tint);
+  box-shadow: inset 3px 0 0 var(--ds-primary);
+}
+
+.ds-thread-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  overflow-wrap: anywhere;
+}
+
+.ds-thread-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-thread-item.is-unread .ds-thread-preview {
+  font-weight: 700;
+}
+
+.ds-new-conversation {
+  padding: var(--ds-space-3) var(--ds-space-4);
+  background: var(--ds-surface-2);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.ds .ds-contact-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2) 0;
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.ds .ds-contact-list li:last-child {
+  border-bottom: none;
+}
+
+.ds-conversation {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ds-conversation-header {
+  padding: var(--ds-space-2) var(--ds-space-4) var(--ds-space-3);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.ds .ds-conversation-header p {
+  margin: 2px 0 0;
+}
+
+.ds .ds-conversation-back {
+  margin-left: calc(-1 * var(--ds-space-2));
+}
+
+.ds-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
+  max-height: 60vh;
+  max-height: 60dvh;
+  overflow-y: auto;
+  padding: var(--ds-space-4);
+  background: var(--ds-bg);
+}
+
+.ds-message {
+  max-width: 88%;
+  align-self: flex-start;
+}
+
+.ds-message.is-mine {
+  align-self: flex-end;
+  text-align: right;
+}
+
+.ds-message.is-editing {
+  align-self: stretch;
+  max-width: 100%;
+  text-align: left;
+}
+
+.ds-message-body {
+  display: inline-block;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-radius: 14px 14px 14px 4px;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ds-message.is-mine .ds-message-body {
+  border-radius: 14px 14px 4px 14px;
+  background: var(--ds-primary);
+  border-color: var(--ds-primary);
+  color: #fff;
+}
+
+.ds-message.is-highlighted .ds-message-body {
+  outline: 3px solid var(--ds-accent);
+  outline-offset: 2px;
+}
+
+.ds-message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+  margin-top: 2px;
+}
+
+.ds-message.is-mine .ds-message-meta {
+  justify-content: flex-end;
+}
+
+.ds-message-action {
+  min-height: var(--ds-tap);
+  min-width: var(--ds-tap);
+  padding: 0 var(--ds-space-2);
+  border: none;
+  background: none;
+  color: var(--ds-primary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ds-quote {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--ds-tap);
+  margin-bottom: var(--ds-space-1);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: none;
+  border-left: 3px solid var(--ds-primary);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-primary-tint);
+  color: var(--ds-text);
+  font: inherit;
+  font-size: var(--ds-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ds-quote-author {
+  font-weight: 700;
+  color: var(--ds-primary);
+}
+
+.ds-quote-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-compose,
+.ds-message-edit {
+  display: grid;
+  gap: var(--ds-space-2);
+}
+
+.ds-compose {
+  padding: var(--ds-space-3) var(--ds-space-4) var(--ds-space-4);
+  border-top: 1px solid var(--ds-border);
+}
+
+.ds-conversation > .ds-alert {
+  margin: var(--ds-space-3) var(--ds-space-4) var(--ds-space-4);
+}
+
+.ds-compose-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+}
+
+.ds-reply-bar {
+  display: flex;
+  gap: var(--ds-space-2);
+  align-items: stretch;
+}
+
+.ds-reply-bar .ds-quote {
+  margin: 0;
+  min-width: 0;
+}
+
+.ds-reply-clear {
+  flex: none;
+  width: var(--ds-tap);
+  padding: 0;
+}
+
+@container (min-width: 720px) {
+  .ds-messaging-grid {
+    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  }
+
+  .ds-messaging-grid.has-open-thread .ds-thread-panel,
+  .ds-messaging-grid:not(.has-open-thread) .ds-conversation-panel {
+    display: block;
+  }
+
+  .ds .ds-conversation-back {
+    display: none;
+  }
+}
+
+/* =============================================================================
+   PORTAL DASHBOARDS (teacher / student / parent)
+   ============================================================================= */
+.ds .ds-h3 {
+  margin: 0 0 var(--ds-space-2);
+  font-size: var(--ds-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ds-text-muted);
+}
+
+/* Short lists inside dashboard cards */
+.ds .ds-dash-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ds .ds-dash-list > li {
+  padding: var(--ds-space-2) 0;
+  border-bottom: 1px solid var(--ds-border);
+  font-size: var(--ds-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.ds .ds-dash-list > li:first-child {
+  padding-top: 0;
+}
+
+.ds .ds-dash-list > li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.ds .ds-dash-list a {
+  color: var(--ds-primary);
+  font-weight: 700;
+}
+
+.ds .ds-dash-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-1) var(--ds-space-3);
+}
+
+/* Stat tiles when there are only a few: as many across as fit. */
+.ds .ds-stat-grid.ds-stat-grid-fit {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+/* Teacher: today's classes as tappable cards. */
+.ds-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-4);
+}
+
+.ds .ds-slot-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  padding: var(--ds-space-4);
+  border: 1px solid var(--ds-border);
+  border-left: 4px solid var(--ds-warning);
+  border-radius: var(--ds-radius);
+  background: var(--ds-surface);
+  box-shadow: var(--ds-shadow);
+  color: var(--ds-text);
+  text-decoration: none;
+}
+
+.ds .ds-slot-card.is-marked {
+  border-left-color: var(--ds-success);
+}
+
+.ds .ds-slot-card:hover {
+  border-color: var(--ds-primary);
+}
+
+.ds-slot-time {
+  font-size: var(--ds-text-xs);
+  font-weight: 700;
+  color: var(--ds-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ds-slot-subject {
+  font-size: var(--ds-text-lg);
+  font-weight: 700;
+}
+
+.ds-slot-action {
+  margin-top: var(--ds-space-2);
+  min-height: 24px;
+  font-weight: 700;
+  color: var(--ds-primary);
+}
+
+/* Parent: one card per child with attendance / grades / fees. */
+.ds-child-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: var(--ds-space-4) var(--ds-space-6);
+}
+
+/* My profile: photo beside the details; stacked on narrow phones. */
+.ds-profile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-4);
+}
+
+.ds-profile > :last-child {
+  flex: 1 1 220px;
+}
+
+/* An assignment card's summary line: dates on the left, counts on the right. */
+.ds-assignment-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--ds-space-1) var(--ds-space-4);
+  margin-bottom: var(--ds-space-2);
+}
+
+/* Student assignments: a coloured left edge per status (statusTones), and
+   boxes for the handed-in work and the grade. */
+.ds .ds-card.ds-edge-success { border-left: 4px solid var(--ds-success); }
+.ds .ds-card.ds-edge-warning { border-left: 4px solid var(--ds-warning); }
+.ds .ds-card.ds-edge-danger { border-left: 4px solid var(--ds-danger); }
+.ds .ds-card.ds-edge-info { border-left: 4px solid var(--ds-info); }
+.ds .ds-card.ds-edge-neutral { border-left: 4px solid var(--ds-border-strong); }
+
+.ds-term-group + .ds-term-group {
+  margin-top: var(--ds-space-8);
+}
+
+.ds-work-box {
+  margin: var(--ds-space-3) 0;
+  padding: var(--ds-space-3);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  overflow-wrap: anywhere;
+}
+
+.ds-work-box.ds-work-graded {
+  background: var(--ds-success-bg);
+  border-color: transparent;
+}
+
+/* A single-column page (e.g. the payment result). */
+.ds-narrow {
+  max-width: 640px;
+}
+
+.ds-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--ds-primary-tint);
+  border-top-color: var(--ds-primary);
+  border-radius: 50%;
+  animation: ds-spin 0.8s linear infinite;
+}
+
+@keyframes ds-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+/* =============================================================================
+   SIGN-IN PAGES (Login, Forgot password, Set password): crest + name on the
+   brand green, then the form in a card. Phones: the card fills the width
+   (16px gutter); from 480px a centred 420px card.
+   ============================================================================= */
+.ds-auth {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background:
+    linear-gradient(180deg, var(--brand-green-deep) 0, var(--brand-green-deep) 220px, var(--ds-bg) 220px);
+}
+
+.ds-auth-main {
+  width: 100%;
+  max-width: 452px;
+  margin: 0 auto;
+  padding: calc(var(--ds-space-8) + env(safe-area-inset-top)) var(--ds-space-4) var(--ds-space-8);
+}
+
+.ds .ds-auth-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  min-height: var(--ds-tap);
+  margin-bottom: var(--ds-space-6);
+  color: #fff;
+  text-decoration: none;
+}
+
+.ds-auth-brand strong {
+  display: block;
+  font-size: var(--ds-text-lg);
+  line-height: 1.2;
+}
+
+.ds-auth-brand span span {
+  font-size: var(--ds-text-sm);
+  color: var(--brand-gold-soft);
+}
+
+.ds .ds-auth-card {
+  margin: 0;
+  box-shadow: 0 12px 32px -12px rgba(8, 51, 38, 0.35);
+}
+
+.ds .ds-auth-card .ds-card-body {
+  padding: var(--ds-space-6) var(--ds-space-5);
+}
+
+.ds .ds-auth-title {
+  font-size: var(--ds-text-xl);
+}
+
+.ds .ds-auth-subtitle {
+  margin: var(--ds-space-1) 0 var(--ds-space-5);
+}
+
+.ds-auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 var(--ds-space-3);
+  margin-top: var(--ds-space-3);
+}
+
+.ds-auth-footer {
+  margin-top: var(--ds-space-4);
+  text-align: center;
+}
+
+.ds-auth-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-2);
+  margin: 0;
+  padding: var(--ds-space-8) 0;
+  color: #fff;
+  font-weight: 600;
+}
+
+@media (min-width: 480px) {
+  .ds .ds-auth-card .ds-card-body {
+    padding: var(--ds-space-8);
+  }
+}
+
+/* "Visit school website" at the end of the menu / sidebar. */
+.ds-nav-website {
+  padding: var(--ds-space-2) var(--ds-space-2) var(--ds-space-4);
+  border-top: 1px solid var(--ds-border);
+}
+
+.ds-sidebar .ds-nav-website {
+  margin-top: auto;
+}
+
+/* Sign-in cards: everything centred (headings, labels, hints, alerts, links),
+   as before the design-system rebuild; what people TYPE stays left-aligned. */
+.ds .ds-auth-card {
+  text-align: center;
+}
+
+.ds .ds-auth-card .ds-input {
+  text-align: left;
+}
+
+.ds .ds-auth-card .ds-auth-links {
+  justify-content: center;
+}
+
+.ds .ds-auth-card .ds-alert {
+  justify-content: center;
 }

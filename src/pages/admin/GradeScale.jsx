@@ -3,6 +3,9 @@ import { supabase } from '../../lib/supabaseClient'
 import { friendlyDbError, run } from '../../lib/db'
 import { gradeFor, scaleProblems } from '../../lib/grading'
 import { useAsyncData } from '../../hooks/useAsyncData'
+import { Alert, Button, Card, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { TextInput } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 function fetchScale() {
   return run(
@@ -25,17 +28,15 @@ export default function GradeScale() {
 
   return (
     <>
-      <h1>Grade scale</h1>
-      <p className="muted">
-        The letter grade for each percentage, used across the whole school (Gradebook, Class Ranking, and later report
-        cards). Bands are whole numbers and include both ends (e.g. B = 60–69). A percentage is rounded to the nearest
-        whole number first, so 69.5% counts as 70%.
-      </p>
+      <PageHeader
+        title="Grade scale"
+        subtitle="The letter grade for each percentage, used across the whole school (Gradebook, Class Ranking, and later report cards). Bands are whole numbers and include both ends (e.g. B = 60–69). A percentage is rounded to the nearest whole number first, so 69.5% counts as 70%."
+      />
 
       {query.loading ? (
-        <p className="muted">Loading the grade scale…</p>
+        <LoadingState lines={6} />
       ) : query.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+        <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
       ) : (
         <ScaleEditor
           key={JSON.stringify(query.data)}
@@ -117,104 +118,141 @@ function ScaleEditor({ saved, savedMessage, onSaved, onEdit }) {
 
   return (
     <form onSubmit={handleSave}>
-      {savedMessage && <p className="alert alert-success" role="status">{savedMessage}</p>}
+      {savedMessage && <Alert tone="success">{savedMessage}</Alert>}
 
-      <div className="panel preview-panel">
-        <label className="preview-line">
+      <Card title="Try a score">
+        <label className="ds-inline" style={{ fontSize: 'var(--ds-text-sm)' }}>
           e.g. a score of
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step="any"
-            value={previewScore}
-            onChange={(e) => setPreviewScore(e.target.value)}
-            aria-label="Example score"
-          />
+          <span style={{ width: 96 }}>
+            <TextInput
+              type="number"
+              inputMode="decimal"
+              min="0"
+              max="100"
+              step="any"
+              value={previewScore}
+              onChange={(e) => setPreviewScore(e.target.value)}
+              aria-label="Example score"
+            />
+          </span>
           % would currently be graded:{' '}
-          <strong className="preview-grade">
+          <strong style={{ fontSize: 'var(--ds-text-lg)' }}>
             {previewValid ? (previewSaved ? `${previewSaved.grade}${previewSaved.remark ? ` (${previewSaved.remark})` : ''}` : '—') : '—'}
           </strong>
         </label>
         {isDirty && previewValid && (
-          <p className="muted small">
-            With your unsaved changes it would be:{' '}
-            <strong>{previewDraft ? previewDraft.grade : '— (fix the problems below first)'}</strong>
+          <p className="ds-note" style={{ marginTop: 8, marginBottom: 0 }}>
+            With your unsaved changes it would be: <strong>{previewDraft ? previewDraft.grade : '— (fix the problems below first)'}</strong>
           </p>
         )}
-      </div>
+      </Card>
 
-      <div className="table-wrap">
-        <table className="data-table scale-table">
-          <thead>
-            <tr>
-              <th>Grade</th>
-              <th>From (%)</th>
-              <th>To (%)</th>
-              <th>Remark (optional)</th>
-              <th aria-label="Actions" />
-            </tr>
-          </thead>
-          <tbody>
-            {draft.map((b) => (
-              <tr key={b.key}>
-                <td>
-                  <input value={b.grade} onChange={(e) => update(b.key, 'grade', e.target.value)} aria-label="Grade letter" placeholder="A" required />
-                </td>
-                <td>
-                  <input type="number" min="0" max="100" step="1" value={b.min_score} onChange={(e) => update(b.key, 'min_score', e.target.value)} aria-label={`Lowest score for ${b.grade || 'this grade'}`} required />
-                </td>
-                <td>
-                  <input type="number" min="0" max="100" step="1" value={b.max_score} onChange={(e) => update(b.key, 'max_score', e.target.value)} aria-label={`Highest score for ${b.grade || 'this grade'}`} required />
-                </td>
-                <td>
-                  <input value={b.remark} onChange={(e) => update(b.key, 'remark', e.target.value)} aria-label={`Remark for ${b.grade || 'this grade'}`} placeholder="Excellent" />
-                </td>
-                <td className="row-actions">
-                  <button type="button" className="button-link danger" onClick={() => removeBand(b.key)}>
+      <Card title="Grade bands" flush>
+        <DataTable
+          caption="Grade bands"
+          rowKey={(b) => b.key}
+          rows={draft}
+          columns={[
+            {
+              key: 'grade',
+              header: 'Grade',
+              primary: true,
+              render: (b) => <TextInput value={b.grade} onChange={(e) => update(b.key, 'grade', e.target.value)} aria-label="Grade letter" placeholder="A" required />,
+            },
+            {
+              key: 'min',
+              header: 'From (%)',
+              stack: true,
+              render: (b) => (
+                <TextInput
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={b.min_score}
+                  onChange={(e) => update(b.key, 'min_score', e.target.value)}
+                  aria-label={`Lowest score for ${b.grade || 'this grade'}`}
+                  required
+                />
+              ),
+            },
+            {
+              key: 'max',
+              header: 'To (%)',
+              stack: true,
+              render: (b) => (
+                <TextInput
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={b.max_score}
+                  onChange={(e) => update(b.key, 'max_score', e.target.value)}
+                  aria-label={`Highest score for ${b.grade || 'this grade'}`}
+                  required
+                />
+              ),
+            },
+            {
+              key: 'remark',
+              header: 'Remark (optional)',
+              stack: true,
+              render: (b) => (
+                <TextInput value={b.remark} onChange={(e) => update(b.key, 'remark', e.target.value)} aria-label={`Remark for ${b.grade || 'this grade'}`} placeholder="Excellent" />
+              ),
+            },
+            {
+              key: 'actions',
+              header: 'Actions',
+              render: (b) => (
+                <div className="ds-row-actions">
+                  <button type="button" className="ds-btn ds-btn-link ds-btn-link-danger" onClick={() => removeBand(b.key)}>
                     Delete
                   </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="toolbar">
-        <button type="button" className="button-secondary" onClick={addBand}>
-          + Add band
-        </button>
-        <span className="muted small">Edit the bands above, then save. Changes only take effect once saved.</span>
-      </div>
+                </div>
+              ),
+            },
+          ]}
+        />
+        <div className="ds-card-body">
+          <div className="ds-inline">
+            <Button variant="secondary" onClick={addBand}>
+              + Add band
+            </Button>
+            <span className="ds-muted ds-small">Edit the bands above, then save. Changes only take effect once saved.</span>
+          </div>
+        </div>
+      </Card>
 
       {problems.length > 0 && (
-        <div className="alert alert-error" role="alert">
+        <Alert tone="danger">
           <strong>Fix these before saving:</strong>
-          <ul>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
             {problems.map((p) => (
               <li key={p}>{p}</li>
             ))}
           </ul>
-        </div>
+        </Alert>
       )}
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <div className="form-actions">
-        <button type="submit" disabled={saving || !isDirty || problems.length > 0}>
-          {saving ? 'Saving…' : 'Save grade scale'}
-        </button>
+      <div className="ds-form-actions">
         {isDirty && (
-          <button
-            type="button"
-            className="button-secondary"
+          <Button
+            variant="secondary"
             onClick={() => {
               setDraft(toDraft(saved))
               setError(null)
             }}
           >
             Discard changes
-          </button>
+          </Button>
         )}
+        <Button type="submit" disabled={saving || !isDirty || problems.length > 0}>
+          {saving ? 'Saving…' : 'Save grade scale'}
+        </Button>
       </div>
     </form>
   )

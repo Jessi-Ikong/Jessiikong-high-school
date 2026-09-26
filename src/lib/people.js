@@ -31,3 +31,16 @@ export function describeUsage(usage) {
     .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`)
   return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
 }
+
+// Why an ADMIN account can't be deactivated right now, or null if it can.
+// Mirrors the database rails (migration 042), so the Staff page can explain
+// instead of failing: nobody deactivates their own account, and the last
+// active super admin always stays. `admins`: every admin (a super admin sees
+// them all). Reactivating is always allowed.
+export function adminDeactivationBlocker(admin, admins, myUserId) {
+  if (!admin.is_active) return null
+  if (admin.id === myUserId) return "You can't deactivate your own account."
+  const otherActiveSuper = admins.some((a) => a.id !== admin.id && a.is_active && a.admin_level === 'super_admin')
+  if (admin.admin_level === 'super_admin' && !otherActiveSuper) return "This is the last active super admin, so it can't be deactivated."
+  return null
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { friendlyDbError } from '../lib/db'
 import { toIsoDate } from '../lib/dates'
 import { describeUsage, nameProblem } from '../lib/people'
@@ -12,64 +12,64 @@ import {
 } from '../lib/peopleEdit'
 import { useAsyncData } from '../hooks/useAsyncData'
 import ConfirmDialog from './ConfirmDialog'
+import Dialog from './ui/Dialog'
+import { Field, TextInput, Select } from './ui/Form'
 
 // Admin corrections to students and teachers: details, active/inactive and
 // (students) subjects for the current session. Email is fixed after creation
 // (it's the login) and a student's class only changes through promotion, so
 // neither is editable here.
 
+// A form in the design-system Dialog (full screen on phones). Esc / × cancel
+// (unless saving); the Save button submits the form.
 function FormDialog({ title, busy, error, onCancel, onSubmit, submitLabel = 'Save changes', children }) {
-  useEffect(() => {
-    function handleKey(event) {
-      if (event.key === 'Escape' && !busy) onCancel()
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [busy, onCancel])
-
   return (
-    <div className="dialog-backdrop">
+    <Dialog
+      title={title}
+      onClose={onCancel}
+      busy={busy}
+      dismissOnBackdrop={false}
+      footer={
+        <div className="ds-form-actions">
+          <button type="button" className="ds-btn ds-btn-secondary" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button type="submit" form="person-edit-form" className="ds-btn ds-btn-primary" disabled={busy}>
+            {busy ? 'Saving…' : submitLabel}
+          </button>
+        </div>
+      }
+    >
       <form
-        className="dialog dialog-form"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-dialog-title"
+        id="person-edit-form"
         onSubmit={(e) => {
           e.preventDefault()
           onSubmit()
         }}
       >
-        <h2 id="edit-dialog-title">{title}</h2>
         {children}
-        {error && <p className="alert alert-error" role="alert">{error}</p>}
-        <div className="dialog-actions">
-          <button type="button" className="button-secondary" onClick={onCancel} disabled={busy}>
-            Cancel
-          </button>
-          <button type="submit" disabled={busy}>
-            {busy ? 'Saving…' : submitLabel}
-          </button>
-        </div>
+        {error && (
+          <div className="ds-alert ds-alert-danger" role="alert">
+            {error}
+          </div>
+        )}
       </form>
-    </div>
+    </Dialog>
   )
 }
 
 function NameFields({ form, update }) {
   return (
     <>
-      <label>
-        First name
-        <input value={form.first_name} onChange={(e) => update('first_name', e.target.value)} required autoFocus />
-      </label>
-      <label>
-        Middle name(s) <span className="muted small">(optional)</span>
-        <input value={form.middle_name} onChange={(e) => update('middle_name', e.target.value)} />
-      </label>
-      <label>
-        Last name
-        <input value={form.last_name} onChange={(e) => update('last_name', e.target.value)} required />
-      </label>
+      <Field label="First name">
+        {(p) => <TextInput {...p} value={form.first_name} onChange={(e) => update('first_name', e.target.value)} required data-autofocus />}
+      </Field>
+      <Field label="Middle name(s)" hint="Optional">
+        {(p) => <TextInput {...p} value={form.middle_name} onChange={(e) => update('middle_name', e.target.value)} />}
+      </Field>
+      <Field label="Last name">
+        {(p) => <TextInput {...p} value={form.last_name} onChange={(e) => update('last_name', e.target.value)} required />}
+      </Field>
     </>
   )
 }
@@ -110,19 +110,19 @@ export function EditStudentDialog({ person, onClose, onSaved }) {
   return (
     <FormDialog title="Edit student details" busy={busy} error={error} onCancel={onClose} onSubmit={save}>
       <NameFields form={form} update={update} />
-      <label>
-        Date of birth
-        <input type="date" value={form.date_of_birth} max={today} onChange={(e) => update('date_of_birth', e.target.value)} />
-      </label>
-      <label>
-        Gender
-        <select value={form.gender} onChange={(e) => update('gender', e.target.value)}>
-          <option value="">Not specified</option>
-          <option value="female">Female</option>
-          <option value="male">Male</option>
-        </select>
-      </label>
-      <p className="muted small">
+      <Field label="Date of birth">
+        {(p) => <TextInput {...p} type="date" value={form.date_of_birth} max={today} onChange={(e) => update('date_of_birth', e.target.value)} />}
+      </Field>
+      <Field label="Gender">
+        {(p) => (
+          <Select {...p} value={form.gender} onChange={(e) => update('gender', e.target.value)}>
+            <option value="">Not specified</option>
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+          </Select>
+        )}
+      </Field>
+      <p className="ds-note">
         Email: {person.email ?? '—'} (can&apos;t be changed: it&apos;s their login). The class changes only through promotion.
       </p>
     </FormDialog>
@@ -156,15 +156,13 @@ export function EditTeacherDialog({ person, onClose, onSaved }) {
   return (
     <FormDialog title="Edit teacher details" busy={busy} error={error} onCancel={onClose} onSubmit={save}>
       <NameFields form={form} update={update} />
-      <label>
-        Staff ID
-        <input value={form.staff_id} onChange={(e) => update('staff_id', e.target.value)} required />
-      </label>
-      <label>
-        Department <span className="muted small">(optional)</span>
-        <input value={form.department} onChange={(e) => update('department', e.target.value)} />
-      </label>
-      <p className="muted small">Email: {person.email ?? '—'} (can&apos;t be changed: it&apos;s their login).</p>
+      <Field label="Staff ID">
+        {(p) => <TextInput {...p} value={form.staff_id} onChange={(e) => update('staff_id', e.target.value)} required />}
+      </Field>
+      <Field label="Department" hint="Optional">
+        {(p) => <TextInput {...p} value={form.department} onChange={(e) => update('department', e.target.value)} />}
+      </Field>
+      <p className="ds-note">Email: {person.email ?? '—'} (can&apos;t be changed: it&apos;s their login).</p>
     </FormDialog>
   )
 }
@@ -176,6 +174,11 @@ const EFFECTS = {
     'Their timetable slots stay assigned to them: give the classes to another teacher on the Timetable page (the admin dashboard lists these slots).',
     'Their ID card no longer shows as valid when scanned, and no new card can be issued.',
     'Nothing is deleted: attendance, grades and messages stay.',
+  ],
+  admin: [
+    "They can't sign in, and lose all admin access at once if they're signed in now.",
+    'Nothing is deleted: what they created or changed stays, and so do their audit log entries.',
+    'You can reactivate them at any time from this page.',
   ],
   student: [
     "They can't sign in, and lose access at once if they're signed in now.",
@@ -208,7 +211,7 @@ export function ActiveToggle({ person, extra, onChanged }) {
 
   return (
     <>
-      <button type="button" className={`button-link${deactivating ? ' danger' : ''}`} onClick={() => setOpen(true)}>
+      <button type="button" className={`ds-btn ds-btn-link${deactivating ? ' ds-btn-link-danger' : ''}`} onClick={() => setOpen(true)}>
         {deactivating ? 'Deactivate' : 'Reactivate'}
       </button>
       {open && (
@@ -222,19 +225,19 @@ export function ActiveToggle({ person, extra, onChanged }) {
           onCancel={() => setOpen(false)}
         >
           {deactivating ? (
-            <ul className="small">
+            <ul className="ds-small">
               {EFFECTS[person.role].map((line) => (
                 <li key={line}>{line}</li>
               ))}
               {extra && <li>{extra}</li>}
             </ul>
           ) : (
-            <p className="small">
+            <p className="ds-small">
               They can sign in again with their existing password, and get back the access their role gives them. An ID card
               can be issued again from ID Cards if needed.
             </p>
           )}
-          <p className="muted small">This is recorded in the audit log.</p>
+          <p className="ds-note">This is recorded in the audit log.</p>
         </ConfirmDialog>
       )}
     </>
@@ -277,36 +280,48 @@ export function StudentSubjectsDialog({ enrollmentId, studentName, classLabel, o
   return (
     <>
       <ConfirmDialog title={`Subjects: ${studentName}`} cancelLabel="Done" onCancel={() => !confirming && onClose()} busy={busyId !== null}>
-        <p className="muted small">
+        <p className="ds-note">
           {classLabel}, this session. Changes save straight away. Past sessions&apos; subjects stay as they were.
         </p>
         {query.loading ? (
-          <p className="muted">Loading…</p>
+          <p className="ds-note">Loading…</p>
         ) : query.error ? (
-          <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+          <div className="ds-alert ds-alert-danger" role="alert">
+            {friendlyDbError(query.error)}
+          </div>
         ) : query.data.subjects.length === 0 ? (
-          <p className="muted small">No subjects exist yet. Add them under Subjects first.</p>
+          <p className="ds-note">No subjects exist yet. Add them under Subjects first.</p>
         ) : (
-          <fieldset className="subject-checklist subject-checklist-dialog" disabled={busyId !== null}>
-            <legend>Subjects (core and electives)</legend>
+          <fieldset className="ds-fieldset" disabled={busyId !== null}>
+            <legend className="ds-label">Subjects (core and electives)</legend>
+            <div className="ds-checklist">
             {query.data.subjects.map((s) => {
               const taken = query.data.taken.has(s.id)
               const recorded = describeUsage(query.data.usage[s.id])
               return (
-                <label key={s.id} className="checkbox-field">
+                <label key={s.id} className="ds-check">
                   <input type="checkbox" checked={taken} onChange={() => toggle(s, taken)} />
                   <span>
                     {s.name}
-                    {recorded && <span className="muted small"> · has records</span>}
-                    {busyId === s.id && <span className="muted small"> · saving…</span>}
+                    {recorded && <span className="ds-muted ds-small"> · has records</span>}
+                    {busyId === s.id && <span className="ds-muted ds-small"> · saving…</span>}
                   </span>
                 </label>
               )
             })}
+            </div>
           </fieldset>
         )}
-        {message && <p className="alert alert-success" role="status">{message}</p>}
-        {error && <p className="alert alert-error" role="alert">{error}</p>}
+        {message && (
+          <div className="ds-alert ds-alert-success" role="status">
+            {message}
+          </div>
+        )}
+        {error && (
+          <div className="ds-alert ds-alert-danger" role="alert">
+            {error}
+          </div>
+        )}
       </ConfirmDialog>
 
       {confirming && (
@@ -321,11 +336,11 @@ export function StudentSubjectsDialog({ enrollmentId, studentName, classLabel, o
           <p>
             {studentName} already has {describeUsage(query.data.usage[confirming.id])} for {confirming.name} this session.
           </p>
-          <ul className="small">
+          <ul className="ds-small">
             <li>Those records are NOT deleted, but they stop counting: {confirming.name} no longer counts towards their class ranking, and they drop off its attendance registers, gradebook and assignments.</li>
             <li>Ticking {confirming.name} again brings everything back.</li>
           </ul>
-          <p className="muted small">If they took the subject by mistake, removing it is right. If they are dropping it mid-term, consider waiting until the term ends.</p>
+          <p className="ds-note">If they took the subject by mistake, removing it is right. If they are dropping it mid-term, consider waiting until the term ends.</p>
         </ConfirmDialog>
       )}
     </>

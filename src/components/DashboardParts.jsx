@@ -6,42 +6,31 @@ import { formatDateTime, formatMark } from '../lib/assignments'
 import { formatDate } from '../lib/format'
 import { toIsoDate } from '../lib/dates'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { Alert, Badge, Card, LoadingState, StatCard } from './ui/Primitives'
 
-// Building blocks shared by the dashboards.
+// Building blocks shared by the teacher / student / parent dashboards
+// (design system: styles/app.css).
 
-// A dashboard panel: heading, optional "see all" link, body.
+// A dashboard panel: a Card with a heading, optional "see all" link, body.
 export function DashPanel({ title, to, linkText = 'See all →', children, className = '' }) {
   return (
-    <section className={`panel dash-panel ${className}`}>
-      <header className="dash-panel-header">
-        <h2>{title}</h2>
-        {to && (
-          <Link to={to} className="small">
-            {linkText}
-          </Link>
-        )}
-      </header>
+    <Card title={title} className={className} action={to && <Link to={to}>{linkText}</Link>}>
       {children}
-    </section>
+    </Card>
   )
 }
 
 // Loading / error states for one useAsyncData query; renders children(data)
 // once loaded. Each panel loads on its own, so one failing doesn't blank the page.
 export function Loaded({ query, children }) {
-  if (query.loading) return <p className="muted small">Loading…</p>
-  if (query.error) return <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+  if (query.loading) return <LoadingState lines={3} />
+  if (query.error) return <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
   return children(query.data)
 }
 
+// tone: undefined | 'warn' (shown with the design system's warning edge)
 export function Stat({ label, value, hint, tone }) {
-  return (
-    <div className={`dash-stat${tone ? ` dash-stat-${tone}` : ''}`}>
-      <span className="dash-stat-value">{value}</span>
-      <span className="dash-stat-label">{label}</span>
-      {hint && <span className="dash-stat-hint">{hint}</span>}
-    </div>
-  )
+  return <StatCard label={label} value={value} hint={hint} tone={tone === 'warn' ? 'warning' : tone} />
 }
 
 // The newest 3 announcements meant for the viewer (the database filters them).
@@ -52,16 +41,16 @@ export function AnnouncementsPreview({ base }) {
       <Loaded query={query}>
         {(items) =>
           items.length === 0 ? (
-            <p className="muted small">No announcements yet.</p>
+            <p className="ds-note">No announcements yet.</p>
           ) : (
-            <ul className="dash-list">
+            <ul className="ds-dash-list">
               {items.map((a) => (
                 <li key={a.id}>
                   <Link to={`${base}/announcements`}>
                     <strong>{a.title}</strong>
                   </Link>
-                  <span className="muted small"> · {formatDateTime(a.published_at)}</span>
-                  <div className="small">{snippet(a.body, 120)}</div>
+                  <span className="ds-muted ds-small"> · {formatDateTime(a.published_at)}</span>
+                  <div className="ds-small">{snippet(a.body, 120)}</div>
                 </li>
               ))}
             </ul>
@@ -83,7 +72,7 @@ export function MessagesPreview({ base }) {
           const recent = threads.filter((t) => t.last_message_at).slice(0, 3)
           return (
             <>
-              <p className={`small${unread ? '' : ' muted'}`}>
+              <p className={`ds-small${unread ? '' : ' ds-muted'}`} style={{ marginTop: 0 }}>
                 {unread ? (
                   <strong>
                     {unread} unread {unread === 1 ? 'message' : 'messages'}
@@ -93,16 +82,18 @@ export function MessagesPreview({ base }) {
                 )}
               </p>
               {recent.length === 0 ? (
-                <p className="muted small">No conversations yet.</p>
+                <p className="ds-note">No conversations yet.</p>
               ) : (
-                <ul className="dash-list">
+                <ul className="ds-dash-list">
                   {recent.map((t) => (
                     <li key={t.thread_id}>
-                      <Link to={`${base}/messages?thread=${t.thread_id}`}>
-                        <strong>{t.other_name}</strong>
-                      </Link>
-                      {Number(t.unread_count) > 0 && <span className="badge badge-warning">{t.unread_count} new</span>}
-                      <div className="small muted">
+                      <span className="ds-inline">
+                        <Link to={`${base}/messages?thread=${t.thread_id}`}>
+                          <strong>{t.other_name}</strong>
+                        </Link>
+                        {Number(t.unread_count) > 0 && <Badge status="unread">{t.unread_count} new</Badge>}
+                      </span>
+                      <div className="ds-small ds-muted" style={{ overflowWrap: 'anywhere' }}>
                         {t.last_sender_is_me ? 'You: ' : ''}
                         {snippet(t.last_message, 80)} · {formatDateTime(t.last_message_at)}
                       </div>
@@ -120,19 +111,19 @@ export function MessagesPreview({ base }) {
 
 // Output of recentGrades(): "Mathematics — CA 1: 18 / 20"
 export function GradeList({ items, empty = 'No grades recorded yet.' }) {
-  if (items.length === 0) return <p className="muted small">{empty}</p>
+  if (items.length === 0) return <p className="ds-note">{empty}</p>
   return (
-    <ul className="dash-list">
+    <ul className="ds-dash-list">
       {items.map((g) => (
-        <li key={g.key} className="dash-row">
+        <li key={g.key} className="ds-dash-row">
           <span>
             {g.subject && <strong>{g.subject}</strong>} {g.subject && '— '}
             {g.label}
           </span>
           <span>
             <strong>{formatMark(g.mark)}</strong>
-            {g.max !== null && <span className="muted"> / {formatMark(g.max)}</span>}
-            {g.at && <span className="muted small"> · {formatDate(toIsoDate(new Date(g.at)))}</span>}
+            {g.max !== null && <span className="ds-muted"> / {formatMark(g.max)}</span>}
+            {g.at && <span className="ds-muted ds-small"> · {formatDate(toIsoDate(new Date(g.at)))}</span>}
           </span>
         </li>
       ))}

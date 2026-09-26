@@ -35,8 +35,8 @@ export function useCorrectionConfirm() {
       onCancel={() => setPending(null)}
     >
       <p>This is outside the normal edit window.</p>
-      <p className="small">{pending.explanation}</p>
-      <p className="muted small">The change is recorded in the audit log under your name, with the old and new values.</p>
+      <p className="ds-small">{pending.explanation}</p>
+      <p className="ds-muted ds-small">The change is recorded in the audit log under your name, with the old and new values.</p>
     </ConfirmDialog>
   )
 

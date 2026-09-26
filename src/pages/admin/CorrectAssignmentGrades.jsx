@@ -9,6 +9,7 @@ import { useAsyncData } from '../../hooks/useAsyncData'
 import { SubmissionsTable } from '../../components/AssignmentGrading'
 import { FileLink } from '../../components/SubmissionBadges'
 import TermClassSectionPicker from '../../components/TermClassSectionPicker'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
 
 // Admins (both tiers) grade, or correct grades for, ANY assignment (any
 // teacher, term or class), with the teacher's grading table: hand-in work
@@ -21,17 +22,18 @@ export default function CorrectAssignmentGrades() {
   const setup = useAsyncData(fetchCorrectionSetup, 'correction-setup')
   return (
     <>
-      <h1>Correct assignment grades</h1>
-      <p className="muted">
-        Grade or fix marks for any assignment, including terms that are locked for teachers. Each change is recorded in
-        the audit log.
-      </p>
+      <PageHeader
+        title="Correct assignment grades"
+        subtitle="Grade or fix marks for any assignment, including terms that are locked for teachers. Each change is recorded in the audit log."
+      />
       {setup.loading ? (
-        <p className="muted">Loading…</p>
+        <LoadingState lines={4} />
       ) : setup.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(setup.error)}</p>
+        <Alert tone="danger">{friendlyDbError(setup.error)}</Alert>
       ) : setup.data.terms.length === 0 ? (
-        <p className="empty-state">No terms exist yet.</p>
+        <Card>
+          <EmptyState icon="calendar">No terms exist yet.</EmptyState>
+        </Card>
       ) : (
         <Browser setup={setup.data} />
       )}
@@ -54,50 +56,54 @@ function Browser({ setup }) {
     <>
       <TermClassSectionPicker setup={setup} value={filters} onChange={setFilters} allowAll />
       {locked && (
-        <p className="alert alert-info-plain">
-          🔒 {term.name} ({term.sessions.name}) is locked for teachers since {formatDate(termGradingLastDay(term))}. As an admin
-          you can still grade and correct; you&apos;ll be asked to confirm each change.
-        </p>
+        <Alert tone="info">
+          🔒 {term.name} ({term.sessions.name}) is locked for teachers since {formatDate(termGradingLastDay(term))}. As an admin you can still grade and
+          correct; you&apos;ll be asked to confirm each change.
+        </Alert>
       )}
       {query.loading ? (
-        <p className="muted">Loading assignments…</p>
+        <LoadingState lines={4} label="Loading assignments…" />
       ) : query.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+        <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
       ) : query.data.length === 0 ? (
-        <p className="empty-state">No assignments match these filters.</p>
+        <Card>
+          <EmptyState icon="file">No assignments match these filters.</EmptyState>
+        </Card>
       ) : (
-        <div className="assignment-list">
-          {query.data.map((a) => {
-            const isOpen = openId === a.id
-            const records = a.submissions?.[0]?.count ?? 0
-            return (
-              <article key={a.id} className="panel assignment-card">
-                <header className="assignment-card-header">
-                  <div>
-                    <h3>
-                      {a.title}
-                      {!a.requires_submission && <span className="badge badge-muted">Offline work</span>}
-                    </h3>
-                    <p className="muted small">
-                      {a.subjects.name} — {a.sections.classes.name} {a.sections.name} · set by{' '}
-                      {a.teachers?.users ? fullName(a.teachers.users) : 'a former teacher'} · Due{' '}
-                      {a.due_at ? formatDateTime(a.due_at) : '(no due date)'} · Out of {formatMark(a.max_score) || '—'}
-                    </p>
-                  </div>
-                  <div className="submission-count">
-                    <strong>{records}</strong> {a.requires_submission ? (records === 1 ? 'submission' : 'submissions') : records === 1 ? 'grade' : 'grades'}
-                  </div>
-                </header>
-                <div className="row-actions">
-                  <button type="button" className="button-secondary" onClick={() => setOpenId(isOpen ? null : a.id)}>
-                    {isOpen ? 'Close' : a.requires_submission ? 'View and grade submissions' : 'Grade students'}
-                  </button>
+        query.data.map((a) => {
+          const isOpen = openId === a.id
+          const records = a.submissions?.[0]?.count ?? 0
+          return (
+            <Card
+              key={a.id}
+              title={
+                <span className="ds-inline">
+                  {a.title}
+                  {!a.requires_submission && <Badge tone="neutral">Offline work</Badge>}
+                </span>
+              }
+              action={
+                <span className="ds-muted ds-small" style={{ whiteSpace: 'nowrap' }}>
+                  <strong>{records}</strong>{' '}
+                  {a.requires_submission ? (records === 1 ? 'submission' : 'submissions') : records === 1 ? 'grade' : 'grades'}
+                </span>
+              }
+            >
+              <p className="ds-note">
+                {a.subjects.name} — {a.sections.classes.name} {a.sections.name} · set by {a.teachers?.users ? fullName(a.teachers.users) : 'a former teacher'} ·
+                Due {a.due_at ? formatDateTime(a.due_at) : '(no due date)'} · Out of {formatMark(a.max_score) || '—'}
+              </p>
+              <Button variant="secondary" onClick={() => setOpenId(isOpen ? null : a.id)}>
+                {isOpen ? 'Close' : a.requires_submission ? 'View and grade submissions' : 'Grade students'}
+              </Button>
+              {isOpen && (
+                <div style={{ marginTop: 16 }}>
+                  <Grading assignment={a} term={term} locked={locked} onChanged={query.reload} />
                 </div>
-                {isOpen && <Grading assignment={a} term={term} locked={locked} onChanged={query.reload} />}
-              </article>
-            )
-          })}
-        </div>
+              )}
+            </Card>
+          )
+        })
       )}
     </>
   )
@@ -105,14 +111,14 @@ function Browser({ setup }) {
 
 function Grading({ assignment, term, locked, onChanged }) {
   const query = useAsyncData(() => fetchAssignmentGrading(assignment, term.session_id), `assignment-grading:${assignment.id}`)
-  if (query.loading) return <p className="muted">Loading students…</p>
-  if (query.error) return <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+  if (query.loading) return <LoadingState lines={3} label="Loading students…" />
+  if (query.error) return <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
   const { students, submissions, urls } = query.data
   // Only students who take the subject there (same roster as the teacher's).
   const rosterIds = new Set(students.map((s) => s.studentId))
   return (
     <>
-      {assignment.description && <p className="assignment-description">{assignment.description}</p>}
+      {assignment.description && <p className="ds-pre ds-small">{assignment.description}</p>}
       {assignment.attachment_url && (
         <p>
           <FileLink path={assignment.attachment_url} urls={urls} />

@@ -5,6 +5,8 @@ import { fullName } from '../lib/people'
 import { formatDateTime, formatMark, submissionStatus } from '../lib/assignments'
 import { FileLink, SubmissionBadges } from './SubmissionBadges'
 import { useCorrectionConfirm } from './CorrectionConfirm'
+import { Alert, Badge, Button, Card, EmptyState } from './ui/Primitives'
+import DataTable from './ui/DataTable'
 
 // Grading an assignment's submissions (or, for offline work, the roster
 // directly), shared by the teacher's Assignments page and the admin's Correct
@@ -17,77 +19,89 @@ import { useCorrectionConfirm } from './CorrectionConfirm'
 // lockedExplanation: shown in that confirmation.
 export function SubmissionsTable({ assignment, students, submissions, urls, locked, onGraded, admin = false, lockedExplanation }) {
   if (students.length === 0) {
-    return <p className="empty-state">No students in this section take this subject this session.</p>
+    return (
+      <Card>
+        <EmptyState icon="users">No students in this section take this subject this session.</EmptyState>
+      </Card>
+    )
   }
   const byStudent = Object.fromEntries(submissions.map((s) => [s.student_id, s]))
   const offline = !assignment.requires_submission
+  const subOf = (student) => byStudent[student.studentId]
+  // Each student is a card on phones (the grade form stacked under its label); a table when there's room.
   return (
-    <div className="table-wrap">
-      <table className="data-table submissions-table">
-        <thead>
-          <tr>
-            <th>Student</th>
-            <th>Status</th>
-            {!offline && <th>Handed in</th>}
-            {!offline && <th>Work</th>}
-            <th>Mark and feedback</th>
-          </tr>
-        </thead>
-        <tbody>
-          {students.map((student) => {
-            const sub = byStudent[student.studentId]
-            const status = submissionStatus(assignment, sub)
-            return (
-              <tr key={student.studentId}>
-                <td>
-                  {fullName(student)} <span className="muted small">{student.admissionNumber}</span>
-                  {admin && student.enrollmentStatus && student.enrollmentStatus !== 'active' && (
-                    <span className="badge badge-muted">{student.enrollmentStatus}</span>
-                  )}
-                </td>
-                <td>
-                  <SubmissionBadges status={status} />
-                </td>
-                {!offline && (
-                  <td className="small">{sub ? formatDateTime(sub.submitted_at) : <span className="muted">—</span>}</td>
-                )}
-                {!offline && (
-                  <td>
-                    {sub ? (
-                      <>
-                        {sub.content && <div className="submission-text">{sub.content}</div>}
-                        <FileLink path={sub.attachment_url} urls={urls} />
-                      </>
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
-                  </td>
-                )}
-                <td>
-                  {(sub || offline) && locked && !admin ? (
-                    <LockedGrade assignment={assignment} submission={sub} />
-                  ) : sub || offline ? (
-                    // Offline work: graded directly, no submission needed first.
-                    <GradeForm
-                      key={`${student.studentId}:${sub?.graded_at ?? ''}`}
-                      assignment={assignment}
-                      studentId={student.studentId}
-                      submission={sub}
-                      onGraded={onGraded}
-                      confirmLocked={admin && locked}
-                      lockedExplanation={lockedExplanation}
-                      studentName={fullName(student)}
-                    />
+    <DataTable
+      caption={`Submissions for ${assignment.title}`}
+      rowKey={(student) => student.studentId}
+      rows={students}
+      columns={[
+        {
+          key: 'student',
+          header: 'Student',
+          primary: true,
+          render: (student) => (
+            <span>
+              {fullName(student)} <span className="ds-muted ds-small">{student.admissionNumber}</span>{' '}
+              {admin && student.enrollmentStatus && student.enrollmentStatus !== 'active' && (
+                <Badge status={student.enrollmentStatus}>{student.enrollmentStatus}</Badge>
+              )}
+            </span>
+          ),
+        },
+        { key: 'status', header: 'Status', render: (student) => <SubmissionBadges status={submissionStatus(assignment, subOf(student))} /> },
+        ...(offline
+          ? []
+          : [
+              {
+                key: 'handed-in',
+                header: 'Handed in',
+                render: (student) =>
+                  subOf(student) ? <span className="ds-small">{formatDateTime(subOf(student).submitted_at)}</span> : <span className="ds-muted">—</span>,
+              },
+              {
+                key: 'work',
+                header: 'Work',
+                stack: true,
+                render: (student) => {
+                  const sub = subOf(student)
+                  return sub ? (
+                    <span className="ds-stack" style={{ display: 'block' }}>
+                      {sub.content && <span className="ds-pre ds-small" style={{ display: 'block' }}>{sub.content}</span>}
+                      <FileLink path={sub.attachment_url} urls={urls} />
+                    </span>
                   ) : (
-                    <span className="muted small">Nothing to grade yet</span>
-                  )}
-                </td>
-              </tr>
+                    <span className="ds-muted">—</span>
+                  )
+                },
+              },
+            ]),
+        {
+          key: 'grade',
+          header: 'Mark and feedback',
+          stack: true,
+          render: (student) => {
+            const sub = subOf(student)
+            return (sub || offline) && locked && !admin ? (
+              <LockedGrade assignment={assignment} submission={sub} />
+            ) : sub || offline ? (
+              // Offline work: graded directly, no submission needed first.
+              <GradeForm
+                key={`${student.studentId}:${sub?.graded_at ?? ''}`}
+                assignment={assignment}
+                studentId={student.studentId}
+                submission={sub}
+                onGraded={onGraded}
+                confirmLocked={admin && locked}
+                lockedExplanation={lockedExplanation}
+                studentName={fullName(student)}
+              />
+            ) : (
+              <span className="ds-muted ds-small">Nothing to grade yet</span>
             )
-          })}
-        </tbody>
-      </table>
-    </div>
+          },
+        },
+      ]}
+    />
   )
 }
 
@@ -134,11 +148,11 @@ function GradeForm({ assignment, studentId, submission, onGraded, confirmLocked 
   }
 
   return (
-    <form className="grade-form" onSubmit={handleSubmit}>
-      <label className="inline-field">
-        Mark
+    <form className="ds-grade-form" onSubmit={handleSubmit}>
+      <label className="ds-grade-mark">
+        <span className="ds-label" style={{ margin: 0 }}>Mark</span>
         <input
-          className="score-input"
+          className="ds-input ds-score-input"
           type="number"
           min="0"
           max={max || undefined}
@@ -147,14 +161,14 @@ function GradeForm({ assignment, studentId, submission, onGraded, confirmLocked 
           onChange={(e) => setScore(e.target.value)}
           aria-label="Mark"
         />
-        <span className="muted small">/ {formatMark(assignment.max_score)}</span>
+        <span className="ds-muted ds-small">/ {formatMark(assignment.max_score)}</span>
       </label>
-      <textarea rows={2} placeholder="Feedback (optional)" value={feedback} onChange={(e) => setFeedback(e.target.value)} aria-label="Feedback" />
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <textarea className="ds-textarea" rows={2} placeholder="Feedback (optional)" value={feedback} onChange={(e) => setFeedback(e.target.value)} aria-label="Feedback" />
+      {error && <Alert tone="danger">{error}</Alert>}
+      <Button type="submit" disabled={saving}>
         {saving ? 'Saving…' : isGraded ? 'Update grade' : 'Save grade'}
-      </button>
-      {isGraded && <span className="muted small">Graded {formatDateTime(submission.graded_at)}</span>}
+      </Button>
+      {isGraded && <span className="ds-muted ds-small">Graded {formatDateTime(submission.graded_at)}</span>}
       {confirm.dialog}
     </form>
   )
@@ -162,14 +176,14 @@ function GradeForm({ assignment, studentId, submission, onGraded, confirmLocked 
 
 // Read-only grade once the term is locked (only an admin can change it).
 function LockedGrade({ assignment, submission }) {
-  if (!submission?.graded_at) return <span className="muted small">🔒 Not graded (term locked)</span>
+  if (!submission?.graded_at) return <span className="ds-muted ds-small">🔒 Not graded (term locked)</span>
   return (
     <div>
       <strong>
         {formatMark(submission.score)} / {formatMark(assignment.max_score)}
       </strong>
-      {submission.feedback && <div className="submission-text">{submission.feedback}</div>}
-      <span className="muted small">🔒 Graded {formatDateTime(submission.graded_at)}</span>
+      {submission.feedback && <div className="ds-pre ds-small">{submission.feedback}</div>}
+      <span className="ds-muted ds-small">🔒 Graded {formatDateTime(submission.graded_at)}</span>
     </div>
   )
 }

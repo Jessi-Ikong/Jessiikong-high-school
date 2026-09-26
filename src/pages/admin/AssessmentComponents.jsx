@@ -6,12 +6,16 @@ import { useAsyncData } from '../../hooks/useAsyncData'
 import DeleteAction from '../../components/DeleteAction'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { weightTotal } from '../../lib/grading'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select, TextInput } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 const EMPTY_FORM = { name: '', max_score: '', weight: '' }
 const ERRORS = {
   unique: 'This subject already has a component with that name this term.',
   check: 'Max score must be more than 0, and weight between 0 and 100.',
 }
+
 const DEFAULT_COMPONENTS = [
   { name: 'CA', max_score: 30, weight: 30, sort_order: 1 },
   { name: 'Exam', max_score: 70, weight: 70, sort_order: 2 },
@@ -28,18 +32,19 @@ async function fetchSetup() {
 export default function AssessmentComponents() {
   const setup = useAsyncData(fetchSetup, 'assessment-setup')
 
-  if (setup.loading) return <p className="muted">Loading…</p>
-  if (setup.error) return <p className="alert alert-error" role="alert">{friendlyDbError(setup.error)}</p>
+  if (setup.loading) return <LoadingState lines={6} />
+  if (setup.error) return <Alert tone="danger">{friendlyDbError(setup.error)}</Alert>
 
   const { terms, subjects } = setup.data
   if (terms.length === 0 || subjects.length === 0) {
     return (
       <>
-        <h1>Assessment components</h1>
-        <p className="empty-state">
-          Create at least one <Link to="/admin/terms">term</Link> and some <Link to="/admin/subjects">subjects</Link>{' '}
-          first.
-        </p>
+        <PageHeader title="Assessment components" />
+        <Card>
+          <EmptyState icon="chart" title="A few things first">
+            Create at least one <Link to="/admin/terms">term</Link> and some <Link to="/admin/subjects">subjects</Link> first.
+          </EmptyState>
+        </Card>
       </>
     )
   }
@@ -74,48 +79,50 @@ function ComponentsEditor({ terms, subjects }) {
 
   return (
     <>
-      <h1>Assessment components</h1>
-      <p className="muted">
-        How each subject is graded per term, e.g. CA 30% + Exam 70%. The weights for a subject must add up to exactly
-        100% before teachers can enter scores for it, and before it counts in the class ranking.
-      </p>
+      <PageHeader
+        title="Assessment components"
+        subtitle="How each subject is graded per term, e.g. CA 30% + Exam 70%. The weights for a subject must add up to exactly 100% before teachers can enter scores for it, and before it counts in the class ranking."
+      />
 
-      <div className="filter-bar">
-        <label className="inline-field">
-          Term
-          <select
-            value={term.id}
-            onChange={(e) => {
-              setChosenTermId(e.target.value)
-              setNotice(null)
-            }}
-          >
-            {terms.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}, {t.sessions.name}
-                {t.is_current ? ' (current)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          Subject
-          <select value={subject.id} onChange={(e) => setChosenSubjectId(e.target.value)}>
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="ds-filters">
+        <Field label="Term">
+          {(p) => (
+            <Select
+              {...p}
+              value={term.id}
+              onChange={(e) => {
+                setChosenTermId(e.target.value)
+                setNotice(null)
+              }}
+            >
+              {terms.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}, {t.sessions.name}
+                  {t.is_current ? ' (current)' : ''}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Subject">
+          {(p) => (
+            <Select {...p} value={subject.id} onChange={(e) => setChosenSubjectId(e.target.value)}>
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </div>
 
-      {notice && <p className="alert alert-success" role="status">{notice}</p>}
+      {notice && <Alert tone="success">{notice}</Alert>}
 
       {componentsQuery.loading ? (
-        <p className="muted">Loading components…</p>
+        <LoadingState lines={5} />
       ) : componentsQuery.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(componentsQuery.error)}</p>
+        <Alert tone="danger">{friendlyDbError(componentsQuery.error)}</Alert>
       ) : (
         <>
           <SubjectComponents
@@ -129,53 +136,75 @@ function ComponentsEditor({ terms, subjects }) {
             }}
           />
 
-          <h2>All subjects in {term.name}, {term.sessions.name}</h2>
-          <div className="toolbar">
-            <button type="button" className="button-secondary" onClick={() => setBulkOpen(true)} disabled={unconfigured.length === 0}>
-              Apply default (CA 30%, Exam 70%) to all subjects for this term
-            </button>
-            {unconfigured.length === 0 && <span className="muted small">Every subject already has components.</span>}
-          </div>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Subject</th>
-                  <th>Components</th>
-                  <th>Total weight</th>
-                  <th>Status</th>
-                  <th aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {subjects.map((s) => {
-                  const list = bySubject(s.id)
-                  const total = weightTotal(list)
-                  return (
-                    <tr key={s.id} className={s.id === subject.id ? 'row-editing' : undefined}>
-                      <td>{s.name}</td>
-                      <td>{list.length === 0 ? <span className="muted">—</span> : list.map((c) => `${c.name} ${Number(c.weight)}%`).join(', ')}</td>
-                      <td>{list.length === 0 ? <span className="muted">—</span> : `${total}%`}</td>
-                      <td>
-                        {list.length === 0 ? (
-                          <span className="badge badge-muted">Not set up</span>
-                        ) : total === 100 ? (
-                          <span className="badge">Complete</span>
-                        ) : (
-                          <span className="badge badge-warning">Incomplete</span>
-                        )}
-                      </td>
-                      <td className="row-actions">
-                        <button type="button" className="button-link" onClick={() => setChosenSubjectId(s.id)}>
-                          Configure
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <Card title={`All subjects in ${term.name}, ${term.sessions.name}`} flush>
+            <div className="ds-card-body">
+              <div className="ds-inline">
+                <Button variant="secondary" onClick={() => setBulkOpen(true)} disabled={unconfigured.length === 0}>
+                  Apply default (CA 30%, Exam 70%) to all subjects for this term
+                </Button>
+                {unconfigured.length === 0 && <span className="ds-muted ds-small">Every subject already has components.</span>}
+              </div>
+            </div>
+            <DataTable
+              caption={`Grading setup for all subjects in ${term.name}`}
+              rowKey={(s) => s.id}
+              rows={subjects}
+              columns={[
+                {
+                  key: 'subject',
+                  header: 'Subject',
+                  primary: true,
+                  render: (s) => (
+                    <span className="ds-inline">
+                      {s.name}
+                      {s.id === subject.id && <Badge status="editing">Selected</Badge>}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'components',
+                  header: 'Components',
+                  render: (s) => {
+                    const list = bySubject(s.id)
+                    return list.length === 0 ? <span className="ds-muted">—</span> : list.map((c) => `${c.name} ${Number(c.weight)}%`).join(', ')
+                  },
+                },
+                {
+                  key: 'total',
+                  header: 'Total weight',
+                  render: (s) => {
+                    const list = bySubject(s.id)
+                    return list.length === 0 ? <span className="ds-muted">—</span> : `${weightTotal(list)}%`
+                  },
+                },
+                {
+                  key: 'status',
+                  header: 'Status',
+                  render: (s) => {
+                    const list = bySubject(s.id)
+                    return list.length === 0 ? (
+                      <Badge status="not set up">Not set up</Badge>
+                    ) : weightTotal(list) === 100 ? (
+                      <Badge status="complete">Complete</Badge>
+                    ) : (
+                      <Badge status="incomplete">Incomplete</Badge>
+                    )
+                  },
+                },
+                {
+                  key: 'actions',
+                  header: 'Actions',
+                  render: (s) => (
+                    <div className="ds-row-actions">
+                      <button type="button" className="ds-btn ds-btn-link" onClick={() => setChosenSubjectId(s.id)}>
+                        Configure
+                      </button>
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          </Card>
 
           {bulkOpen && (
             <BulkDefaultDialog
@@ -252,89 +281,97 @@ function SubjectComponents({ term, subject, components, onChanged }) {
   }
 
   return (
-    <section className="panel">
-      <h2>
-        {subject.name} — {term.name}, {term.sessions.name}
-      </h2>
+    <Card title={`${subject.name} — ${term.name}, ${term.sessions.name}`} flush>
+      <DataTable
+        caption={`${subject.name} components`}
+        rowKey={(c) => c.id}
+        rows={components}
+        empty={
+          <p className="ds-note ds-card-body">
+            No components yet for {subject.name} this term. Add them below, or use the default button further down.
+          </p>
+        }
+        columns={[
+          {
+            key: 'name',
+            header: 'Component',
+            primary: true,
+            render: (c) => (
+              <span className="ds-inline">
+                {c.name}
+                {editingId === c.id && <Badge status="editing">Editing</Badge>}
+              </span>
+            ),
+          },
+          { key: 'max', header: 'Max score', numeric: true, render: (c) => Number(c.max_score) },
+          { key: 'weight', header: 'Weight', numeric: true, render: (c) => `${Number(c.weight)}%` },
+          {
+            key: 'actions',
+            header: 'Actions',
+            render: (c) => (
+              <div className="ds-row-actions">
+                <button type="button" className="ds-btn ds-btn-link" onClick={() => startEdit(c)}>
+                  Edit
+                </button>
+                <DeleteAction
+                  itemName={`${c.name} (${subject.name}, ${term.name})`}
+                  buttonClassName="ds-btn ds-btn-link ds-btn-link-danger"
+                  dependencyChecks={[{ table: 'scores', column: 'component_id', value: c.id, label: ['score', 'scores'] }]}
+                  onDelete={() => runWrite(supabase.from('assessment_components').delete().eq('id', c.id).select('id'))}
+                  onDeleted={() => {
+                    if (editingId === c.id) resetForm()
+                    onChanged()
+                  }}
+                />
+              </div>
+            ),
+          },
+        ]}
+      />
 
-      {components.length === 0 ? (
-        <p className="empty-state">
-          No components yet for {subject.name} this term. Add them below, or use the default button further down.
-        </p>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Component</th>
-                <th>Max score</th>
-                <th>Weight</th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {components.map((c) => (
-                <tr key={c.id} className={editingId === c.id ? 'row-editing' : undefined}>
-                  <td>{c.name}</td>
-                  <td>{Number(c.max_score)}</td>
-                  <td>{Number(c.weight)}%</td>
-                  <td className="row-actions">
-                    <button type="button" className="button-link" onClick={() => startEdit(c)}>
-                      Edit
-                    </button>
-                    <DeleteAction
-                      itemName={`${c.name} (${subject.name}, ${term.name})`}
-                      dependencyChecks={[{ table: 'scores', column: 'component_id', value: c.id, label: ['score', 'scores'] }]}
-                      onDelete={() => runWrite(supabase.from('assessment_components').delete().eq('id', c.id).select('id'))}
-                      onDeleted={() => {
-                        if (editingId === c.id) resetForm()
-                        onChanged()
-                      }}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div className="ds-card-body">
+        <Alert tone={total === 100 ? 'success' : 'warning'}>
+          Total weight: <strong>{total}%</strong>
+          {total === 100
+            ? ' — complete. Teachers can enter scores for this subject.'
+            : components.length === 0
+              ? ''
+              : ` — must be exactly 100%. Until it is, teachers can't enter ${subject.name} scores and it won't count in the class ranking.`}
+        </Alert>
 
-      <p className={`weight-total ${total === 100 ? 'is-complete' : 'is-incomplete'}`} role="status">
-        Total weight: <strong>{total}%</strong>
-        {total === 100
-          ? ' — complete. Teachers can enter scores for this subject.'
-          : components.length === 0
-            ? ''
-            : ` — must be exactly 100%. Until it is, teachers can't enter ${subject.name} scores and it won't count in the class ranking.`}
-      </p>
-
-      <form className="form-grid" onSubmit={handleSubmit}>
-        <h3>{editingId ? 'Edit component' : 'Add component'}</h3>
-        {formError && <p className="alert alert-error" role="alert">{formError}</p>}
-        <label>
-          Name
-          <input value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="e.g. CA, Exam, Project" required />
-        </label>
-        <label>
-          Max score
-          <input type="number" min="0.5" step="any" value={form.max_score} onChange={(e) => update('max_score', e.target.value)} placeholder="30" required />
-        </label>
-        <label>
-          Weight (%)
-          <input type="number" min="0.5" max="100" step="any" value={form.weight} onChange={(e) => update('weight', e.target.value)} placeholder="30" required />
-        </label>
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add component'}
-          </button>
-          {editingId && (
-            <button type="button" className="button-secondary" onClick={resetForm}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </form>
-    </section>
+        <form onSubmit={handleSubmit}>
+          <h3 className="ds-h2" style={{ marginBottom: 12 }}>
+            {editingId ? 'Edit component' : 'Add component'}
+          </h3>
+          {formError && <Alert tone="danger">{formError}</Alert>}
+          <div className="ds-form-grid">
+            <Field label="Name" className="ds-span-2">
+              {(p) => <TextInput {...p} value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="e.g. CA, Exam, Project" required />}
+            </Field>
+            <Field label="Max score">
+              {(p) => (
+                <TextInput {...p} type="number" inputMode="decimal" min="0.5" step="any" value={form.max_score} onChange={(e) => update('max_score', e.target.value)} placeholder="30" required />
+              )}
+            </Field>
+            <Field label="Weight (%)">
+              {(p) => (
+                <TextInput {...p} type="number" inputMode="decimal" min="0.5" max="100" step="any" value={form.weight} onChange={(e) => update('weight', e.target.value)} placeholder="30" required />
+              )}
+            </Field>
+          </div>
+          <div className="ds-form-actions">
+            {editingId && (
+              <Button variant="secondary" onClick={resetForm}>
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add component'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </Card>
   )
 }
 
@@ -372,9 +409,9 @@ function BulkDefaultDialog({ term, subjects, configuredCount, onClose, onDone })
         Add <strong>CA (max 30, 30%)</strong> and <strong>Exam (max 70, 70%)</strong> to the {subjects.length}{' '}
         {subjects.length === 1 ? 'subject' : 'subjects'} with no components in {term.name}, {term.sessions.name}:
       </p>
-      <p className="muted small">{subjects.map((s) => s.name).join(', ')}</p>
+      <p className="ds-note">{subjects.map((s) => s.name).join(', ')}</p>
       {configuredCount > 0 && (
-        <p className="muted small">
+        <p className="ds-note">
           The {configuredCount} {configuredCount === 1 ? 'subject that already has' : 'subjects that already have'}{' '}
           components will not be changed.
         </p>

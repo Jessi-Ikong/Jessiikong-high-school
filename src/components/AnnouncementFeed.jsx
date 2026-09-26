@@ -2,6 +2,7 @@ import { friendlyDbError } from '../lib/db'
 import { audienceLabel, fetchAnnouncements } from '../lib/announcements'
 import { formatDateTime } from '../lib/assignments'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { Alert, Badge, Card, EmptyState, LoadingState, PageHeader } from './ui/Primitives'
 
 // Newest-first announcements for the signed-in teacher / student / parent.
 // The database only returns the ones meant for them.
@@ -10,28 +11,30 @@ export default function AnnouncementFeed() {
 
   return (
     <>
-      <h1>Announcements</h1>
+      <PageHeader title="Announcements" />
       {query.loading ? (
-        <p className="muted">Loading…</p>
+        <LoadingState lines={4} />
       ) : query.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+        <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
       ) : query.data.length === 0 ? (
-        <p className="empty-state">No announcements yet.</p>
+        <Card>
+          <EmptyState icon="megaphone">No announcements yet.</EmptyState>
+        </Card>
       ) : (
-        <div className="announcement-list">
-          {query.data.map((a) => (
-            <article key={a.id} className="panel announcement">
-              <header className="announcement-header">
-                <h2>{a.title}</h2>
-                {a.audience !== 'all' && <span className="badge badge-info">{audienceLabel(a)}</span>}
-              </header>
-              <p className="muted small">
-                Posted by {a.author_name ?? 'the school'} · {formatDateTime(a.published_at)}
-              </p>
-              <div className="announcement-body">{a.body}</div>
-            </article>
-          ))}
-        </div>
+        query.data.map((a) => (
+          <Card
+            key={a.id}
+            title={a.title}
+            action={a.audience !== 'all' && <Badge tone="info">{audienceLabel(a)}</Badge>}
+          >
+            <p className="ds-muted ds-small" style={{ marginTop: 0 }}>
+              Posted by {a.author_name ?? 'the school'} · {formatDateTime(a.published_at)}
+            </p>
+            <div className="ds-pre" style={{ overflowWrap: 'anywhere' }}>
+              {a.body}
+            </div>
+          </Card>
+        ))
       )}
     </>
   )

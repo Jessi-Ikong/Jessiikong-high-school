@@ -124,6 +124,7 @@ export default function App() {
           <Route path="admissions-inquiries" element={<AdmissionsInquiries />} />
           <Route path="contact-messages" element={<ContactMessages />} />
           <Route path="audit-log" element={<AuditLog />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>

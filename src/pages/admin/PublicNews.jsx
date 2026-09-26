@@ -15,18 +15,16 @@ import {
 import { snippet } from '../../lib/messages'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import DeleteAction from '../../components/DeleteAction'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Checkbox, Field, TextArea, TextInput } from '../../components/ui/Form'
+import Dialog from '../../components/ui/Dialog'
 
 // News & events for the PUBLIC website (both admin tiers). Published posts
 // are visible to anyone, signed in or not, from their publish date; drafts
 // only here. Posts are listed newest first by publish date (change the date
 // to reorder or to schedule a post).
 
-const STATE_BADGES = {
-  draft: <span className="badge badge-muted">Draft</span>,
-  scheduled: <span className="badge badge-info">Scheduled</span>,
-  published: <span className="badge">Published</span>,
-}
-
+const STATE_LABELS = { draft: 'Draft', scheduled: 'Scheduled', published: 'Published' }
 // ISO timestamp <-> the value of an <input type="datetime-local"> (local time)
 function toLocalInput(iso) {
   if (!iso) return ''
@@ -48,35 +46,35 @@ export default function PublicNews() {
 
   return (
     <>
-      <h1>News &amp; Events</h1>
-      <p className="muted">
-        Posts for the school&apos;s public website. Published posts can be read by anyone, without signing in; drafts stay
-        here until you publish them.
-      </p>
-      {message && <p className="alert alert-success" role="status">{message}</p>}
-
-      {editing ? (
-        <NewsForm key={editing === 'new' ? 'new' : editing.id} post={editing === 'new' ? null : editing} onCancel={() => setEditing(null)} onSaved={done} />
-      ) : (
-        <button
-          type="button"
+      <PageHeader
+        title="News & Events"
+        subtitle="Posts for the school's public website. Published posts can be read by anyone, without signing in; drafts stay here until you publish them."
+      >
+        <Button
           onClick={() => {
             setMessage(null)
             setEditing('new')
           }}
         >
           New post
-        </button>
+        </Button>
+      </PageHeader>
+      {message && <Alert tone="success">{message}</Alert>}
+
+      {editing && (
+        <NewsForm key={editing === 'new' ? 'new' : editing.id} post={editing === 'new' ? null : editing} onCancel={() => setEditing(null)} onSaved={done} />
       )}
 
       {query.loading ? (
-        <p className="muted">Loading posts…</p>
+        <LoadingState lines={5} label="Loading posts…" />
       ) : query.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+        <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
       ) : query.data.length === 0 ? (
-        <p className="empty-state">No posts yet.</p>
+        <Card>
+          <EmptyState icon="globe">No posts yet.</EmptyState>
+        </Card>
       ) : (
-        <div className="card-list">
+        <div className="ds-gallery-grid">
           {query.data.map((post) => (
             <NewsCard key={post.id} post={post} onEdit={() => setEditing(post)} onChanged={done} />
           ))}
@@ -104,39 +102,42 @@ function NewsCard({ post, onEdit, onChanged }) {
   }
 
   return (
-    <article className="panel news-card">
-      {post.cover_image_url && <img className="news-cover" src={galleryUrl(post.cover_image_url)} alt="" />}
-      <div className="news-card-body">
-        <h2>
-          {post.title} {STATE_BADGES[state]}
-        </h2>
-        <p className="muted small">
-          {state === 'draft'
-            ? `Draft, created ${formatDateTime(post.created_at)}`
-            : `${state === 'scheduled' ? 'Goes live' : 'Published'} ${formatDateTime(post.published_at)}`}
-          {post.author && ` · by ${post.author.first_name} ${post.author.last_name}`}
-        </p>
-        <p className="small">{snippet(post.body, 240)}</p>
-        {error && <p className="alert alert-error" role="alert">{error}</p>}
-        <div className="row-actions">
-          <button type="button" className="button-link" onClick={onEdit}>
-            Edit
-          </button>
-          <button type="button" className="button-link" onClick={togglePublished} disabled={busy}>
-            {post.is_published ? 'Unpublish' : 'Publish'}
-          </button>
-          <DeleteAction
-            itemName={`"${post.title}"`}
-            dependencyChecks={[]}
-            onDelete={async () => {
-              await deleteNewsPost(post.id)
-              await removeGalleryImage(post.cover_image_url)
-            }}
-            onDeleted={() => onChanged(`Deleted "${post.title}".`)}
-          />
-        </div>
+    <Card
+      title={
+        <span className="ds-inline">
+          {post.title}
+          <Badge status={state}>{STATE_LABELS[state]}</Badge>
+        </span>
+      }
+    >
+      {post.cover_image_url && <img className="ds-thumb" src={galleryUrl(post.cover_image_url)} alt="" style={{ marginBottom: 12 }} />}
+      <p className="ds-muted ds-small">
+        {state === 'draft'
+          ? `Draft, created ${formatDateTime(post.created_at)}`
+          : `${state === 'scheduled' ? 'Goes live' : 'Published'} ${formatDateTime(post.published_at)}`}
+        {post.author && ` · by ${post.author.first_name} ${post.author.last_name}`}
+      </p>
+      <p className="ds-small" style={{ overflowWrap: 'anywhere' }}>{snippet(post.body, 240)}</p>
+      {error && <Alert tone="danger">{error}</Alert>}
+      <div className="ds-row-actions">
+        <button type="button" className="ds-btn ds-btn-link" onClick={onEdit}>
+          Edit
+        </button>
+        <button type="button" className="ds-btn ds-btn-link" onClick={togglePublished} disabled={busy}>
+          {post.is_published ? 'Unpublish' : 'Publish'}
+        </button>
+        <DeleteAction
+          itemName={`"${post.title}"`}
+          buttonClassName="ds-btn ds-btn-link ds-btn-link-danger"
+          dependencyChecks={[]}
+          onDelete={async () => {
+            await deleteNewsPost(post.id)
+            await removeGalleryImage(post.cover_image_url)
+          }}
+          onDeleted={() => onChanged(`Deleted "${post.title}".`)}
+        />
       </div>
-    </article>
+    </Card>
   )
 }
 
@@ -180,46 +181,42 @@ function NewsForm({ post, onCancel, onSaved }) {
   }
 
   return (
-    <form className="panel form-grid news-form" onSubmit={handleSubmit}>
-      <h2>{post ? 'Edit post' : 'New post'}</h2>
-      <label className="span-all">
-        Title
-        <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} required />
-      </label>
-      <label className="span-all">
-        Text
-        <textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} maxLength={20000} required />
-      </label>
-      <label>
-        Cover image <span className="muted small">(optional, JPEG/PNG/WebP, max 10 MB)</span>
-        <input type="file" accept={IMAGE_ACCEPT} onChange={(e) => setCover(e.target.files[0] ?? null)} />
-      </label>
-      {post?.cover_image_url && !cover && (
-        <label className="checkbox-field">
-          <input type="checkbox" checked={removeCover} onChange={(e) => setRemoveCover(e.target.checked)} />
-          Remove the current cover image
-        </label>
-      )}
-      <label className="checkbox-field">
-        <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} />
-        Published (visible on the public website)
-      </label>
-      <label>
-        Publish date <span className="muted small">(optional: empty = now; a future date schedules the post)</span>
-        <input type="datetime-local" value={publishAt} onChange={(e) => setPublishAt(e.target.value)} />
-      </label>
-      <p className="muted small form-note">
-        Only share content appropriate for the public. Don&apos;t include students&apos; personal details.
-      </p>
-      {error && <p className="alert alert-error form-note" role="alert">{error}</p>}
-      <div className="form-actions">
-        <button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : post ? 'Save post' : 'Create post'}
-        </button>
-        <button type="button" className="button-secondary" onClick={onCancel} disabled={saving}>
-          Cancel
-        </button>
-      </div>
-    </form>
+    <Dialog
+      title={post ? 'Edit post' : 'New post'}
+      onClose={onCancel}
+      busy={saving}
+      dismissOnBackdrop={false}
+      footer={
+        <div className="ds-form-actions" style={{ margin: 0, width: '100%' }}>
+          <Button variant="secondary" onClick={onCancel} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="submit" form="news-form" disabled={saving}>
+            {saving ? 'Saving…' : post ? 'Save post' : 'Create post'}
+          </Button>
+        </div>
+      }
+    >
+      <form id="news-form" onSubmit={handleSubmit}>
+        <Field label="Title">
+          {(p) => <TextInput {...p} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} required data-autofocus />}
+        </Field>
+        <Field label="Text">
+          {(p) => <TextArea {...p} rows={8} value={body} onChange={(e) => setBody(e.target.value)} maxLength={20000} required />}
+        </Field>
+        <Field label="Cover image" hint="Optional. JPEG/PNG/WebP, max 10 MB.">
+          {(p) => <TextInput {...p} type="file" accept={IMAGE_ACCEPT} onChange={(e) => setCover(e.target.files[0] ?? null)} />}
+        </Field>
+        {post?.cover_image_url && !cover && (
+          <Checkbox label="Remove the current cover image" checked={removeCover} onChange={(e) => setRemoveCover(e.target.checked)} />
+        )}
+        <Checkbox label="Published (visible on the public website)" checked={publish} onChange={(e) => setPublish(e.target.checked)} />
+        <Field label="Publish date" hint="Optional: empty = now; a future date schedules the post.">
+          {(p) => <TextInput {...p} type="datetime-local" value={publishAt} onChange={(e) => setPublishAt(e.target.value)} />}
+        </Field>
+        <p className="ds-note">Only share content appropriate for the public. Don&apos;t include students&apos; personal details.</p>
+        {error && <Alert tone="danger">{error}</Alert>}
+      </form>
+    </Dialog>
   )
 }

@@ -7,6 +7,9 @@ import { formatDateTime } from '../../lib/assignments'
 const loadCardTools = () => import('../../lib/idCards')
 import { useAsyncData } from '../../hooks/useAsyncData'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select, TextInput } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 async function fetchPage() {
   const session = await run(supabase.from('sessions').select('id, name').eq('is_current', true).maybeSingle())
@@ -51,19 +54,20 @@ export default function IdCards() {
   const [message, setMessage] = useState(null)
   const [revoking, setRevoking] = useState(null)
 
-  if (query.loading) return <p className="muted">Loading…</p>
-  if (query.error) return <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+  if (query.loading) return <LoadingState lines={6} />
+  if (query.error) return <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
   const { session, classes, cards } = query.data
 
   if (!session) {
     return (
       <>
-        <h1>ID cards</h1>
-        <p className="empty-state">No session is marked as current, so ID cards can&apos;t be issued yet.</p>
+        <PageHeader title="ID cards" />
+        <Card>
+          <EmptyState icon="card">No session is marked as current, so ID cards can&apos;t be issued yet.</EmptyState>
+        </Card>
       </>
     )
   }
-
   const targetName = target === 'staff' ? 'all staff' : classes.find((c) => c.id === target)?.name
 
   async function generate() {
@@ -105,95 +109,83 @@ export default function IdCards() {
 
   return (
     <>
-      <h1>ID cards</h1>
-      <p className="muted">
-        Cards are issued per session ({session.name}); each person has at most one active card. Issuing again reuses
-        their active card. The QR code on each card opens a public page that shows only name, photo, role, class /
-        department and session.
-      </p>
+      <PageHeader
+        title="ID cards"
+        subtitle={`Cards are issued per session (${session.name}); each person has at most one active card. Issuing again reuses their active card. The QR code on each card opens a public page that shows only name, photo, role, class / department and session.`}
+      />
 
-      <section className="panel">
-        <h2>Generate cards</h2>
-        <div className="filter-bar">
-          <label className="inline-field">
-            For
-            <select value={target} onChange={(e) => setTarget(e.target.value)}>
-              <option value="staff">All staff (active teachers)</option>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  Class {c.name} (active students)
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="button" onClick={generate} disabled={busy}>
-            {busy ? 'Preparing PDF…' : 'Issue & download PDF'}
-          </button>
+      <Card title="Generate cards">
+        <div className="ds-filters">
+          <Field label="For">
+            {(p) => (
+              <Select {...p} value={target} onChange={(e) => setTarget(e.target.value)}>
+                <option value="staff">All staff (active teachers)</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    Class {c.name} (active students)
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         </div>
+        <Button onClick={generate} disabled={busy}>
+          {busy ? 'Preparing PDF…' : 'Issue & download PDF'}
+        </Button>
         {message && (
-          <p className={message.ok ? 'alert alert-success' : 'alert alert-error'} role={message.ok ? 'status' : 'alert'}>
-            {message.text}
-          </p>
+          <div style={{ marginTop: 12 }}>
+            <Alert tone={message.ok ? 'success' : 'danger'}>{message.text}</Alert>
+          </div>
         )}
-        <p className="muted small">
-          One PDF, one card per page (85.6 × 54 mm), ready to print. People without a photo get their initials; set
-          photos on the Students / Staff pages first.
+        <p className="ds-note" style={{ marginTop: 12 }}>
+          One PDF, one card per page (85.6 × 54 mm), ready to print. People without a photo get their initials; set photos on the Students / Staff pages first.
         </p>
-      </section>
+      </Card>
 
-      <h2>
-        Cards issued for {session.name} <span className="muted small">({cards.length})</span>
-      </h2>
-      {cards.length === 0 ? (
-        <p className="empty-state">No cards issued yet this session.</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Role</th>
-                <th>Card no.</th>
-                <th>Issued</th>
-                <th>Status</th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((c) => (
-                <tr key={c.id}>
-                  <td>{fullName(c.users)}</td>
-                  <td>{c.users.role === 'student' ? 'Student' : 'Teacher'}</td>
-                  <td>{c.card_number}</td>
-                  <td className="small">{formatDateTime(c.issued_at)}</td>
-                  <td>
-                    {c.is_active ? (
-                      <span className="badge">Active</span>
-                    ) : (
-                      <>
-                        <span className="badge badge-late">Revoked</span>
-                        {c.revoked_reason && <div className="muted small">{c.revoked_reason}</div>}
-                      </>
-                    )}
-                  </td>
-                  <td className="row-actions">
-                    {c.is_active && (
-                      <>
-                        <button type="button" className="button-link" onClick={() => downloadOne(c)}>
-                          Download
-                        </button>
-                        <button type="button" className="button-link danger" onClick={() => setRevoking(c)}>
-                          Revoke
-                        </button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <Card title={`Cards issued for ${session.name} (${cards.length})`} flush>
+        <DataTable
+          caption={`ID cards issued for ${session.name}`}
+          rowKey={(c) => c.id}
+          rows={sorted}
+          empty={<EmptyState icon="card">No cards issued yet this session.</EmptyState>}
+          columns={[
+            { key: 'name', header: 'Name', primary: true, render: (c) => fullName(c.users) },
+            { key: 'role', header: 'Role', render: (c) => (c.users.role === 'student' ? 'Student' : 'Teacher') },
+            { key: 'number', header: 'Card no.', render: (c) => c.card_number },
+            { key: 'issued', header: 'Issued', render: (c) => <span className="ds-small">{formatDateTime(c.issued_at)}</span> },
+            {
+              key: 'status',
+              header: 'Status',
+              render: (c) =>
+                c.is_active ? (
+                  <Badge status="active">Active</Badge>
+                ) : (
+                  <span>
+                    <Badge status="revoked">Revoked</Badge>
+                    {c.revoked_reason && <span className="ds-muted ds-small" style={{ display: 'block' }}>{c.revoked_reason}</span>}
+                  </span>
+                ),
+            },
+            {
+              key: 'actions',
+              header: 'Actions',
+              render: (c) =>
+                c.is_active ? (
+                  <div className="ds-row-actions">
+                    <button type="button" className="ds-btn ds-btn-link" onClick={() => downloadOne(c)}>
+                      Download
+                    </button>
+                    <button type="button" className="ds-btn ds-btn-link ds-btn-link-danger" onClick={() => setRevoking(c)}>
+                      Revoke
+                    </button>
+                  </div>
+                ) : (
+                  <span className="ds-muted">—</span>
+                ),
+            },
+          ]}
+        />
+      </Card>
       {revoking && (
         <RevokeDialog
           card={revoking}
@@ -246,10 +238,9 @@ function RevokeDialog({ card, onClose, onRevoked }) {
         {fullName(card.users)}&apos;s card stops working at once: scanning its QR code will show &quot;not valid&quot;. A
         new card can be issued afterwards (it gets a new number and QR code).
       </p>
-      <label className="span-all">
-        Reason (optional)
-        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. lost, left the school" maxLength={200} />
-      </label>
+      <Field label="Reason" hint="Optional">
+        {(p) => <TextInput {...p} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. lost, left the school" maxLength={200} />}
+      </Field>
     </ConfirmDialog>
   )
 }

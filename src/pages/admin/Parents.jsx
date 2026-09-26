@@ -5,6 +5,8 @@ import { callFunction } from '../../lib/functions'
 import { fullName, byName } from '../../lib/people'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import { Alert, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select, TextInput } from '../../components/ui/Form'
 
 const RELATIONSHIPS = ['mother', 'father', 'guardian', 'other']
 
@@ -56,53 +58,56 @@ export default function Parents() {
 
   return (
     <>
-      <h1>Parents</h1>
-      <p className="muted">Parents and guardians, and the students they are linked to.</p>
+      <PageHeader title="Parents" subtitle="Parents and guardians, and the students they are linked to." />
 
-      <form className="panel form-grid" onSubmit={handleSubmit}>
-        <h2>Add parent</h2>
-        {error && <p className="alert alert-error" role="alert">{error}</p>}
-        {success && <p className="alert alert-success" role="status">{success}</p>}
-        <label>
-          Full name
-          <input
-            value={form.full_name}
-            onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-            placeholder="Paul Okafor"
-            required
-          />
-        </label>
-        <label>
-          Email
-          <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} required />
-        </label>
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
-            {saving ? 'Sending invite…' : 'Add and send invite'}
-          </button>
-        </div>
-      </form>
+      <Card title="Add parent">
+        <form onSubmit={handleSubmit}>
+          {error && <Alert tone="danger">{error}</Alert>}
+          {success && <Alert tone="success">{success}</Alert>}
+          <div className="ds-form-grid">
+            <Field label="Full name">
+              {(p) => (
+                <TextInput
+                  {...p}
+                  value={form.full_name}
+                  onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+                  placeholder="Paul Okafor"
+                  required
+                />
+              )}
+            </Field>
+            <Field label="Email">
+              {(p) => <TextInput {...p} type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} required />}
+            </Field>
+          </div>
+          <div className="ds-form-actions">
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Sending invite…' : 'Add and send invite'}
+            </Button>
+          </div>
+        </form>
+      </Card>
 
       {loading ? (
-        <p className="muted">Loading parents…</p>
+        <LoadingState lines={5} />
       ) : loadError ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(loadError)}</p>
+        <Alert tone="danger">{friendlyDbError(loadError)}</Alert>
       ) : data.parents.length === 0 ? (
-        <p className="empty-state">No parents yet — add one above.</p>
+        <Card>
+          <EmptyState icon="users">No parents yet — add one above.</EmptyState>
+        </Card>
       ) : (
-        <div className="card-list">
-          {data.parents.map((parent) => (
-            <ParentCard
-              key={parent.id}
-              parent={parent}
-              students={data.students}
-              linking={linkingParentId === parent.id}
-              onStartLink={() => setLinkingParentId(parent.id)}
-              onStopLink={() => setLinkingParentId(null)}
-              onChanged={reload}
-            />
-          ))}
-        </div>
+        data.parents.map((parent) => (
+          <ParentCard
+            key={parent.id}
+            parent={parent}
+            students={data.students}
+            linking={linkingParentId === parent.id}
+            onStartLink={() => setLinkingParentId(parent.id)}
+            onStopLink={() => setLinkingParentId(null)}
+            onChanged={reload}
+          />
+        ))
       )}
     </>
   )
@@ -137,35 +142,39 @@ function ParentCard({ parent, students, linking, onStartLink, onStopLink, onChan
   }
 
   return (
-    <div className="panel parent-card">
-      <div className="parent-card-header">
-        <div>
-          <strong>{fullName(parent)}</strong>
-          <div className="muted small">
-            {parent.email}
-            {parent.phone ? ` · ${parent.phone}` : ''}
-          </div>
-        </div>
-        {!linking && (
-          <button type="button" className="button-secondary" onClick={onStartLink}>
+    <Card
+      title={fullName(parent)}
+      flush
+      action={
+        !linking && (
+          <Button variant="secondary" size="sm" onClick={onStartLink}>
             Link student
-          </button>
-        )}
-      </div>
-
+          </Button>
+        )
+      }
+    >
+      <p className="ds-note ds-card-body" style={{ paddingBottom: 0 }}>
+        {parent.email}
+        {parent.phone ? ` · ${parent.phone}` : ''}
+      </p>
       {children.length === 0 ? (
-        <p className="muted small">Not linked to any students yet.</p>
+        <p className="ds-note ds-card-body">Not linked to any students yet.</p>
       ) : (
-        <ul className="section-list">
+        <ul className="ds-list">
           {children.map((link) => (
-            <li key={link.student_id}>
-              <span>
-                {fullName(link.students.users)} <span className="muted small">({link.students.admission_number})</span>
-                {link.relationship && <span className="muted small"> · {link.relationship}</span>}
+            <li key={link.student_id} className="ds-list-item">
+              <span className="ds-list-main">
+                <strong>{fullName(link.students.users)}</strong>
+                <span className="ds-list-meta">
+                  {link.students.admission_number}
+                  {link.relationship ? ` · ${link.relationship}` : ''}
+                </span>
               </span>
-              <button type="button" className="button-link danger" onClick={() => setUnlinking(link)}>
-                Unlink
-              </button>
+              <span className="ds-list-action">
+                <button type="button" className="ds-btn ds-btn-link ds-btn-link-danger" onClick={() => setUnlinking(link)}>
+                  Unlink
+                </button>
+              </span>
             </li>
           ))}
         </ul>
@@ -198,12 +207,11 @@ function ParentCard({ parent, students, linking, onStartLink, onStopLink, onChan
           }}
         >
           <p>
-            {fullName(parent)} will no longer see {fullName(unlinking.students.users)}&apos;s records. No other data is
-            deleted.
+            {fullName(parent)} will no longer see {fullName(unlinking.students.users)}&apos;s records. No other data is deleted.
           </p>
         </ConfirmDialog>
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -234,42 +242,49 @@ function LinkStudentForm({ parent, students, alreadyLinked, onDone, onCancel }) 
   }
 
   return (
-    <div className="link-form">
-      <div className="inline-form">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name or admission number"
-          aria-label="Search students"
-          autoFocus
-        />
-        <select value={relationship} onChange={(e) => setRelationship(e.target.value)} aria-label="Relationship">
-          {RELATIONSHIPS.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
-        <button type="button" className="button-secondary" onClick={onCancel}>
-          Cancel
-        </button>
+    <div className="ds-card-body" style={{ borderTop: '1px solid var(--ds-border)' }}>
+      <div className="ds-filters">
+        <Field label="Find a student">
+          {(p) => (
+            <TextInput {...p} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or admission number" autoFocus />
+          )}
+        </Field>
+        <Field label="Relationship">
+          {(p) => (
+            <Select {...p} value={relationship} onChange={(e) => setRelationship(e.target.value)}>
+              {RELATIONSHIPS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </div>
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
-      {term && matches.length === 0 && <p className="muted small">No matching students.</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
+      {term && matches.length === 0 && <p className="ds-note">No matching students.</p>}
       {matches.length > 0 && (
-        <ul className="section-list">
+        <ul className="ds-list">
           {matches.map((s) => (
-            <li key={s.id}>
-              <span>
-                {fullName(s)} <span className="muted small">({s.admission_number})</span>
+            <li key={s.id} className="ds-list-item" style={{ paddingInline: 0 }}>
+              <span className="ds-list-main">
+                <strong>{fullName(s)}</strong>
+                <span className="ds-list-meta">{s.admission_number}</span>
               </span>
-              <button type="button" className="button-link" onClick={() => link(s)} disabled={busyId !== null}>
-                {busyId === s.id ? 'Linking…' : `Link as ${relationship}`}
-              </button>
+              <span className="ds-list-action">
+                <button type="button" className="ds-btn ds-btn-link" onClick={() => link(s)} disabled={busyId !== null}>
+                  {busyId === s.id ? 'Linking…' : `Link as ${relationship}`}
+                </button>
+              </span>
             </li>
           ))}
         </ul>
       )}
+      <div className="ds-form-actions">
+        <Button variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
     </div>
   )
 }

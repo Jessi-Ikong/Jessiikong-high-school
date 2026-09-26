@@ -4,6 +4,9 @@ import { friendlyDbError, run, runWrite } from '../../lib/db'
 import { formatTime } from '../../lib/format'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import DeleteAction from '../../components/DeleteAction'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Checkbox, Field, TextInput } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 const EMPTY_FORM = { name: '', start_time: '', end_time: '', is_break: false }
 const ERRORS = {
@@ -70,74 +73,78 @@ export default function Periods() {
 
   return (
     <>
-      <h1>Periods</h1>
-      <p className="muted">
-        The fixed times of the school day. They become the rows of every timetable. Mark breaks so no lessons can be
-        put in them.
-      </p>
+      <PageHeader
+        title="Periods"
+        subtitle="The fixed times of the school day. They become the rows of every timetable. Mark breaks so no lessons can be put in them."
+      />
 
-      <form className="panel form-grid" onSubmit={handleSubmit}>
-        <h2>{editingId ? 'Edit period' : 'New period'}</h2>
-        {formError && <p className="alert alert-error" role="alert">{formError}</p>}
-        <label>
-          Name
-          <input value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Period 1" required />
-        </label>
-        <label>
-          Start time
-          <input type="time" value={form.start_time} onChange={(e) => update('start_time', e.target.value)} required />
-        </label>
-        <label>
-          End time
-          <input type="time" value={form.end_time} onChange={(e) => update('end_time', e.target.value)} required />
-        </label>
-        <label className="checkbox-field">
-          <input type="checkbox" checked={form.is_break} onChange={(e) => update('is_break', e.target.checked)} />
-          This is a break (no lessons)
-        </label>
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create period'}
-          </button>
-          {editingId && (
-            <button type="button" className="button-secondary" onClick={resetForm}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </form>
+      <Card title={editingId ? 'Edit period' : 'New period'}>
+        <form onSubmit={handleSubmit}>
+          {formError && <Alert tone="danger">{formError}</Alert>}
+          <div className="ds-form-grid">
+            <Field label="Name" className="ds-span-2">
+              {(p) => <TextInput {...p} value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Period 1" required />}
+            </Field>
+            <Field label="Start time">
+              {(p) => <TextInput {...p} type="time" value={form.start_time} onChange={(e) => update('start_time', e.target.value)} required />}
+            </Field>
+            <Field label="End time">
+              {(p) => <TextInput {...p} type="time" value={form.end_time} onChange={(e) => update('end_time', e.target.value)} required />}
+            </Field>
+          </div>
+          <Checkbox label="This is a break (no lessons)" checked={form.is_break} onChange={(e) => update('is_break', e.target.checked)} />
+          <div className="ds-form-actions">
+            {editingId && (
+              <Button variant="secondary" onClick={resetForm}>
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create period'}
+            </Button>
+          </div>
+        </form>
+      </Card>
 
-      {loading ? (
-        <p className="muted">Loading periods…</p>
-      ) : loadError ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(loadError)}</p>
-      ) : periods.length === 0 ? (
-        <p className="empty-state">No periods yet — create one above to get started.</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Start</th>
-                <th>End</th>
-                <th>Type</th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {periods.map((period) => (
-                <tr key={period.id} className={editingId === period.id ? 'row-editing' : undefined}>
-                  <td>{period.name}</td>
-                  <td>{formatTime(period.start_time)}</td>
-                  <td>{formatTime(period.end_time)}</td>
-                  <td>{period.is_break ? <span className="badge badge-muted">Break</span> : 'Lesson'}</td>
-                  <td className="row-actions">
-                    <button type="button" className="button-link" onClick={() => startEdit(period)}>
+      <Card title="The school day" flush>
+        {loading ? (
+          <LoadingState lines={4} />
+        ) : loadError ? (
+          <div className="ds-card-body">
+            <Alert tone="danger">{friendlyDbError(loadError)}</Alert>
+          </div>
+        ) : (
+          <DataTable
+            caption="Periods"
+            rowKey={(p) => p.id}
+            rows={periods}
+            empty={<EmptyState icon="clock">No periods yet — create one above to get started.</EmptyState>}
+            columns={[
+              {
+                key: 'name',
+                header: 'Name',
+                primary: true,
+                render: (p) => (
+                  <span className="ds-inline">
+                    {p.name}
+                    {editingId === p.id && <Badge tone="info">Editing</Badge>}
+                  </span>
+                ),
+              },
+              { key: 'start', header: 'Start', render: (p) => formatTime(p.start_time) },
+              { key: 'end', header: 'End', render: (p) => formatTime(p.end_time) },
+              { key: 'type', header: 'Type', render: (p) => (p.is_break ? <Badge tone="neutral">Break</Badge> : 'Lesson') },
+              {
+                key: 'actions',
+                header: 'Actions',
+                render: (period) => (
+                  <div className="ds-row-actions">
+                    <button type="button" className="ds-btn ds-btn-link" onClick={() => startEdit(period)}>
                       Edit
                     </button>
                     <DeleteAction
                       itemName={period.name}
+                      buttonClassName="ds-btn ds-btn-link ds-btn-link-danger"
                       dependencyChecks={[
                         { table: 'timetable_slots', column: 'period_id', value: period.id, label: ['timetable slot', 'timetable slots'] },
                       ]}
@@ -147,13 +154,13 @@ export default function Periods() {
                         reload()
                       }}
                     />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Card>
     </>
   )
 }

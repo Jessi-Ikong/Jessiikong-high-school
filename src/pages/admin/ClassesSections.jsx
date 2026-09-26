@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabaseClient'
 import { friendlyDbError, run, runWrite } from '../../lib/db'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import DeleteAction from '../../components/DeleteAction'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, TextInput } from '../../components/ui/Form'
 
 const EMPTY_CLASS_FORM = { name: '', level: '' }
 const CLASS_ERRORS = { unique: 'Another class already has that name or level.', check: 'Level must be 1 or more.' }
@@ -58,65 +60,69 @@ export default function ClassesSections() {
 
   return (
     <>
-      <h1>Classes &amp; Sections</h1>
-      <p className="muted">
-        Classes are levels (e.g. JSS1, level 1). Sections are the groups within a class (e.g. A, B). The level
-        orders classes for promotion.
-      </p>
+      <PageHeader
+        title="Classes & Sections"
+        subtitle="Classes are levels (e.g. JSS1, level 1). Sections are the groups within a class (e.g. A, B). The level orders classes for promotion."
+      />
 
-      <form className="panel form-grid" onSubmit={handleSubmit}>
-        <h2>{editingId ? 'Edit class' : 'New class'}</h2>
-        {formError && <p className="alert alert-error" role="alert">{formError}</p>}
-        <label>
-          Name
-          <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="JSS1" required />
-        </label>
-        <label>
-          Level
-          <input
-            type="number"
-            min="1"
-            step="1"
-            value={form.level}
-            onChange={(e) => setForm((f) => ({ ...f, level: e.target.value }))}
-            placeholder="1"
-            required
-          />
-        </label>
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create class'}
-          </button>
-          {editingId && (
-            <button type="button" className="button-secondary" onClick={resetForm}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </form>
+      <Card title={editingId ? 'Edit class' : 'New class'}>
+        <form onSubmit={handleSubmit}>
+          {formError && <Alert tone="danger">{formError}</Alert>}
+          <div className="ds-form-grid">
+            <Field label="Name">
+              {(p) => <TextInput {...p} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="JSS1" required />}
+            </Field>
+            <Field label="Level">
+              {(p) => (
+                <TextInput
+                  {...p}
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  step="1"
+                  value={form.level}
+                  onChange={(e) => setForm((f) => ({ ...f, level: e.target.value }))}
+                  placeholder="1"
+                  required
+                />
+              )}
+            </Field>
+          </div>
+          <div className="ds-form-actions">
+            {editingId && (
+              <Button variant="secondary" onClick={resetForm}>
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create class'}
+            </Button>
+          </div>
+        </form>
+      </Card>
 
       {loading ? (
-        <p className="muted">Loading classes…</p>
+        <LoadingState lines={4} />
       ) : loadError ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(loadError)}</p>
+        <Alert tone="danger">{friendlyDbError(loadError)}</Alert>
       ) : classes.length === 0 ? (
-        <p className="empty-state">No classes yet — create one above to get started.</p>
+        <Card>
+          <EmptyState icon="grid">No classes yet — create one above to get started.</EmptyState>
+        </Card>
       ) : (
-        <div className="class-list">
-          {classes.map((cls) => (
-            <ClassItem
-              key={cls.id}
-              cls={cls}
-              editing={editingId === cls.id}
-              onEdit={() => startEdit(cls)}
-              onChanged={reload}
-              onDeleted={() => {
-                if (editingId === cls.id) resetForm()
-                reload()
-              }}
-            />
-          ))}
-        </div>
+        classes.map((cls) => (
+          <ClassItem
+            key={cls.id}
+            cls={cls}
+            editing={editingId === cls.id}
+            onEdit={() => startEdit(cls)}
+            onChanged={reload}
+            onDeleted={() => {
+              if (editingId === cls.id) resetForm()
+              reload()
+            }}
+          />
+        ))
       )}
     </>
   )
@@ -145,23 +151,25 @@ function ClassItem({ cls, editing, onEdit, onChanged, onDeleted }) {
   const sectionCount = cls.sections.length
 
   return (
-    <details className={`class-item${editing ? ' row-editing' : ''}`}>
+    <details className="ds-card ds-details">
       <summary>
-        <span className="class-title">
-          {cls.name} <span className="muted small">level {cls.level}</span>
+        <span className="ds-details-title">
+          <strong>{cls.name}</strong> <span className="ds-muted ds-small">level {cls.level}</span>
+          {editing && <Badge tone="info">Editing</Badge>}
         </span>
-        <span className="muted small">
+        <span className="ds-muted ds-small">
           {sectionCount} {sectionCount === 1 ? 'section' : 'sections'}
         </span>
       </summary>
 
-      <div className="class-body">
-        <div className="row-actions">
-          <button type="button" className="button-link" onClick={onEdit}>
+      <div className="ds-details-body">
+        <div className="ds-row-actions" style={{ justifyContent: 'flex-start' }}>
+          <button type="button" className="ds-btn ds-btn-link" onClick={onEdit}>
             Edit class
           </button>
           <DeleteAction
             itemName={`class ${cls.name}`}
+            buttonClassName="ds-btn ds-btn-link ds-btn-link-danger"
             dependencyChecks={[
               { table: 'sections', column: 'class_id', value: cls.id, label: ['section (delete it first)', 'sections (delete them first)'] },
               { table: 'enrollments', column: 'class_id', value: cls.id, label: ['enrollment', 'enrollments'] },
@@ -174,28 +182,28 @@ function ClassItem({ cls, editing, onEdit, onChanged, onDeleted }) {
         </div>
 
         {sectionCount === 0 ? (
-          <p className="muted small">No sections yet — add one below.</p>
+          <p className="ds-note">No sections yet — add one below.</p>
         ) : (
-          <ul className="section-list">
+          <ul className="ds-list">
             {cls.sections.map((section) => (
               <SectionItem key={section.id} cls={cls} section={section} onChanged={onChanged} />
             ))}
           </ul>
         )}
 
-        <form className="inline-form" onSubmit={addSection}>
-          <input
+        <form className="ds-inline-form" onSubmit={addSection}>
+          <TextInput
             value={newSection}
             onChange={(e) => setNewSection(e.target.value)}
             placeholder="New section, e.g. A"
             aria-label={`New section name for ${cls.name}`}
             required
           />
-          <button type="submit" disabled={adding}>
+          <Button type="submit" disabled={adding}>
             {adding ? 'Adding…' : 'Add section'}
-          </button>
+          </Button>
         </form>
-        {sectionError && <p className="alert alert-error" role="alert">{sectionError}</p>}
+        {sectionError && <Alert tone="danger">{sectionError}</Alert>}
       </div>
     </details>
   )
@@ -224,15 +232,14 @@ function SectionItem({ cls, section, onChanged }) {
 
   if (editing) {
     return (
-      <li>
-        <form className="inline-form" onSubmit={save}>
-          <input value={name} onChange={(e) => setName(e.target.value)} aria-label="Section name" required autoFocus />
-          <button type="submit" disabled={saving}>
+      <li className="ds-list-item" style={{ display: 'block', paddingInline: 0 }}>
+        <form className="ds-inline-form" onSubmit={save}>
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} aria-label="Section name" required autoFocus />
+          <Button type="submit" disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button
-            type="button"
-            className="button-secondary"
+          </Button>
+          <Button
+            variant="secondary"
             onClick={() => {
               setEditing(false)
               setName(section.name)
@@ -240,24 +247,27 @@ function SectionItem({ cls, section, onChanged }) {
             }}
           >
             Cancel
-          </button>
+          </Button>
         </form>
-        {error && <p className="alert alert-error" role="alert">{error}</p>}
+        {error && <Alert tone="danger">{error}</Alert>}
       </li>
     )
   }
 
   return (
-    <li>
-      <span>
-        {cls.name} {section.name}
+    <li className="ds-list-item" style={{ paddingInline: 0, alignItems: 'center' }}>
+      <span className="ds-list-main">
+        <strong>
+          {cls.name} {section.name}
+        </strong>
       </span>
-      <span className="row-actions">
-        <button type="button" className="button-link" onClick={() => setEditing(true)}>
+      <span className="ds-row-actions">
+        <button type="button" className="ds-btn ds-btn-link" onClick={() => setEditing(true)}>
           Rename
         </button>
         <DeleteAction
           itemName={`section ${cls.name} ${section.name}`}
+          buttonClassName="ds-btn ds-btn-link ds-btn-link-danger"
           dependencyChecks={[
             { table: 'enrollments', column: 'section_id', value: section.id, label: ['enrollment', 'enrollments'] },
             { table: 'timetable_slots', column: 'section_id', value: section.id, label: ['timetable slot', 'timetable slots'] },

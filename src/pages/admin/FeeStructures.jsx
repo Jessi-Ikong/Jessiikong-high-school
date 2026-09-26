@@ -6,6 +6,9 @@ import { formatDate, formatNaira } from '../../lib/format'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useAuth } from '../../hooks/useAuth'
 import DeleteAction from '../../components/DeleteAction'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select, TextInput } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 const EMPTY_FORM = { name: '', amount: '', due_date: '', description: '' }
 const ERRORS = {
@@ -51,22 +54,24 @@ export default function FeeStructures() {
   if (profile.admin_level !== 'super_admin') {
     return (
       <>
-        <h1>Fees</h1>
-        <p className="alert alert-error" role="alert">Only super admins can manage fees.</p>
+        <PageHeader title="Fees" />
+        <Alert tone="danger">Only super admins can manage fees.</Alert>
       </>
     )
   }
-  if (setup.loading) return <p className="muted">Loading…</p>
-  if (setup.error) return <p className="alert alert-error" role="alert">{friendlyDbError(setup.error)}</p>
+  if (setup.loading) return <LoadingState lines={6} />
+  if (setup.error) return <Alert tone="danger">{friendlyDbError(setup.error)}</Alert>
 
   const { terms, classes } = setup.data
   if (terms.length === 0 || classes.length === 0) {
     return (
       <>
-        <h1>Fees</h1>
-        <p className="empty-state">
-          Create at least one <Link to="/admin/terms">term</Link> and one <Link to="/admin/classes">class</Link> first.
-        </p>
+        <PageHeader title="Fees" />
+        <Card>
+          <EmptyState icon="money" title="A few things first">
+            Create at least one <Link to="/admin/terms">term</Link> and one <Link to="/admin/classes">class</Link> first.
+          </EmptyState>
+        </Card>
       </>
     )
   }
@@ -81,34 +86,34 @@ function FeesEditor({ terms, classes }) {
 
   return (
     <>
-      <h1>Fees</h1>
-      <p className="muted">
-        Fee items per class and term, e.g. Tuition, Books, PTA Levy. Adding one automatically invoices every student
-        actively enrolled in that class (all sections) for the term&apos;s session. Students who join later are invoiced
-        too.
-      </p>
-      <div className="filter-bar">
-        <label className="inline-field">
-          Term
-          <select value={term.id} onChange={(e) => setChosenTermId(e.target.value)}>
-            {terms.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}, {t.sessions.name}
-                {t.is_current ? ' (current)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          Class
-          <select value={cls.id} onChange={(e) => setChosenClassId(e.target.value)}>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      <PageHeader
+        title="Fees"
+        subtitle="Fee items per class and term, e.g. Tuition, Books, PTA Levy. Adding one automatically invoices every student actively enrolled in that class (all sections) for the term's session. Students who join later are invoiced too."
+      />
+      <div className="ds-filters">
+        <Field label="Term">
+          {(p) => (
+            <Select {...p} value={term.id} onChange={(e) => setChosenTermId(e.target.value)}>
+              {terms.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}, {t.sessions.name}
+                  {t.is_current ? ' (current)' : ''}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Class">
+          {(p) => (
+            <Select {...p} value={cls.id} onChange={(e) => setChosenClassId(e.target.value)}>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </div>
       <ClassFees key={`${term.id}:${cls.id}`} term={term} cls={cls} />
     </>
@@ -188,9 +193,8 @@ function ClassFees({ term, cls }) {
     }
   }
 
-  if (query.loading) return <p className="muted">Loading fees…</p>
-  if (query.error) return <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
-
+  if (query.loading) return <LoadingState lines={4} label="Loading fees…" />
+  if (query.error) return <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
   const fees = query.data
   const totals = fees.reduce(
     (t, f) => ({
@@ -203,138 +207,130 @@ function ClassFees({ term, cls }) {
 
   return (
     <>
-      {notice && <p className="alert alert-success" role="status">{notice}</p>}
-      <section className="panel">
-        <h2>
-          {cls.name} — {term.name}, {term.sessions.name}
-        </h2>
-        {fees.length === 0 ? (
-          <p className="empty-state">No fees yet for {cls.name} this term. Add one below.</p>
-        ) : (
-          <div className="table-wrap">
-            <table className="data-table fee-table">
-              <thead>
-                <tr>
-                  <th>Fee</th>
-                  <th>Amount</th>
-                  <th>Due</th>
-                  <th>Invoices</th>
-                  <th>Collected</th>
-                  <th>Outstanding</th>
-                  <th aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {fees.map((f) => {
-                  const s = f.summary ?? {}
-                  const outstanding = Number(s.amount_due ?? 0) - Number(s.amount_paid ?? 0)
-                  return (
-                    <tr key={f.id} className={editing?.id === f.id ? 'row-editing' : undefined}>
-                      <td>
-                        {f.name}
-                        {f.description && <div className="muted small">{f.description}</div>}
-                      </td>
-                      <td>{formatNaira(f.amount)}</td>
-                      <td className="small">
-                        {f.due_date ? formatDate(f.due_date) : <span className="muted">End of term ({formatDate(term.end_date)})</span>}
-                      </td>
-                      <td>
-                        <InvoiceCounts summary={s} />
-                      </td>
-                      <td>{formatNaira(s.amount_paid)}</td>
-                      <td>{formatNaira(outstanding)}</td>
-                      <td className="row-actions">
-                        <button type="button" className="button-link" onClick={() => startEdit(f)}>
-                          Edit
-                        </button>
-                        <DeleteAction
-                          itemName={`"${f.name}" and its ${Number(s.invoices ?? 0)} ${Number(s.invoices) === 1 ? 'invoice' : 'invoices'}`}
-                          dependencyChecks={[]}
-                          onDelete={() => runWrite(supabase.from('fee_structures').delete().eq('id', f.id).select('id'))}
-                          onDeleted={() => {
-                            if (editing?.id === f.id) resetForm()
-                            setNotice(`"${f.name}" and its invoices were deleted.`)
-                            query.reload()
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-              {fees.length > 1 && (
-                <tfoot>
-                  <tr>
-                    <th scope="row">Total</th>
-                    <td />
-                    <td />
-                    <td className="small">{totals.invoices} invoices</td>
-                    <td>{formatNaira(totals.paid)}</td>
-                    <td>{formatNaira(totals.due - totals.paid)}</td>
-                    <td />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
+      {notice && <Alert tone="success">{notice}</Alert>}
+      <Card title={`${cls.name} — ${term.name}, ${term.sessions.name}`} flush>
+        <DataTable
+          caption={`Fees for ${cls.name}`}
+          rowKey={(f) => f.id}
+          rows={fees}
+          empty={<EmptyState icon="money">No fees yet for {cls.name} this term. Add one below.</EmptyState>}
+          columns={[
+            {
+              key: 'name',
+              header: 'Fee',
+              primary: true,
+              render: (f) => (
+                <span>
+                  <span className="ds-inline">
+                    {f.name}
+                    {editing?.id === f.id && <Badge status="editing">Editing</Badge>}
+                  </span>
+                  {f.description && <span className="ds-muted ds-small" style={{ display: 'block', fontWeight: 400 }}>{f.description}</span>}
+                </span>
+              ),
+            },
+            { key: 'amount', header: 'Amount', numeric: true, render: (f) => formatNaira(f.amount) },
+            {
+              key: 'due',
+              header: 'Due',
+              render: (f) => (f.due_date ? formatDate(f.due_date) : <span className="ds-muted">End of term ({formatDate(term.end_date)})</span>),
+            },
+            { key: 'invoices', header: 'Invoices', render: (f) => <InvoiceCounts summary={f.summary ?? {}} /> },
+            { key: 'collected', header: 'Collected', numeric: true, render: (f) => formatNaira(f.summary?.amount_paid) },
+            {
+              key: 'outstanding',
+              header: 'Outstanding',
+              numeric: true,
+              render: (f) => formatNaira(Number(f.summary?.amount_due ?? 0) - Number(f.summary?.amount_paid ?? 0)),
+            },
+            {
+              key: 'actions',
+              header: 'Actions',
+              render: (f) => {
+                const s = f.summary ?? {}
+                return (
+                  <div className="ds-row-actions">
+                    <button type="button" className="ds-btn ds-btn-link" onClick={() => startEdit(f)}>
+                      Edit
+                    </button>
+                    <DeleteAction
+                      itemName={`"${f.name}" and its ${Number(s.invoices ?? 0)} ${Number(s.invoices) === 1 ? 'invoice' : 'invoices'}`}
+                      buttonClassName="ds-btn ds-btn-link ds-btn-link-danger"
+                      dependencyChecks={[]}
+                      onDelete={() => runWrite(supabase.from('fee_structures').delete().eq('id', f.id).select('id'))}
+                      onDeleted={() => {
+                        if (editing?.id === f.id) resetForm()
+                        setNotice(`"${f.name}" and its invoices were deleted.`)
+                        query.reload()
+                      }}
+                    />
+                  </div>
+                )
+              },
+            },
+          ]}
+        />
+        {fees.length > 1 && (
+          <p className="ds-card-body ds-small" style={{ margin: 0, borderTop: '1px solid var(--ds-border)' }}>
+            <strong>Total:</strong> {totals.invoices} invoices · collected <strong>{formatNaira(totals.paid)}</strong> · outstanding{' '}
+            <strong>{formatNaira(totals.due - totals.paid)}</strong>
+          </p>
         )}
-        <p className="muted small">
-          A fee can&apos;t be deleted, and its amount can&apos;t be changed, once any payment has been recorded against its
-          invoices, so payment records are always kept. Its name, description and due date can still be changed.
-        </p>
+        <div className="ds-card-body" style={{ borderTop: '1px solid var(--ds-border)' }}>
+          <p className="ds-note">
+            A fee can&apos;t be deleted, and its amount can&apos;t be changed, once any payment has been recorded against its invoices, so payment records are
+            always kept. Its name, description and due date can still be changed.
+          </p>
 
-        <form className="form-grid" onSubmit={handleSubmit}>
-          <h3>{editing ? `Edit "${editing.name}"` : 'Add a fee'}</h3>
-          {formError && <p className="alert alert-error" role="alert">{formError}</p>}
-          <label>
-            Name
-            <input value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="e.g. Tuition, Books, PTA Levy" required />
-          </label>
-          <label>
-            Amount (₦)
-            <input type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => update('amount', e.target.value)} placeholder="50000" required />
-          </label>
-          <label>
-            Due date (optional)
-            <input type="date" value={form.due_date} onChange={(e) => update('due_date', e.target.value)} />
-            <span className="muted small">Leave empty to use the end of term ({formatDate(term.end_date)}).</span>
-          </label>
-          <label>
-            Description (optional)
-            <input value={form.description} onChange={(e) => update('description', e.target.value)} />
-          </label>
-          <div className="form-actions">
-            <button type="submit" disabled={saving}>
-              {saving ? 'Saving…' : editing ? 'Save changes' : 'Add fee and create invoices'}
-            </button>
-            {editing && (
-              <button type="button" className="button-secondary" onClick={resetForm}>
-                Cancel
-              </button>
-            )}
-          </div>
-        </form>
-      </section>
+          <form onSubmit={handleSubmit}>
+            <h3 className="ds-h2" style={{ marginBottom: 12 }}>
+              {editing ? `Edit "${editing.name}"` : 'Add a fee'}
+            </h3>
+            {formError && <Alert tone="danger">{formError}</Alert>}
+            <div className="ds-form-grid">
+              <Field label="Name">
+                {(p) => <TextInput {...p} value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="e.g. Tuition, Books, PTA Levy" required />}
+              </Field>
+              <Field label="Amount (₦)">
+                {(p) => (
+                  <TextInput {...p} type="number" inputMode="decimal" min="0.01" step="0.01" value={form.amount} onChange={(e) => update('amount', e.target.value)} placeholder="50000" required />
+                )}
+              </Field>
+              <Field label="Due date" hint={`Optional. Leave empty to use the end of term (${formatDate(term.end_date)}).`}>
+                {(p) => <TextInput {...p} type="date" value={form.due_date} onChange={(e) => update('due_date', e.target.value)} />}
+              </Field>
+              <Field label="Description" hint="Optional">
+                {(p) => <TextInput {...p} value={form.description} onChange={(e) => update('description', e.target.value)} />}
+              </Field>
+            </div>
+            <div className="ds-form-actions">
+              {editing && (
+                <Button variant="secondary" onClick={resetForm}>
+                  Cancel
+                </Button>
+              )}
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Saving…' : editing ? 'Save changes' : 'Add fee and create invoices'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </Card>
     </>
   )
 }
 
 function InvoiceCounts({ summary }) {
   const total = Number(summary.invoices ?? 0)
-  if (total === 0) return <span className="muted small">None yet</span>
-  const parts = [
-    ['paid', 'paid', 'badge'],
-    ['partial', 'partial', 'badge badge-info'],
-    ['unpaid', 'unpaid', 'badge badge-muted'],
-    ['overdue', 'overdue', 'badge badge-late'],
-  ].filter(([key]) => Number(summary[key]) > 0)
+  if (total === 0) return <span className="ds-muted ds-small">None yet</span>
+  const parts = ['paid', 'partial', 'unpaid', 'overdue'].filter((key) => Number(summary[key]) > 0)
   return (
-    <span className="badge-row">
-      <span className="small">{total} ·</span>
-      {parts.map(([key, label, className]) => (
-        <span key={key} className={className}>
-          {Number(summary[key])} {label}
-        </span>
+    <span className="ds-inline" style={{ justifyContent: 'inherit' }}>
+      <span className="ds-small">{total} ·</span>
+      {parts.map((key) => (
+        <Badge key={key} status={key}>
+          {Number(summary[key])} {key}
+        </Badge>
       ))}
     </span>
   )

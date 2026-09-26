@@ -30,9 +30,9 @@ export function Avatar({ path, name, size = 40 }) {
     .join('')
   const style = { width: size, height: size, fontSize: size * 0.38 }
   return url ? (
-    <img className="avatar" src={url} alt={name ? `Photo of ${name}` : 'Photo'} style={style} />
+    <img className="ds-photo" src={url} alt={name ? `Photo of ${name}` : 'Photo'} style={style} />
   ) : (
-    <span className="avatar avatar-initials" style={style} aria-hidden="true">
+    <span className="ds-photo ds-photo-initials" style={style} aria-hidden="true">
       {initials || '?'}
     </span>
   )
@@ -61,15 +61,15 @@ export default function PhotoUpload({ userId, name, path, size = 40, label = 'Ch
   }
 
   return (
-    <span className="photo-upload">
+    <span className="ds-photo-upload">
       <Avatar path={path} name={name} size={size} />
-      <span className="photo-upload-actions">
-        <button type="button" className="button-link" onClick={() => inputRef.current?.click()} disabled={busy}>
+      <span className="ds-photo-upload-actions">
+        <button type="button" className="ds-btn ds-btn-link" onClick={() => inputRef.current?.click()} disabled={busy}>
           {busy ? 'Uploading…' : path ? label : 'Add photo'}
         </button>
         <input ref={inputRef} type="file" accept={PHOTO_ACCEPT} onChange={handleFile} hidden />
         {error && (
-          <span className="small late-text" role="alert">
+          <span className="ds-small ds-text-danger" role="alert">
             {error}
           </span>
         )}

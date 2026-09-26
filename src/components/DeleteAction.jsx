@@ -11,7 +11,7 @@ export default function DeleteAction({
   onDelete,
   onDeleted,
   buttonLabel = 'Delete',
-  buttonClassName = 'button-link danger',
+  buttonClassName = 'ds-btn ds-btn-link ds-btn-link-danger',
 }) {
   // null | 'checking' | 'blocked' | 'confirm' | 'deleting'
   const [step, setStep] = useState(null)
@@ -70,7 +70,7 @@ export default function DeleteAction({
               <li key={d.text}>{d.text}</li>
             ))}
           </ul>
-          <p className="muted">Remove or move those first, then try again.</p>
+          <p className="ds-muted">Remove or move those first, then try again.</p>
         </ConfirmDialog>
       )}
 

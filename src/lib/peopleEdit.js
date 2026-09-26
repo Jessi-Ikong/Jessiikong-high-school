@@ -65,3 +65,4 @@ export function removeStudentSubject(enrollmentId, subjectId) {
     supabase.from('student_subjects').delete().eq('enrollment_id', enrollmentId).eq('subject_id', subjectId).select('subject_id'),
   )
 }
+

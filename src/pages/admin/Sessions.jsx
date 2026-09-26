@@ -4,6 +4,9 @@ import { friendlyDbError, run, runWrite } from '../../lib/db'
 import { formatDate } from '../../lib/format'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import DeleteAction from '../../components/DeleteAction'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, TextInput } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 const EMPTY_FORM = { name: '', start_date: '', end_date: '' }
 const ERRORS = { unique: 'A session with that name already exists.' }
@@ -87,82 +90,87 @@ export default function Sessions() {
 
   return (
     <>
-      <h1>Sessions</h1>
-      <p className="muted">Academic years, e.g. 2026/2027. One session is marked as the current one.</p>
+      <PageHeader title="Sessions" subtitle="Academic years, e.g. 2026/2027. One session is marked as the current one." />
 
-      <form className="panel form-grid" onSubmit={handleSubmit}>
-        <h2>{editingId ? 'Edit session' : 'New session'}</h2>
-        {formError && <p className="alert alert-error" role="alert">{formError}</p>}
-        <label>
-          Name
-          <input value={form.name} onChange={(e) => updateField('name', e.target.value)} placeholder="2026/2027" required />
-        </label>
-        <label>
-          Start date
-          <input type="date" value={form.start_date} onChange={(e) => updateField('start_date', e.target.value)} required />
-        </label>
-        <label>
-          End date
-          <input type="date" value={form.end_date} onChange={(e) => updateField('end_date', e.target.value)} required />
-        </label>
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create session'}
-          </button>
-          {editingId && (
-            <button type="button" className="button-secondary" onClick={resetForm}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </form>
+      <Card title={editingId ? 'Edit session' : 'New session'}>
+        <form onSubmit={handleSubmit}>
+          {formError && <Alert tone="danger">{formError}</Alert>}
+          <div className="ds-form-grid">
+            <Field label="Name" className="ds-span-2">
+              {(p) => <TextInput {...p} value={form.name} onChange={(e) => updateField('name', e.target.value)} placeholder="2026/2027" required />}
+            </Field>
+            <Field label="Start date">
+              {(p) => <TextInput {...p} type="date" value={form.start_date} onChange={(e) => updateField('start_date', e.target.value)} required />}
+            </Field>
+            <Field label="End date">
+              {(p) => <TextInput {...p} type="date" value={form.end_date} onChange={(e) => updateField('end_date', e.target.value)} required />}
+            </Field>
+          </div>
+          <div className="ds-form-actions">
+            {editingId && (
+              <Button variant="secondary" onClick={resetForm}>
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create session'}
+            </Button>
+          </div>
+        </form>
+      </Card>
 
-      {actionError && <p className="alert alert-error" role="alert">{actionError}</p>}
+      {actionError && <Alert tone="danger">{actionError}</Alert>}
 
-      {loading ? (
-        <p className="muted">Loading sessions…</p>
-      ) : loadError ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(loadError)}</p>
-      ) : sessions.length === 0 ? (
-        <p className="empty-state">No sessions yet — create one above to get started.</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Start</th>
-                <th>End</th>
-                <th>Current</th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.map((session) => (
-                <tr key={session.id} className={editingId === session.id ? 'row-editing' : undefined}>
-                  <td>{session.name}</td>
-                  <td>{formatDate(session.start_date)}</td>
-                  <td>{formatDate(session.end_date)}</td>
-                  <td>
-                    {session.is_current ? (
-                      <span className="badge">Current</span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="button-link"
-                        onClick={() => makeCurrent(session)}
-                        disabled={busyId !== null}
-                      >
-                        {busyId === session.id ? 'Updating…' : 'Make current'}
-                      </button>
-                    )}
-                  </td>
-                  <td className="row-actions">
-                    <button type="button" className="button-link" onClick={() => startEdit(session)}>
+      <Card title="All sessions" flush>
+        {loading ? (
+          <LoadingState lines={4} />
+        ) : loadError ? (
+          <div className="ds-card-body">
+            <Alert tone="danger">{friendlyDbError(loadError)}</Alert>
+          </div>
+        ) : (
+          <DataTable
+            caption="Sessions"
+            rowKey={(s) => s.id}
+            rows={sessions}
+            empty={<EmptyState icon="calendar">No sessions yet — create one above to get started.</EmptyState>}
+            columns={[
+              {
+                key: 'name',
+                header: 'Name',
+                primary: true,
+                render: (s) => (
+                  <span className="ds-inline">
+                    {s.name}
+                    {editingId === s.id && <Badge tone="info">Editing</Badge>}
+                  </span>
+                ),
+              },
+              { key: 'start', header: 'Start', render: (s) => formatDate(s.start_date) },
+              { key: 'end', header: 'End', render: (s) => formatDate(s.end_date) },
+              {
+                key: 'current',
+                header: 'Current',
+                render: (s) =>
+                  s.is_current ? (
+                    <Badge tone="success">Current</Badge>
+                  ) : (
+                    <button type="button" className="ds-btn ds-btn-link" onClick={() => makeCurrent(s)} disabled={busyId !== null}>
+                      {busyId === s.id ? 'Updating…' : 'Make current'}
+                    </button>
+                  ),
+              },
+              {
+                key: 'actions',
+                header: 'Actions',
+                render: (session) => (
+                  <div className="ds-row-actions">
+                    <button type="button" className="ds-btn ds-btn-link" onClick={() => startEdit(session)}>
                       Edit
                     </button>
                     <DeleteAction
                       itemName={`session ${session.name}`}
+                      buttonClassName="ds-btn ds-btn-link ds-btn-link-danger"
                       dependencyChecks={[
                         { table: 'terms', column: 'session_id', value: session.id, label: ['term', 'terms'] },
                         { table: 'enrollments', column: 'session_id', value: session.id, label: ['enrollment', 'enrollments'] },
@@ -175,13 +183,13 @@ export default function Sessions() {
                         reload()
                       }}
                     />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Card>
     </>
   )
 }

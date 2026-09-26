@@ -5,6 +5,8 @@ import { fullName, byName } from '../lib/people'
 import { gradeFor, termGradingOpen, termLockedMessage, weightTotal, weightedTotal } from '../lib/grading'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { useCorrectionConfirm } from './CorrectionConfirm'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState } from './ui/Primitives'
+import DataTable from './ui/DataTable'
 
 // The score grid, shared by the teacher's Gradebook and the admin's Correct
 // Scores page. Both save through the same scores table and rules (maximum,
@@ -64,36 +66,38 @@ export function GradebookForClass({ cls, term, admin = false }) {
   const query = useAsyncData(() => fetchGradebook(cls, term, admin), `gradebook:${admin}:${cls.key}`)
   const [savedMessage, setSavedMessage] = useState(null)
 
-  if (query.loading) return <p className="muted">Loading gradebook…</p>
-  if (query.error) return <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+  if (query.loading) return <LoadingState lines={5} label="Loading gradebook…" />
+  if (query.error) return <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
 
   const { components, students, saved, scale } = query.data
   const total = weightTotal(components)
 
   if (total !== 100) {
     return (
-      <p className="alert alert-error" role="alert">
+      <Alert tone="danger">
         Grading isn&apos;t fully configured for this subject yet — ask an admin to complete the assessment components.
-        <span className="small">
+        <span className="ds-small">
           {' '}
           ({components.length === 0 ? 'No components are set up' : `Components currently add up to ${total}%, not 100%`} for{' '}
           {term.name}.)
         </span>
-      </p>
+      </Alert>
     )
   }
   if (students.length === 0) {
-    return <p className="empty-state">No students in this section take this subject this session.</p>
+    return (
+      <Card>
+        <EmptyState icon="users">No students in this section take this subject this session.</EmptyState>
+      </Card>
+    )
   }
 
   const locked = !termGradingOpen(term)
   return (
     <>
-      {locked && !admin && <p className="alert alert-info-plain">🔒 {termLockedMessage(term, 'Scores')}</p>}
+      {locked && !admin && <Alert tone="info">🔒 {termLockedMessage(term, 'Scores')}</Alert>}
       {locked && admin && (
-        <p className="alert alert-info-plain">
-          🔒 {term.name} is locked for teachers. As an admin you can still correct scores; you&apos;ll be asked to confirm.
-        </p>
+        <Alert tone="info">🔒 {term.name} is locked for teachers. As an admin you can still correct scores; you&apos;ll be asked to confirm.</Alert>
       )}
       <ScoreGrid
         key={JSON.stringify(saved)}
@@ -209,80 +213,89 @@ function ScoreGrid({ cls, term, admin, locked, components, students, saved, scal
 
   return (
     <form onSubmit={handleSave}>
-      {savedMessage && <p className="alert alert-success" role="status">{savedMessage}</p>}
-      <div className="table-wrap">
-        <table className="data-table gradebook">
-          <thead>
-            <tr>
-              <th>Student</th>
-              {components.map((c) => (
-                <th key={c.id}>
-                  {c.name}
-                  <span className="muted small">
-                    {' '}
-                    / {Number(c.max_score)} · {Number(c.weight)}%
-                  </span>
-                </th>
-              ))}
-              <th>Total / 100</th>
-              <th>Grade</th>
-            </tr>
-          </thead>
-          <tbody>
-            {students.map((s) => {
-              const anyScore = components.some((c) => (values[cellKey(s.studentId, c.id)] ?? '').trim() !== '')
-              const total = weightedTotal(components, (componentId) => {
-                const raw = (values[cellKey(s.studentId, componentId)] ?? '').trim()
-                return raw === '' || Number.isNaN(Number(raw)) ? null : raw
-              })
-              return (
-                <tr key={s.studentId}>
-                  <td>
-                    {fullName(s)} <span className="muted small">{s.admissionNumber}</span>
-                    {admin && s.enrollmentStatus !== 'active' && <span className="badge badge-muted">{s.enrollmentStatus}</span>}
-                  </td>
-                  {components.map((c) => {
-                    const key = cellKey(s.studentId, c.id)
-                    const problem = cellProblem(s.studentId, c)
-                    return (
-                      <td key={c.id}>
-                        <input
-                          className={`score-input${problem ? ' has-error' : ''}`}
-                          type="number"
-                          inputMode="decimal"
-                          min="0"
-                          max={Number(c.max_score)}
-                          step="any"
-                          disabled={!editable}
-                          value={values[key] ?? ''}
-                          onChange={(e) => setValue(s.studentId, c.id, e.target.value)}
-                          aria-label={`${c.name} for ${fullName(s)} (max ${Number(c.max_score)})`}
-                          aria-invalid={problem ? 'true' : undefined}
-                          title={problem ? `Must be between 0 and ${Number(c.max_score)}` : undefined}
-                        />
-                      </td>
-                    )
-                  })}
-                  <td className="total-cell">{anyScore ? total.toFixed(1) : <span className="muted">—</span>}</td>
-                  <td className="grade-cell">{anyScore ? (gradeFor(total, scale)?.grade ?? '—') : <span className="muted">—</span>}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      {savedMessage && <Alert tone="success">{savedMessage}</Alert>}
+      <div>
+        {/* Each student is a card on phones (label above each score box); a normal table when there's room. */}
+        <DataTable
+          caption="Scores"
+          rowKey={(s) => s.studentId}
+          rows={students}
+          columns={[
+            {
+              key: 'student',
+              header: 'Student',
+              primary: true,
+              render: (s) => (
+                <span>
+                  {fullName(s)} <span className="ds-muted ds-small">{s.admissionNumber}</span>{' '}
+                  {admin && s.enrollmentStatus !== 'active' && <Badge status={s.enrollmentStatus}>{s.enrollmentStatus}</Badge>}
+                </span>
+              ),
+            },
+            ...components.map((c) => ({
+              key: c.id,
+              header: `${c.name} (/ ${Number(c.max_score)} · ${Number(c.weight)}%)`,
+              render: (s) => {
+                const key = cellKey(s.studentId, c.id)
+                const problem = cellProblem(s.studentId, c)
+                return (
+                  <input
+                    className="ds-input ds-score-input"
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    max={Number(c.max_score)}
+                    step="any"
+                    disabled={!editable}
+                    value={values[key] ?? ''}
+                    onChange={(e) => setValue(s.studentId, c.id, e.target.value)}
+                    aria-label={`${c.name} for ${fullName(s)} (max ${Number(c.max_score)})`}
+                    aria-invalid={problem ? 'true' : undefined}
+                    title={problem ? `Must be between 0 and ${Number(c.max_score)}` : undefined}
+                  />
+                )
+              },
+            })),
+            {
+              key: 'total',
+              header: 'Total / 100',
+              numeric: true,
+              render: (s) => {
+                const anyScore = components.some((c) => (values[cellKey(s.studentId, c.id)] ?? '').trim() !== '')
+                const total = weightedTotal(components, (componentId) => {
+                  const raw = (values[cellKey(s.studentId, componentId)] ?? '').trim()
+                  return raw === '' || Number.isNaN(Number(raw)) ? null : raw
+                })
+                return anyScore ? <strong>{total.toFixed(1)}</strong> : <span className="ds-muted">—</span>
+              },
+            },
+            {
+              key: 'grade',
+              header: 'Grade',
+              render: (s) => {
+                const anyScore = components.some((c) => (values[cellKey(s.studentId, c.id)] ?? '').trim() !== '')
+                const total = weightedTotal(components, (componentId) => {
+                  const raw = (values[cellKey(s.studentId, componentId)] ?? '').trim()
+                  return raw === '' || Number.isNaN(Number(raw)) ? null : raw
+                })
+                return anyScore ? <strong>{gradeFor(total, scale)?.grade ?? '—'}</strong> : <span className="ds-muted">—</span>
+              },
+            },
+          ]}
+        />
       </div>
-      <p className="muted small">
+      <p className="ds-note">
         Total = each score divided by its maximum, times its weight, added up. Blank scores count as 0, so the total
         (and the grade) grows as more components are entered. The grade uses the school's grade scale, with the total
         rounded to the nearest whole number.
       </p>
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
-      {admin && <p className="muted small">To clear a saved score, empty its box and save.</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
+      {admin && <p className="ds-note">To clear a saved score, empty its box and save.</p>}
       {editable && (
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
+        <div className="ds-form-actions">
+          <Button type="submit" disabled={saving}>
             {saving ? 'Saving…' : `${admin ? 'Save corrections' : 'Save scores'}${total ? ` (${total} changed)` : ''}`}
-          </button>
+          </Button>
         </div>
       )}
       {confirm.dialog}

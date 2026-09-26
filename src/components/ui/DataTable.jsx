@@ -4,7 +4,8 @@ import '../../styles/app.css'
 // its own width; below that each row becomes a card (the "primary" column is the card title, the
 // others are "Label  value" lines) — no sideways scrolling.
 //
-// columns: [{ key, header, render?: (row) => node, primary?: bool, numeric?: bool }]
+// columns: [{ key, header, render?: (row) => node, primary?: bool, numeric?: bool, stack?: bool }]
+// stack: on phones, put the label ABOVE the value (for rich cells: lists, forms).
 export default function DataTable({ columns, rows, rowKey, caption, empty = null }) {
   if (rows.length === 0 && empty) return empty
   return (
@@ -27,7 +28,7 @@ export default function DataTable({ columns, rows, rowKey, caption, empty = null
                 <td
                   key={c.key}
                   data-label={c.header}
-                  className={[c.primary ? 'ds-td-primary' : '', c.numeric ? 'ds-table-num' : ''].filter(Boolean).join(' ') || undefined}
+                  className={[c.primary ? 'ds-td-primary' : '', c.numeric ? 'ds-table-num' : '', c.stack ? 'ds-td-stack' : ''].filter(Boolean).join(' ') || undefined}
                 >
                   {c.render ? c.render(row) : row[c.key]}
                 </td>

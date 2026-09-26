@@ -6,6 +6,7 @@ import { Alert, Badge, Button, Card, EmptyState, ErrorState, LoadingState, PageH
 import { Checkbox, Field, RadioGroup, Select, TextArea, TextInput } from '../components/ui/Form'
 import DataTable from '../components/ui/DataTable'
 import Dialog from '../components/ui/Dialog'
+import PagePreview from './PagePreviews'
 
 // DEVELOPMENT ONLY (not in the production build): previews of the admin
 // shell and dashboard with SAMPLE data (no sign-in needed), a UI kit, and a
@@ -13,6 +14,7 @@ import Dialog from '../components/ui/Dialog'
 //   /__dev/admin                  shell + Overview dashboard (sample data)
 //   /__dev/admin?state=loading    ...every panel loading (also: empty, error)
 //   /__dev/ui                     every design-system component
+//   /__dev/page/students          a real page of any portal with sample data (see PagePreviews.jsx)
 //   /__dev/frame?src=/__dev/admin&w=375&h=812   a preview at 375 x 812
 
 const PROFILE = { first_name: 'Ikong', last_name: 'Jessi', admin_level: 'super_admin' }
@@ -75,6 +77,8 @@ export default function DevPreview() {
       <Route path="admin" element={<AdminPreview />} />
       <Route path="ui" element={<UiKit />} />
       <Route path="frame" element={<Frame />} />
+      <Route path="page/:name" element={<PagePreview />} />
+      <Route path="page/:name/:slotId" element={<PagePreview />} />
     </Routes>
   )
 }

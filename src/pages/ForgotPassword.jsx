@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { friendlyAuthError, isNetworkError, isRateLimitError } from '../lib/authErrors'
+import AuthLayout from '../components/AuthLayout'
+import { Alert, Button } from '../components/ui/Primitives'
+import { Field, TextInput } from '../components/ui/Form'
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')
@@ -27,43 +30,34 @@ export default function ForgotPassword() {
 
   if (sent) {
     return (
-      <main className="auth-page">
-        <div className="auth-card">
-          <h1>Check your email</h1>
-          <p className="alert alert-success" role="status">
-            If an account exists for {email.trim()}, we have sent a link to reset your password.
-            Check your inbox and spam folder. The link can only be used once.
-          </p>
-          <Link to="/login">Back to sign in</Link>
-        </div>
-      </main>
+      <AuthLayout title="Check your email">
+        <Alert tone="success">
+          If an account exists for {email.trim()}, we have sent a link to reset your password. Check your inbox and spam folder. The link can only be
+          used once.
+        </Alert>
+        <Link to="/login" className="ds-btn ds-btn-link">
+          ← Back to sign in
+        </Link>
+      </AuthLayout>
     )
   }
 
   return (
-    <main className="auth-page">
-      <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Forgot password</h1>
-        <p className="muted">Enter your email and we&apos;ll send you a link to set a new password.</p>
+    <AuthLayout as="form" onSubmit={handleSubmit} title="Forgot password" subtitle="Enter your email and we'll send you a link to set a new password.">
+      {error && <Alert tone="danger">{error}</Alert>}
 
-        {error && <p className="alert alert-error" role="alert">{error}</p>}
+      <Field label="Email">
+        {(p) => <TextInput {...p} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />}
+      </Field>
 
-        <label>
-          Email
-          <input
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </label>
-
-        <button type="submit" disabled={submitting}>
-          {submitting ? 'Sending…' : 'Send reset link'}
-        </button>
-        <Link to="/login">Back to sign in</Link>
-      </form>
-    </main>
+      <Button type="submit" block disabled={submitting}>
+        {submitting ? 'Sending…' : 'Send reset link'}
+      </Button>
+      <div className="ds-auth-links">
+        <Link to="/login" className="ds-btn ds-btn-link">
+          ← Back to sign in
+        </Link>
+      </div>
+    </AuthLayout>
   )
 }

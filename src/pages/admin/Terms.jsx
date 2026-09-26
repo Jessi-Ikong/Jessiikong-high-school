@@ -5,6 +5,9 @@ import { friendlyDbError, run, runWrite } from '../../lib/db'
 import { formatDate } from '../../lib/format'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import DeleteAction from '../../components/DeleteAction'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select, TextInput } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 const TERM_NAMES = { 1: 'First Term', 2: 'Second Term', 3: 'Third Term' }
 const EMPTY_FORM = { term_number: '1', name: TERM_NAMES[1], start_date: '', end_date: '' }
@@ -145,9 +148,9 @@ export default function Terms() {
     }
   }
 
-  if (sessionsQuery.loading) return <p className="muted">Loading sessions…</p>
+  if (sessionsQuery.loading) return <LoadingState lines={5} />
   if (sessionsQuery.error) {
-    return <p className="alert alert-error" role="alert">{friendlyDbError(sessionsQuery.error)}</p>
+    return <Alert tone="danger">{friendlyDbError(sessionsQuery.error)}</Alert>
   }
 
   const terms = termsQuery.data ?? []
@@ -155,133 +158,154 @@ export default function Terms() {
 
   return (
     <>
-      <h1>Terms</h1>
-      <p className="muted">
-        The terms within each session. Only one term in the whole school is marked as current
-        {currentTerm ? (
+      <PageHeader
+        title="Terms"
+        subtitle={
           <>
-            {' '}(now: <strong>{currentTerm.name}, {currentTerm.sessions.name}</strong>).
+            The terms within each session. Only one term in the whole school is marked as current
+            {currentTerm ? (
+              <>
+                {' '}(now: <strong>{currentTerm.name}, {currentTerm.sessions.name}</strong>).
+              </>
+            ) : (
+              ' (none is set yet).'
+            )}
           </>
-        ) : (
-          ' (none is set yet).'
-        )}
-      </p>
+        }
+      />
 
       {sessions.length === 0 ? (
-        <p className="empty-state">
-          No sessions yet. <Link to="/admin/sessions">Create a session</Link> first, then add its terms here.
-        </p>
+        <Card>
+          <EmptyState icon="calendar">
+            No sessions yet. <Link to="/admin/sessions">Create a session</Link> first, then add its terms here.
+          </EmptyState>
+        </Card>
       ) : (
         <>
-          <label className="inline-field">
-            Session
-            <select value={sessionId} onChange={(e) => chooseSession(e.target.value)}>
-              {sessions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                  {s.is_current ? ' (current)' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <form className="panel form-grid" onSubmit={handleSubmit}>
-            <h2>{editingId ? 'Edit term' : `New term in ${session.name}`}</h2>
-            {formError && <p className="alert alert-error" role="alert">{formError}</p>}
-            <label>
-              Term number
-              <select value={form.term_number} onChange={(e) => changeTermNumber(e.target.value)}>
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-              </select>
-            </label>
-            <label>
-              Name
-              <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
-            </label>
-            <label>
-              Start date
-              <input
-                type="date"
-                value={form.start_date}
-                min={session.start_date}
-                max={session.end_date}
-                onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
-                required
-              />
-            </label>
-            <label>
-              End date
-              <input
-                type="date"
-                value={form.end_date}
-                min={session.start_date}
-                max={session.end_date}
-                onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))}
-                required
-              />
-            </label>
-            <div className="form-actions">
-              <button type="submit" disabled={saving}>
-                {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create term'}
-              </button>
-              {editingId && (
-                <button type="button" className="button-secondary" onClick={resetForm}>
-                  Cancel
-                </button>
+          <div className="ds-filters">
+            <Field label="Session">
+              {(p) => (
+                <Select {...p} value={sessionId} onChange={(e) => chooseSession(e.target.value)}>
+                  {sessions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                      {s.is_current ? ' (current)' : ''}
+                    </option>
+                  ))}
+                </Select>
               )}
-            </div>
-          </form>
+            </Field>
+          </div>
 
-          {actionError && <p className="alert alert-error" role="alert">{actionError}</p>}
+          <Card title={editingId ? 'Edit term' : `New term in ${session.name}`}>
+            <form onSubmit={handleSubmit}>
+              {formError && <Alert tone="danger">{formError}</Alert>}
+              <div className="ds-form-grid">
+                <Field label="Term number">
+                  {(p) => (
+                    <Select {...p} value={form.term_number} onChange={(e) => changeTermNumber(e.target.value)}>
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                    </Select>
+                  )}
+                </Field>
+                <Field label="Name">
+                  {(p) => <TextInput {...p} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />}
+                </Field>
+                <Field label="Start date">
+                  {(p) => (
+                    <TextInput
+                      {...p}
+                      type="date"
+                      value={form.start_date}
+                      min={session.start_date}
+                      max={session.end_date}
+                      onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
+                      required
+                    />
+                  )}
+                </Field>
+                <Field label="End date">
+                  {(p) => (
+                    <TextInput
+                      {...p}
+                      type="date"
+                      value={form.end_date}
+                      min={session.start_date}
+                      max={session.end_date}
+                      onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))}
+                      required
+                    />
+                  )}
+                </Field>
+              </div>
+              <div className="ds-form-actions">
+                {editingId && (
+                  <Button variant="secondary" onClick={resetForm}>
+                    Cancel
+                  </Button>
+                )}
+                <Button type="submit" disabled={saving}>
+                  {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create term'}
+                </Button>
+              </div>
+            </form>
+          </Card>
 
-          {termsQuery.loading ? (
-            <p className="muted">Loading terms…</p>
-          ) : termsQuery.error ? (
-            <p className="alert alert-error" role="alert">{friendlyDbError(termsQuery.error)}</p>
-          ) : terms.length === 0 ? (
-            <p className="empty-state">No terms in {session.name} yet — create the first one above.</p>
-          ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Name</th>
-                    <th>Start</th>
-                    <th>End</th>
-                    <th>Current</th>
-                    <th aria-label="Actions" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {terms.map((term) => (
-                    <tr key={term.id} className={editingId === term.id ? 'row-editing' : undefined}>
-                      <td>{term.term_number}</td>
-                      <td>{term.name}</td>
-                      <td>{formatDate(term.start_date)}</td>
-                      <td>{formatDate(term.end_date)}</td>
-                      <td>
-                        {term.is_current ? (
-                          <span className="badge">Current</span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="button-link"
-                            onClick={() => makeCurrent(term)}
-                            disabled={busyId !== null}
-                          >
-                            {busyId === term.id ? 'Updating…' : 'Make current'}
-                          </button>
-                        )}
-                      </td>
-                      <td className="row-actions">
-                        <button type="button" className="button-link" onClick={() => startEdit(term)}>
+          {actionError && <Alert tone="danger">{actionError}</Alert>}
+
+          <Card title={`Terms in ${session.name}`} flush>
+            {termsQuery.loading ? (
+              <LoadingState lines={3} />
+            ) : termsQuery.error ? (
+              <div className="ds-card-body">
+                <Alert tone="danger">{friendlyDbError(termsQuery.error)}</Alert>
+              </div>
+            ) : (
+              <DataTable
+                caption={`Terms in ${session.name}`}
+                rowKey={(t) => t.id}
+                rows={terms}
+                empty={<EmptyState icon="calendar">No terms in {session.name} yet — create the first one above.</EmptyState>}
+                columns={[
+                  {
+                    key: 'name',
+                    header: 'Name',
+                    primary: true,
+                    render: (t) => (
+                      <span className="ds-inline">
+                        {t.name}
+                        {editingId === t.id && <Badge tone="info">Editing</Badge>}
+                      </span>
+                    ),
+                  },
+                  { key: 'term_number', header: '#', numeric: true },
+                  { key: 'start', header: 'Start', render: (t) => formatDate(t.start_date) },
+                  { key: 'end', header: 'End', render: (t) => formatDate(t.end_date) },
+                  {
+                    key: 'current',
+                    header: 'Current',
+                    render: (term) =>
+                      term.is_current ? (
+                        <Badge tone="success">Current</Badge>
+                      ) : (
+                        <button type="button" className="ds-btn ds-btn-link" onClick={() => makeCurrent(term)} disabled={busyId !== null}>
+                          {busyId === term.id ? 'Updating…' : 'Make current'}
+                        </button>
+                      ),
+                  },
+                  {
+                    key: 'actions',
+                    header: 'Actions',
+                    render: (term) => (
+                      <div className="ds-row-actions">
+                        <button type="button" className="ds-btn ds-btn-link" onClick={() => startEdit(term)}>
                           Edit
                         </button>
                         <DeleteAction
                           itemName={`${term.name} (${session.name})`}
+                          buttonClassName="ds-btn ds-btn-link ds-btn-link-danger"
                           dependencyChecks={[
                             { table: 'timetable_slots', column: 'term_id', value: term.id, label: ['timetable slot', 'timetable slots'] },
                             { table: 'assessment_components', column: 'term_id', value: term.id, label: ['assessment component', 'assessment components'] },
@@ -296,13 +320,13 @@ export default function Terms() {
                             reloadAll()
                           }}
                         />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            )}
+          </Card>
         </>
       )}
     </>

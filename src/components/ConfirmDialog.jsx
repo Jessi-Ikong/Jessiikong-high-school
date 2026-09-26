@@ -1,6 +1,10 @@
-import { useEffect } from 'react'
+import Dialog from './ui/Dialog'
 
-// A simple modal. Without onConfirm it is an information box with one button.
+// A confirmation (or, without onConfirm, an information box with one button),
+// built on the design-system Dialog: full screen on phones, a centred panel on
+// larger screens. Used across portals (admin, teacher...).
+// Same behaviour as before: Esc cancels (unless busy); tapping outside does
+// nothing; focus starts on the confirm button (or the only button).
 export default function ConfirmDialog({
   title,
   children,
@@ -12,37 +16,31 @@ export default function ConfirmDialog({
   danger = false,
   error = null,
 }) {
-  useEffect(() => {
-    function handleKey(event) {
-      if (event.key === 'Escape' && !busy) onCancel()
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [busy, onCancel])
-
   return (
-    <div className="dialog-backdrop">
-      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
-        <h2 id="dialog-title">{title}</h2>
-        {children}
-        {error && <p className="alert alert-error" role="alert">{error}</p>}
-        <div className="dialog-actions">
-          <button type="button" className="button-secondary" onClick={onCancel} disabled={busy}>
+    <Dialog
+      title={title}
+      onClose={onCancel}
+      busy={busy}
+      dismissOnBackdrop={false}
+      footer={
+        <div className="ds-form-actions">
+          <button type="button" className="ds-btn ds-btn-secondary" onClick={onCancel} disabled={busy} data-autofocus={onConfirm ? undefined : true}>
             {cancelLabel}
           </button>
           {onConfirm && (
-            <button
-              type="button"
-              className={danger ? 'button-danger' : undefined}
-              onClick={onConfirm}
-              disabled={busy}
-              autoFocus
-            >
+            <button type="button" className={`ds-btn ${danger ? 'ds-btn-danger' : 'ds-btn-primary'}`} onClick={onConfirm} disabled={busy} data-autofocus>
               {busy ? 'Please wait…' : confirmLabel}
             </button>
           )}
         </div>
-      </div>
-    </div>
+      }
+    >
+      <div className="ds-stack">{children}</div>
+      {error && (
+        <div className="ds-alert ds-alert-danger" role="alert" style={{ marginTop: 16 }}>
+          {error}
+        </div>
+      )}
+    </Dialog>
   )
 }

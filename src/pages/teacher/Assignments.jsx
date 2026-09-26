@@ -23,6 +23,9 @@ import { useAuth } from '../../hooks/useAuth'
 import DeleteAction from '../../components/DeleteAction'
 import { FileLink } from '../../components/SubmissionBadges'
 import { SubmissionsTable } from '../../components/AssignmentGrading'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Checkbox, Field, Select, TextArea, TextInput } from '../../components/ui/Form'
+import Dialog from '../../components/ui/Dialog'
 
 // This class's assignments (newest first), the students who TAKE the subject
 // in that section (same roster as attendance and the gradebook), their
@@ -71,19 +74,24 @@ export default function Assignments() {
   const { profile } = useAuth()
   const classesQuery = useAsyncData(() => fetchTeacherClasses(profile.id), `teacher-classes:${profile.id}`)
 
-  if (classesQuery.loading) return <p className="muted">Loading your classes…</p>
-  if (classesQuery.error) return <p className="alert alert-error" role="alert">{friendlyDbError(classesQuery.error)}</p>
+  if (classesQuery.loading) return <LoadingState lines={5} label="Loading your classes…" />
+  if (classesQuery.error) return <Alert tone="danger">{friendlyDbError(classesQuery.error)}</Alert>
 
   const data = classesQuery.data
   return (
     <>
-      <h1>Assignments</h1>
       {data.problem === 'no-teacher' ? (
-        <p className="alert alert-error" role="alert">
-          Your account isn&apos;t set up as a teacher record yet. Please contact the school office.
-        </p>
+        <>
+          <PageHeader title="Assignments" />
+          <Alert tone="danger">Your account isn&apos;t set up as a teacher record yet. Please contact the school office.</Alert>
+        </>
       ) : data.problem === 'no-session' ? (
-        <p className="empty-state">No session is marked as current yet, so there are no classes to set work for.</p>
+        <>
+          <PageHeader title="Assignments" />
+          <Card>
+            <EmptyState icon="calendar">No session is marked as current yet, so there are no classes to set work for.</EmptyState>
+          </Card>
+        </>
       ) : (
         <ClassPicker teacherId={data.teacherId} terms={data.terms} classes={data.classes} />
       )}
@@ -104,37 +112,41 @@ function ClassPicker({ teacherId, terms, classes }) {
 
   return (
     <>
-      <p className="muted">
-        Set work for the classes you teach this session ({term.sessions.name}). Only students who take the subject see
-        it and can hand it in.
-      </p>
-      <div className="filter-bar">
-        <label className="inline-field">
-          Term
-          <select value={term.id} onChange={(e) => setChosenTermId(e.target.value)}>
-            {terms.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-                {t.is_current ? ' (current)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        {termClasses.length > 0 && (
-          <label className="inline-field">
-            Class
-            <select value={cls.key} onChange={(e) => setChosenKey(e.target.value)}>
-              {termClasses.map((c) => (
-                <option key={c.key} value={c.key}>
-                  {c.label}
+      <PageHeader
+        title="Assignments"
+        subtitle={`Set work for the classes you teach this session (${term.sessions.name}). Only students who take the subject see it and can hand it in.`}
+      />
+      <div className="ds-filters">
+        <Field label="Term">
+          {(p) => (
+            <Select {...p} value={term.id} onChange={(e) => setChosenTermId(e.target.value)}>
+              {terms.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.is_current ? ' (current)' : ''}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          )}
+        </Field>
+        {termClasses.length > 0 && (
+          <Field label="Class">
+            {(p) => (
+              <Select {...p} value={cls.key} onChange={(e) => setChosenKey(e.target.value)}>
+                {termClasses.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         )}
       </div>
       {termClasses.length === 0 ? (
-        <p className="empty-state">You have no classes on the timetable for {term.name}.</p>
+        <Card>
+          <EmptyState icon="file">You have no classes on the timetable for {term.name}.</EmptyState>
+        </Card>
       ) : (
         <ClassAssignments
           key={cls.key}
@@ -153,8 +165,8 @@ function ClassAssignments({ cls, term, teacherId, initialOpenId }) {
   const [openId, setOpenId] = useState(initialOpenId)
   const [message, setMessage] = useState(null)
 
-  if (query.loading) return <p className="muted">Loading assignments…</p>
-  if (query.error) return <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+  if (query.loading) return <LoadingState lines={4} label="Loading assignments…" />
+  if (query.error) return <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
 
   const { assignments, students, submissions, urls } = query.data
   const rosterIds = new Set(students.map((s) => s.studentId))
@@ -163,9 +175,9 @@ function ClassAssignments({ cls, term, teacherId, initialOpenId }) {
   return (
     <>
       {locked ? (
-        <p className="alert alert-info-plain">
+        <Alert tone="info">
           🔒 {termLockedMessage(term, 'Assignment grades')} Assignments in this term can no longer be created, changed or deleted either.
-        </p>
+        </Alert>
       ) : (
         <CreateAssignmentForm
           cls={cls}
@@ -178,44 +190,48 @@ function ClassAssignments({ cls, term, teacherId, initialOpenId }) {
           }}
         />
       )}
-      {message && <p className="alert alert-success" role="status">{message}</p>}
+      {message && <Alert tone="success">{message}</Alert>}
 
-      <h2>
+      <h2 className="ds-h2" style={{ marginTop: 16 }}>
         {cls.label} · {term.name}
       </h2>
-      <p className="muted small">
+      <p className="ds-note">
         {students.length} {students.length === 1 ? 'student takes' : 'students take'} this subject in this section.
       </p>
       {assignments.length === 0 ? (
-        <p className="empty-state">No assignments for this class yet. Create one above.</p>
+        <Card>
+          <EmptyState icon="file">No assignments for this class yet. Create one above.</EmptyState>
+        </Card>
       ) : (
-        <div className="assignment-list">
+        <div>
           {assignments.map((a) => {
             const subs = submissions.filter((s) => s.assignment_id === a.id && rosterIds.has(s.student_id))
             const graded = subs.filter((s) => s.graded_at).length
             const late = subs.filter((s) => submissionStatus(a, s).late).length
             const isOpen = openId === a.id
             return (
-              <article key={a.id} className="panel assignment-card">
-                <header className="assignment-card-header">
-                  <div>
-                    <h3>
-                      {a.title}
-                      {!a.requires_submission && <span className="badge badge-muted">Offline work</span>}
-                    </h3>
-                    <p className="muted small">
-                      Due {a.due_at ? formatDateTime(a.due_at) : '(no due date)'} · Out of {formatMark(a.max_score) || '—'} ·
-                      Set {formatDateTime(a.created_at)}
-                    </p>
-                  </div>
-                  <div className="submission-count">
+              <Card
+                key={a.id}
+                title={
+                  <span className="ds-inline">
+                    {a.title}
+                    {!a.requires_submission && <Badge status="no hand-in">Offline work</Badge>}
+                  </span>
+                }
+              >
+                <div className="ds-assignment-head">
+                  <p className="ds-muted ds-small" style={{ margin: 0 }}>
+                    Due {a.due_at ? formatDateTime(a.due_at) : '(no due date)'} · Out of {formatMark(a.max_score) || '—'} · Set{' '}
+                    {formatDateTime(a.created_at)}
+                  </p>
+                  <div className="ds-small">
                     {a.requires_submission ? (
                       <>
                         <strong>
                           {subs.length} of {students.length}
                         </strong>{' '}
                         submitted
-                        <span className="muted small">
+                        <span className="ds-muted">
                           {' '}
                           · {graded} graded{late > 0 ? ` · ${late} late` : ''}
                         </span>
@@ -229,15 +245,15 @@ function ClassAssignments({ cls, term, teacherId, initialOpenId }) {
                       </>
                     )}
                   </div>
-                </header>
-                {a.description && <p className="assignment-description">{a.description}</p>}
+                </div>
+                {a.description && <p className="ds-pre ds-small">{a.description}</p>}
                 {a.attachment_url && (
                   <p>
                     <FileLink path={a.attachment_url} urls={urls} />
                   </p>
                 )}
-                <div className="row-actions">
-                  <button type="button" className="button-secondary" onClick={() => setOpenId(isOpen ? null : a.id)}>
+                <div className="ds-row-actions">
+                  <Button variant="secondary" onClick={() => setOpenId(isOpen ? null : a.id)}>
                     {isOpen
                       ? a.requires_submission
                         ? 'Hide submissions'
@@ -245,7 +261,7 @@ function ClassAssignments({ cls, term, teacherId, initialOpenId }) {
                       : a.requires_submission
                         ? 'View submissions'
                         : 'Grade students'}
-                  </button>
+                  </Button>
                   {!locked && (
                     <DeleteAction
                       itemName={`"${a.title}"`}
@@ -262,16 +278,18 @@ function ClassAssignments({ cls, term, teacherId, initialOpenId }) {
                   )}
                 </div>
                 {isOpen && (
-                  <SubmissionsTable
-                    assignment={a}
-                    students={students}
-                    submissions={subs}
-                    urls={urls}
-                    locked={locked}
-                    onGraded={query.reload}
-                  />
+                  <div style={{ marginTop: 12 }}>
+                    <SubmissionsTable
+                      assignment={a}
+                      students={students}
+                      submissions={subs}
+                      urls={urls}
+                      locked={locked}
+                      onGraded={query.reload}
+                    />
+                  </div>
                 )}
-              </article>
+              </Card>
             )
           })}
         </div>
@@ -357,77 +375,84 @@ function CreateAssignmentForm({ cls, term, teacherId, onCreated }) {
 
   if (!open) {
     return (
-      <div className="toolbar">
-        <button type="button" onClick={() => setOpen(true)}>
-          + New assignment
-        </button>
+      <div className="ds-row-actions" style={{ marginBottom: 12 }}>
+        <Button onClick={() => setOpen(true)}>+ New assignment</Button>
       </div>
     )
   }
 
   return (
-    <form className="panel form-grid" onSubmit={handleSubmit}>
-      <h2>
-        New assignment for {cls.label} · {term.name}
-      </h2>
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
-      <label>
-        Title
-        <input value={form.title} onChange={(e) => update('title', e.target.value)} placeholder="Photosynthesis essay" required />
-      </label>
-      <label>
-        Due date and time
-        <input
-          type="datetime-local"
-          value={form.due}
-          min={`${term.start_date}T00:00`}
-          max={`${term.end_date}T23:59`}
-          onChange={(e) => update('due', e.target.value)}
-          required
-        />
-        <span className="muted small">
-          {term.name}: {formatDate(term.start_date)} to {formatDate(term.end_date)}
-        </span>
-      </label>
-      <label>
-        Marked out of
-        <input type="number" min="1" step="any" value={form.maxScore} onChange={(e) => update('maxScore', e.target.value)} required />
-      </label>
-      <label className="checkbox-field span-all">
-        <input type="checkbox" checked={form.offline} onChange={(e) => update('offline', e.target.checked)} />
-        This is offline work (no file/text submission expected)
-        <span className="muted small">
-          {' '}
-          e.g. a practical, presentation or physical project. Students won&apos;t hand anything in; you grade each
-          student directly.
-        </span>
-      </label>
-      <label className="span-all">
-        Instructions (optional)
-        <textarea rows={4} value={form.description} onChange={(e) => update('description', e.target.value)} />
-      </label>
-      <label className="span-all">
-        Attachment (optional)
-        <input
-          key={fileInputKey}
-          type="file"
-          accept={FILE_ACCEPT}
-          onChange={(e) => {
-            const chosen = e.target.files[0] ?? null
-            setFile(chosen)
-            setError(fileProblem(chosen))
-          }}
-        />
-        <span className="muted small">{FILE_RULES}</span>
-      </label>
-      <div className="form-actions">
-        <button type="submit" disabled={saving}>
-          {saving ? 'Creating…' : 'Create assignment'}
-        </button>
-        <button type="button" className="button-secondary" onClick={() => setOpen(false)} disabled={saving}>
-          Cancel
-        </button>
+    <>
+      <div className="ds-row-actions" style={{ marginBottom: 12 }}>
+        <Button onClick={() => setOpen(true)}>+ New assignment</Button>
       </div>
-    </form>
+      <Dialog
+        title={`New assignment for ${cls.label} · ${term.name}`}
+        onClose={() => setOpen(false)}
+        busy={saving}
+        dismissOnBackdrop={false}
+        footer={
+          <div className="ds-form-actions" style={{ margin: 0, width: '100%' }}>
+            <Button variant="secondary" onClick={() => setOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="submit" form="new-assignment-form" disabled={saving}>
+              {saving ? 'Creating…' : 'Create assignment'}
+            </Button>
+          </div>
+        }
+      >
+        <form id="new-assignment-form" onSubmit={handleSubmit}>
+          {error && <Alert tone="danger">{error}</Alert>}
+          <div className="ds-form-grid">
+            <Field label="Title" className="ds-span-2">
+              {(p) => <TextInput {...p} value={form.title} onChange={(e) => update('title', e.target.value)} placeholder="Photosynthesis essay" required data-autofocus />}
+            </Field>
+            <Field label="Due date and time" hint={`${term.name}: ${formatDate(term.start_date)} to ${formatDate(term.end_date)}`}>
+              {(p) => (
+                <TextInput
+                  {...p}
+                  type="datetime-local"
+                  value={form.due}
+                  min={`${term.start_date}T00:00`}
+                  max={`${term.end_date}T23:59`}
+                  onChange={(e) => update('due', e.target.value)}
+                  required
+                />
+              )}
+            </Field>
+            <Field label="Marked out of">
+              {(p) => <TextInput {...p} type="number" min="1" step="any" value={form.maxScore} onChange={(e) => update('maxScore', e.target.value)} required />}
+            </Field>
+          </div>
+          <Checkbox
+            label="This is offline work (no file/text submission expected)"
+            checked={form.offline}
+            onChange={(e) => update('offline', e.target.checked)}
+          />
+          <p className="ds-note" style={{ marginTop: 0 }}>
+            e.g. a practical, presentation or physical project. Students won&apos;t hand anything in; you grade each student directly.
+          </p>
+          <Field label="Instructions" hint="Optional">
+            {(p) => <TextArea {...p} rows={4} value={form.description} onChange={(e) => update('description', e.target.value)} />}
+          </Field>
+          <Field label="Attachment" hint={`Optional. ${FILE_RULES}`}>
+            {(p) => (
+              <TextInput
+                {...p}
+                key={fileInputKey}
+                type="file"
+                accept={FILE_ACCEPT}
+                onChange={(e) => {
+                  const chosen = e.target.files[0] ?? null
+                  setFile(chosen)
+                  setError(fileProblem(chosen))
+                }}
+              />
+            )}
+          </Field>
+        </form>
+      </Dialog>
+    </>
   )
 }

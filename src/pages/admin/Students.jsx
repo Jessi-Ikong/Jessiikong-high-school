@@ -8,6 +8,9 @@ import { fullName, byName } from '../../lib/people'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import PhotoUpload from '../../components/PhotoUpload'
 import { ActiveToggle, EditStudentDialog, StudentSubjectsDialog } from '../../components/PersonEdit'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Checkbox, Field, Select, TextInput } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 const STATUSES = ['active', 'promoted', 'repeated', 'graduated', 'withdrawn']
 
@@ -24,18 +27,20 @@ async function fetchSetup() {
 export default function Students() {
   const setup = useAsyncData(fetchSetup, 'student-setup')
 
-  if (setup.loading) return <p className="muted">Loading…</p>
-  if (setup.error) return <p className="alert alert-error" role="alert">{friendlyDbError(setup.error)}</p>
+  if (setup.loading) return <LoadingState lines={6} />
+  if (setup.error) return <Alert tone="danger">{friendlyDbError(setup.error)}</Alert>
 
   const { sessions, classes } = setup.data
   if (sessions.length === 0 || classes.length === 0) {
     return (
       <>
-        <h1>Students</h1>
-        <p className="empty-state">
-          Before adding students, create at least one <Link to="/admin/sessions">session</Link> and one{' '}
-          <Link to="/admin/classes">class with a section</Link>.
-        </p>
+        <PageHeader title="Students" />
+        <Card>
+          <EmptyState icon="users" title="Set up the school first">
+            Before adding students, create at least one <Link to="/admin/sessions">session</Link> and one{' '}
+            <Link to="/admin/classes">class with a section</Link>.
+          </EmptyState>
+        </Card>
       </>
     )
   }
@@ -87,140 +92,147 @@ function StudentsPage({ setup }) {
 
   return (
     <>
-      <h1>Students</h1>
-      <p className="muted">Students enrolled in the chosen session. Every new student gets an email invite to set their password.</p>
+      <PageHeader title="Students" subtitle="Students enrolled in the chosen session. Every new student gets an email invite to set their password." />
 
       <AddStudentForm setup={setup} defaultSessionId={defaultSession.id} onAdded={enrollments.reload} />
 
-      <div className="filter-bar">
-        <label className="inline-field">
-          Session
-          <select value={sessionId} onChange={(e) => setSessionId(e.target.value)}>
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-                {s.is_current ? ' (current)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          Class
-          <select
-            value={classFilter}
-            onChange={(e) => {
-              setClassFilter(e.target.value)
-              setSectionFilter('')
-            }}
-          >
-            <option value="">All classes</option>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          Section
-          <select value={sectionFilter} onChange={(e) => setSectionFilter(e.target.value)} disabled={!classFilter}>
-            <option value="">{classFilter ? 'All sections' : 'Choose a class first'}</option>
-            {filterSections.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          Status
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">All statuses</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          Sort by
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-            <option value="name">Name (A–Z)</option>
-            <option value="admission">Admission number</option>
-          </select>
-        </label>
-      </div>
-
-      {enrollments.loading ? (
-        <p className="muted">Loading students…</p>
-      ) : enrollments.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(enrollments.error)}</p>
-      ) : rows.length === 0 ? (
-        <p className="empty-state">
-          {enrollments.data.length === 0
-            ? `No students enrolled in ${sessionName} yet — add one above.`
-            : 'No students match these filters.'}
-        </p>
-      ) : (
-        <>
-          <p className="muted small">
-            {rows.length} {rows.length === 1 ? 'student' : 'students'}
-          </p>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Photo</th>
-                  <th>Name</th>
-                  <th>Admission no.</th>
-                  <th>Class</th>
-                  <th>Status</th>
-                  <th>Email</th>
-                  <th>Date of birth</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <PhotoUpload userId={row.person.id} name={fullName(row.person)} path={row.person.photo_url} label="Change" onChanged={enrollments.reload} />
-                    </td>
-                    <td>
-                      {fullName(row.person)}
-                      {!row.person.is_active && <span className="badge badge-muted">Deactivated</span>}
-                    </td>
-                    <td>{row.student.admission_number}</td>
-                    <td>
-                      {row.classes.name} {row.sections.name}
-                    </td>
-                    <td>{row.status}</td>
-                    <td>{row.person.email}</td>
-                    <td>{formatDate(row.student.date_of_birth) || <span className="muted">—</span>}</td>
-                    <td>
-                      <div className="row-actions">
-                        <button type="button" className="button-link" onClick={() => setEditing({ kind: 'details', row })}>
-                          Edit
-                        </button>
-                        {isCurrentSession && (
-                          <button type="button" className="button-link" onClick={() => setEditing({ kind: 'subjects', row })}>
-                            Subjects
-                          </button>
-                        )}
-                        <ActiveToggle
-                          person={{ userId: row.person.id, name: fullName(row.person), role: 'student', is_active: row.person.is_active }}
-                          onChanged={enrollments.reload}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <Card title={`Students · ${sessionName ?? ''}`} flush>
+        <div className="ds-card-body">
+          <div className="ds-filters">
+            <Field label="Session">
+              {(p) => (
+                <Select {...p} value={sessionId} onChange={(e) => setSessionId(e.target.value)}>
+                  {sessions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                      {s.is_current ? ' (current)' : ''}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Field label="Class">
+              {(p) => (
+                <Select
+                  {...p}
+                  value={classFilter}
+                  onChange={(e) => {
+                    setClassFilter(e.target.value)
+                    setSectionFilter('')
+                  }}
+                >
+                  <option value="">All classes</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Field label="Section">
+              {(p) => (
+                <Select {...p} value={sectionFilter} onChange={(e) => setSectionFilter(e.target.value)} disabled={!classFilter}>
+                  <option value="">{classFilter ? 'All sections' : 'Choose a class first'}</option>
+                  {filterSections.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Field label="Status">
+              {(p) => (
+                <Select {...p} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="">All statuses</option>
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Field label="Sort by">
+              {(p) => (
+                <Select {...p} value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                  <option value="name">Name (A–Z)</option>
+                  <option value="admission">Admission number</option>
+                </Select>
+              )}
+            </Field>
           </div>
-        </>
-      )}
+          {!enrollments.loading && !enrollments.error && rows.length > 0 && (
+            <p className="ds-count">
+              {rows.length} {rows.length === 1 ? 'student' : 'students'}
+            </p>
+          )}
+        </div>
+
+        {enrollments.loading ? (
+          <LoadingState lines={5} />
+        ) : enrollments.error ? (
+          <div className="ds-card-body">
+            <Alert tone="danger">{friendlyDbError(enrollments.error)}</Alert>
+          </div>
+        ) : rows.length === 0 ? (
+          <EmptyState icon="users">
+            {enrollments.data.length === 0 ? `No students enrolled in ${sessionName} yet — add one above.` : 'No students match these filters.'}
+          </EmptyState>
+        ) : (
+          <DataTable
+            caption="Students"
+            rowKey={(row) => row.id}
+            rows={rows}
+            columns={[
+              {
+                key: 'name',
+                header: 'Name',
+                primary: true,
+                render: (row) => (
+                  <span className="ds-inline">
+                    {fullName(row.person)}
+                    {!row.person.is_active && <Badge status="deactivated">Deactivated</Badge>}
+                  </span>
+                ),
+              },
+              { key: 'admission', header: 'Admission no.', render: (row) => row.student.admission_number },
+              { key: 'class', header: 'Class', render: (row) => `${row.classes.name} ${row.sections.name}` },
+              { key: 'status', header: 'Status', render: (row) => <Badge status={row.status} /> },
+              { key: 'email', header: 'Email', render: (row) => row.person.email },
+              { key: 'dob', header: 'Date of birth', render: (row) => formatDate(row.student.date_of_birth) || <span className="ds-muted">—</span> },
+              {
+                key: 'photo',
+                header: 'Photo',
+                render: (row) => (
+                  <PhotoUpload userId={row.person.id} name={fullName(row.person)} path={row.person.photo_url} label="Change" onChanged={enrollments.reload} />
+                ),
+              },
+              {
+                key: 'actions',
+                header: 'Actions',
+                render: (row) => (
+                  <div className="ds-row-actions">
+                    <button type="button" className="ds-btn ds-btn-link" onClick={() => setEditing({ kind: 'details', row })}>
+                      Edit
+                    </button>
+                    {isCurrentSession && (
+                      <button type="button" className="ds-btn ds-btn-link" onClick={() => setEditing({ kind: 'subjects', row })}>
+                        Subjects
+                      </button>
+                    )}
+                    <ActiveToggle
+                      person={{ userId: row.person.id, name: fullName(row.person), role: 'student', is_active: row.person.is_active }}
+                      onChanged={enrollments.reload}
+                    />
+                  </div>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Card>
 
       {editing?.kind === 'details' && (
         <EditStudentDialog
@@ -305,97 +317,93 @@ function AddStudentForm({ setup, defaultSessionId, onAdded }) {
   }
 
   return (
-    <form className="panel form-grid" onSubmit={handleSubmit}>
-      <h2>Add student</h2>
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
-      {success && <p className="alert alert-success" role="status">{success}</p>}
+    <Card title="Add student">
+      <form onSubmit={handleSubmit}>
+        {error && <Alert tone="danger">{error}</Alert>}
+        {success && <Alert tone="success">{success}</Alert>}
+        <div className="ds-form-grid">
+          <Field label="Full name">
+            {(p) => <TextInput {...p} value={form.full_name} onChange={(e) => update('full_name', e.target.value)} placeholder="Ada Grace Okafor" required />}
+          </Field>
+          <Field label="Student's email" hint="Students need their own email address: it becomes their login. A parent's email can't be used.">
+            {(p) => <TextInput {...p} type="email" value={form.email} onChange={(e) => update('email', e.target.value)} required />}
+          </Field>
+          <Field label="Date of birth">
+            {(p) => <TextInput {...p} type="date" value={form.date_of_birth} onChange={(e) => update('date_of_birth', e.target.value)} />}
+          </Field>
+          <Field label="Gender">
+            {(p) => (
+              <Select {...p} value={form.gender} onChange={(e) => update('gender', e.target.value)}>
+                <option value="">Not specified</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+              </Select>
+            )}
+          </Field>
+          <Field label="Session">
+            {(p) => (
+              <Select {...p} value={form.session_id} onChange={(e) => update('session_id', e.target.value)} required>
+                {sessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {s.is_current ? ' (current)' : ''}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Field label="Class">
+            {(p) => (
+              <Select {...p} value={form.class_id} onChange={(e) => setForm((f) => ({ ...f, class_id: e.target.value, section_id: '' }))} required>
+                <option value="">Choose a class</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Field label="Section">
+            {(p) => (
+              <Select {...p} value={form.section_id} onChange={(e) => update('section_id', e.target.value)} required disabled={!form.class_id}>
+                <option value="">{form.class_id ? (formSections.length ? 'Choose a section' : 'This class has no sections') : 'Choose a class first'}</option>
+                {formSections.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </div>
 
-      <label>
-        Full name
-        <input value={form.full_name} onChange={(e) => update('full_name', e.target.value)} placeholder="Ada Grace Okafor" required />
-      </label>
-      <label>
-        Student&apos;s email
-        <input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} required />
-      </label>
-      <p className="muted small form-note">
-        Students need their own email address: it becomes their login. A parent&apos;s email can&apos;t be used.
-      </p>
+        <fieldset className="ds-fieldset">
+          <legend className="ds-label">Subjects (core and electives)</legend>
+          {subjects.length === 0 ? (
+            <p className="ds-note">
+              No subjects yet — <Link to="/admin/subjects">add subjects</Link> first, or add the student now and assign subjects later.
+            </p>
+          ) : (
+            <div className="ds-checklist">
+              {subjects.map((s) => (
+                <Checkbox
+                  key={s.id}
+                  label={`${s.name}${s.code ? ` (${s.code})` : ''}`}
+                  checked={form.subject_ids.includes(s.id)}
+                  onChange={() => toggleSubject(s.id)}
+                />
+              ))}
+            </div>
+          )}
+        </fieldset>
 
-      <label>
-        Date of birth
-        <input type="date" value={form.date_of_birth} onChange={(e) => update('date_of_birth', e.target.value)} />
-      </label>
-      <label>
-        Gender
-        <select value={form.gender} onChange={(e) => update('gender', e.target.value)}>
-          <option value="">Not specified</option>
-          <option value="female">Female</option>
-          <option value="male">Male</option>
-        </select>
-      </label>
-
-      <label>
-        Session
-        <select value={form.session_id} onChange={(e) => update('session_id', e.target.value)} required>
-          {sessions.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-              {s.is_current ? ' (current)' : ''}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Class
-        <select
-          value={form.class_id}
-          onChange={(e) => setForm((f) => ({ ...f, class_id: e.target.value, section_id: '' }))}
-          required
-        >
-          <option value="">Choose a class</option>
-          {classes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Section
-        <select value={form.section_id} onChange={(e) => update('section_id', e.target.value)} required disabled={!form.class_id}>
-          <option value="">{form.class_id ? (formSections.length ? 'Choose a section' : 'This class has no sections') : 'Choose a class first'}</option>
-          {formSections.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <fieldset className="subject-checklist">
-        <legend>Subjects (core and electives)</legend>
-        {subjects.length === 0 ? (
-          <p className="muted small">
-            No subjects yet — <Link to="/admin/subjects">add subjects</Link> first, or add the student now and assign
-            subjects later.
-          </p>
-        ) : (
-          subjects.map((s) => (
-            <label key={s.id} className="checkbox-field">
-              <input type="checkbox" checked={form.subject_ids.includes(s.id)} onChange={() => toggleSubject(s.id)} />
-              {s.name}
-              {s.code ? ` (${s.code})` : ''}
-            </label>
-          ))
-        )}
-      </fieldset>
-
-      <div className="form-actions">
-        <button type="submit" disabled={saving}>
-          {saving ? 'Adding…' : 'Add and send invite'}
-        </button>
-      </div>
-    </form>
+        <div className="ds-form-actions">
+          <Button type="submit" disabled={saving}>
+            {saving ? 'Adding…' : 'Add and send invite'}
+          </Button>
+        </div>
+      </form>
+    </Card>
   )
 }

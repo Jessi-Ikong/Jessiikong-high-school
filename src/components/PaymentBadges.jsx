@@ -1,22 +1,13 @@
-const INVOICE = {
-  paid: ['badge', 'Paid'],
-  partial: ['badge badge-info', 'Part paid'],
-  unpaid: ['badge badge-muted', 'Unpaid'],
-  overdue: ['badge badge-late', 'Overdue'],
-}
+import { Badge } from './ui/Primitives'
 
-const PAYMENT = {
-  successful: ['badge', 'Successful'],
-  pending: ['badge badge-warning', 'Pending'],
-  failed: ['badge badge-late', 'Failed'],
-}
+// Invoice and payment status pills; colours come from lib/statusTones.js.
+const INVOICE_LABELS = { paid: 'Paid', partial: 'Part paid', unpaid: 'Unpaid', overdue: 'Overdue' }
+const PAYMENT_LABELS = { successful: 'Successful', pending: 'Pending', failed: 'Failed' }
 
 export function InvoiceStatusBadge({ status }) {
-  const [className, label] = INVOICE[status] ?? ['badge badge-muted', status]
-  return <span className={className}>{label}</span>
+  return <Badge status={status}>{INVOICE_LABELS[status] ?? status}</Badge>
 }
 
 export function PaymentStatusBadge({ status }) {
-  const [className, label] = PAYMENT[status] ?? ['badge badge-muted', status]
-  return <span className={className}>{label}</span>
+  return <Badge status={status}>{PAYMENT_LABELS[status] ?? status}</Badge>
 }

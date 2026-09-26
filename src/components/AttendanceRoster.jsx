@@ -5,7 +5,9 @@ import { formatDate } from '../lib/format'
 import { EDIT_WINDOW_DAYS, STATUSES, isEditable } from '../lib/attendance'
 import { fullName, byName } from '../lib/people'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { toneFor } from '../lib/statusTones'
 import { useCorrectionConfirm } from './CorrectionConfirm'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState } from './ui/Primitives'
 
 // The attendance roster + status grid, shared by the teacher's Mark Attendance
 // page and the admin's Correct Attendance page. Both save through the same
@@ -53,16 +55,18 @@ export function Roster({ slot, date, admin = false }) {
   const rosterQuery = useAsyncData(() => fetchRosterAndMarks(slot, date, admin), `roster:${admin}:${slot.id}:${date}`)
   const [savedMessage, setSavedMessage] = useState(null)
 
-  if (rosterQuery.loading) return <p className="muted">Loading students…</p>
-  if (rosterQuery.error) return <p className="alert alert-error" role="alert">{friendlyDbError(rosterQuery.error)}</p>
+  if (rosterQuery.loading) return <LoadingState lines={4} label="Loading students…" />
+  if (rosterQuery.error) return <Alert tone="danger">{friendlyDbError(rosterQuery.error)}</Alert>
 
   const { students, existing, markedBy } = rosterQuery.data
   if (students.length === 0) {
     return (
-      <p className="empty-state">
-        No students in {slot.sections.classes.name} {slot.sections.name} take {slot.subjects.name} this session. Subjects
-        are assigned by the school office when students are enrolled.
-      </p>
+      <Card>
+        <EmptyState icon="users">
+          No students in {slot.sections.classes.name} {slot.sections.name} take {slot.subjects.name} this session. Subjects are assigned by the school
+          office when students are enrolled.
+        </EmptyState>
+      </Card>
     )
   }
 
@@ -170,58 +174,59 @@ function RosterForm({ slot, date, admin, students, existing, markedBy, savedMess
 
   return (
     <form onSubmit={handleSave}>
-      {savedMessage && <p className="alert alert-success" role="status">{savedMessage}</p>}
+      {savedMessage && <Alert tone="success">{savedMessage}</Alert>}
       {!insideWindow && !admin && (
-        <p className="alert alert-info-plain">
+        <Alert tone="info">
           {OLD_ATTENDANCE_MESSAGE}
           {!isEditing && ' Nothing was recorded for this date.'}
-        </p>
+        </Alert>
       )}
       {!insideWindow && admin && (
-        <p className="alert alert-info-plain">
+        <Alert tone="info">
           🔒 This date is outside the teachers&apos; {EDIT_WINDOW_DAYS}-day window. As an admin you can still correct it; you&apos;ll be
           asked to confirm.
-        </p>
+        </Alert>
       )}
       {editable && isEditing && !savedMessage && !admin && (
-        <p className="alert alert-info-plain">
-          Attendance was already marked for {formatDate(date)}. Change anything below and save to update it.
-        </p>
+        <Alert tone="info">Attendance was already marked for {formatDate(date)}. Change anything below and save to update it.</Alert>
       )}
 
-      <div className="roster-toolbar">
-        <span className="muted small">
+      <div className="ds-roster-toolbar">
+        <span className="ds-muted ds-small">
           {students.length} {students.length === 1 ? 'student' : 'students'} · Present {counts.present} · Absent{' '}
           {counts.absent} · Late {counts.late} · Excused {counts.excused}
           {unset.length > 0 && ` · Not marked ${unset.length}`}
         </span>
         {editable && !admin && (
-          <button type="button" className="button-secondary" onClick={markAllPresent}>
+          <Button variant="secondary" onClick={markAllPresent}>
             Mark all present
-          </button>
+          </Button>
         )}
       </div>
 
-      <ul className="roster">
+      <ul className="ds-roster">
         {students.map((student) => {
           const isChanged = statuses[student.enrollmentId] && statuses[student.enrollmentId] !== existing[student.enrollmentId]
           return (
-            <li key={student.enrollmentId} className={statuses[student.enrollmentId] || !editable || admin ? (admin && isChanged ? 'is-changed' : '') : 'is-unset'}>
-              <span className="roster-name">
-                {fullName(student)} <span className="muted small">{student.admissionNumber}</span>
-                {admin && student.enrollmentStatus !== 'active' && <span className="badge badge-muted">{student.enrollmentStatus}</span>}
+            <li
+              key={student.enrollmentId}
+              className={statuses[student.enrollmentId] || !editable || admin ? (admin && isChanged ? 'ds-roster-changed' : undefined) : 'ds-roster-unset'}
+            >
+              <span className="ds-roster-name">
+                {fullName(student)} <span className="ds-muted ds-small">{student.admissionNumber}</span>{' '}
+                {admin && student.enrollmentStatus !== 'active' && <Badge status={student.enrollmentStatus}>{student.enrollmentStatus}</Badge>}
                 {admin && (
-                  <span className="muted small roster-marked-by">
+                  <span className="ds-muted ds-small" style={{ display: 'block', fontWeight: 400 }}>
                     {existing[student.enrollmentId]
                       ? `Marked by ${markedBy[student.enrollmentId] ?? 'the system'}${isChanged ? ` · was ${existing[student.enrollmentId]}` : ''}`
                       : 'No mark recorded'}
                   </span>
                 )}
               </span>
-              <fieldset className="status-options">
-                <legend className="visually-hidden">Attendance for {fullName(student)}</legend>
+              <fieldset className="ds-status-options">
+                <legend className="ds-visually-hidden">Attendance for {fullName(student)}</legend>
                 {STATUSES.map((s) => (
-                  <label key={s.value} className={`status-option status-${s.value}`}>
+                  <label key={s.value} className={`ds-status-option ds-status-${toneFor(s.value)}`}>
                     <input
                       type="radio"
                       name={`status-${student.enrollmentId}`}
@@ -239,10 +244,10 @@ function RosterForm({ slot, date, admin, students, existing, markedBy, savedMess
         })}
       </ul>
 
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
       {editable && (
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
+        <div className="ds-form-actions">
+          <Button type="submit" disabled={saving}>
             {saving
               ? 'Saving…'
               : admin
@@ -250,7 +255,7 @@ function RosterForm({ slot, date, admin, students, existing, markedBy, savedMess
                 : isEditing
                   ? 'Save changes'
                   : 'Save attendance'}
-          </button>
+          </Button>
         </div>
       )}
       {confirm.dialog}

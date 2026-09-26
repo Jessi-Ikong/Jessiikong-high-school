@@ -1,5 +1,5 @@
-// The admin portal's navigation, grouped. Add new admin pages here (and as a
-// child route of /admin in App.jsx). superAdminOnly links are hidden from
+// The admin portal's navigation, grouped (used by AppShell via portalNav.js).
+// Add new admin pages here (and as a child route of /admin in App.jsx). superAdminOnly links are hidden from
 // limited admins (the database enforces the actual permissions).
 export const ADMIN_NAV = [
   {
@@ -68,6 +68,7 @@ export const ADMIN_NAV = [
     group: 'System',
     links: [{ to: '/admin/audit-log', label: 'Audit Log', icon: 'shield' }],
   },
+  { group: 'Account', links: [{ to: '/admin/profile', label: 'My Profile', icon: 'user' }] },
 ]
 
 // The phone bottom bar: the most-used destinations (a "Menu" button is added
@@ -79,25 +80,3 @@ export const ADMIN_BOTTOM_NAV = [
   { to: '/admin/admissions-inquiries', label: 'Inquiries', icon: 'inbox' },
 ]
 
-// The links this admin may see, per group (empty groups dropped).
-export function visibleNav(isSuperAdmin, query = '') {
-  const q = query.trim().toLowerCase()
-  return ADMIN_NAV.map((g) => ({
-    ...g,
-    links: g.links.filter(
-      (l) => (!l.superAdminOnly || isSuperAdmin) && (!q || l.label.toLowerCase().includes(q) || g.group.toLowerCase().includes(q)),
-    ),
-  })).filter((g) => g.links.length > 0)
-}
-
-// The label of the page at `pathname` (the longest matching link).
-export function pageTitle(pathname) {
-  let best = null
-  for (const g of ADMIN_NAV) {
-    for (const l of g.links) {
-      const match = l.end ? pathname === l.to || pathname === `${l.to}/` : pathname === l.to || pathname.startsWith(`${l.to}/`)
-      if (match && (!best || l.to.length > best.to.length)) best = l
-    }
-  }
-  return best?.label ?? 'Admin'
-}

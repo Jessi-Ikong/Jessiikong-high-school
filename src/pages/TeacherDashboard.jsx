@@ -9,6 +9,7 @@ import { formatDateTime } from '../lib/assignments'
 import { pendingByAssignment, upcomingByDue } from '../lib/dashboard'
 import { fetchTeacherWork } from '../lib/dashboardData'
 import { DashPanel, Loaded, MessagesPreview } from '../components/DashboardParts'
+import { Alert, Badge, Card, EmptyState, LoadingState, PageHeader } from '../components/ui/Primitives'
 
 // Today's classes for the signed-in teacher, and whether attendance is marked.
 async function fetchToday(userId, todayIso, day) {
@@ -58,57 +59,62 @@ export default function TeacherDashboard() {
 
   return (
     <>
-      <h1>Today&apos;s classes</h1>
-      <p className="muted">
-        {capitalise(day ?? '')} {formatDate(todayIso)}
-        {data?.term && ` · ${data.term.name}, ${data.term.sessions.name}`}
-      </p>
+      <PageHeader
+        title="Today's classes"
+        subtitle={`${capitalise(day ?? '')} ${formatDate(todayIso)}${data?.term ? ` · ${data.term.name}, ${data.term.sessions.name}` : ''}`}
+      />
 
       {loading ? (
-        <p className="muted">Loading your timetable…</p>
+        <LoadingState lines={3} label="Loading your timetable…" />
       ) : error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(error)}</p>
+        <Alert tone="danger">{friendlyDbError(error)}</Alert>
       ) : data.problem === 'no-teacher' ? (
-        <p className="alert alert-error" role="alert">
-          Your account isn&apos;t set up as a teacher record yet. Please contact the school office.
-        </p>
+        <Alert tone="danger">Your account isn&apos;t set up as a teacher record yet. Please contact the school office.</Alert>
       ) : data.problem === 'no-term' ? (
-        <p className="empty-state">No term is marked as current yet, so there is no timetable to show.</p>
+        <Card>
+          <EmptyState icon="calendar">No term is marked as current yet, so there is no timetable to show.</EmptyState>
+        </Card>
       ) : data.problem === 'weekend' ? (
-        <p className="empty-state">It&apos;s the weekend — no classes today.</p>
+        <Card>
+          <EmptyState icon="calendar">It&apos;s the weekend — no classes today.</EmptyState>
+        </Card>
       ) : (
         <>
           {(todayIso < data.term.start_date || todayIso > data.term.end_date) && (
-            <p className="alert alert-error" role="alert">
-              Today is outside {data.term.name} ({formatDate(data.term.start_date)} – {formatDate(data.term.end_date)}),
-              so attendance can&apos;t be recorded for today.
-            </p>
+            <Alert tone="danger">
+              Today is outside {data.term.name} ({formatDate(data.term.start_date)} – {formatDate(data.term.end_date)}), so attendance can&apos;t be
+              recorded for today.
+            </Alert>
           )}
           {data.slots.length === 0 ? (
-            <p className="empty-state">You have no classes scheduled today.</p>
+            <Card>
+              <EmptyState icon="calendar">You have no classes scheduled today.</EmptyState>
+            </Card>
           ) : (
-            <div className="slot-cards">
+            <div className="ds-slot-grid">
               {data.slots.map((slot) => {
                 const isMarked = slot.markedCount > 0
                 return (
                   <Link
                     key={slot.id}
                     to={`/teacher/attendance/${slot.id}?date=${todayIso}`}
-                    className={`slot-card${isMarked ? ' is-marked' : ''}`}
+                    className={`ds-slot-card${isMarked ? ' is-marked' : ''}`}
                   >
-                    <span className="slot-card-time">
+                    <span className="ds-slot-time">
                       {slot.periods.name} · {formatTime(slot.periods.start_time)}–{formatTime(slot.periods.end_time)}
                     </span>
-                    <span className="slot-card-subject">{slot.subjects.name}</span>
-                    <span className="muted">
+                    <span className="ds-slot-subject">{slot.subjects.name}</span>
+                    <span className="ds-muted">
                       {slot.sections.classes.name} {slot.sections.name}
                     </span>
-                    <span className={`badge${isMarked ? '' : ' badge-warning'}`}>
-                      {isMarked
-                        ? `Attendance marked (${slot.markedCount} ${slot.markedCount === 1 ? 'student' : 'students'})`
-                        : 'Attendance not marked yet'}
+                    <span>
+                      <Badge status={isMarked ? 'marked' : 'not marked'}>
+                        {isMarked
+                          ? `Attendance marked (${slot.markedCount} ${slot.markedCount === 1 ? 'student' : 'students'})`
+                          : 'Attendance not marked yet'}
+                      </Badge>
                     </span>
-                    <span className="slot-card-action">{isMarked ? 'View or edit →' : 'Mark attendance →'}</span>
+                    <span className="ds-slot-action">{isMarked ? 'View or edit →' : 'Mark attendance →'}</span>
                   </Link>
                 )
               })}
@@ -117,7 +123,7 @@ export default function TeacherDashboard() {
         </>
       )}
 
-      <div className="dash-grid">
+      <div className="ds-grid-2" style={{ marginTop: 16 }}>
         <TeacherWork userId={profile.id} />
         <MessagesPreview base="/teacher" />
       </div>
@@ -146,23 +152,23 @@ function TeacherWork({ userId }) {
           <>
             <DashPanel title="Waiting to be graded" to="/teacher/assignments" linkText="All assignments →">
               {pending.length === 0 ? (
-                <p className="muted small">Nothing to grade — every handed-in submission has a mark.</p>
+                <p className="ds-note">Nothing to grade — every handed-in submission has a mark.</p>
               ) : (
                 <>
-                  <p className="small">
+                  <p className="ds-small" style={{ marginTop: 0 }}>
                     <strong>
                       {total} {total === 1 ? 'submission' : 'submissions'}
                     </strong>{' '}
                     across {pending.length} {pending.length === 1 ? 'assignment' : 'assignments'}.
                   </p>
-                  <ul className="dash-list">
+                  <ul className="ds-dash-list">
                     {pending.slice(0, 6).map(({ assignment: a, count }) => (
-                      <li key={a.id} className="dash-row">
+                      <li key={a.id} className="ds-dash-row">
                         <span>
                           <Link to={assignmentLink(a)}>{a.title}</Link>
-                          <span className="muted small"> · {classLabel(a)}</span>
+                          <span className="ds-muted ds-small"> · {classLabel(a)}</span>
                         </span>
-                        <span className="badge badge-warning">{count} to grade</span>
+                        <Badge status="to grade">{count} to grade</Badge>
                       </li>
                     ))}
                   </ul>
@@ -171,13 +177,13 @@ function TeacherWork({ userId }) {
             </DashPanel>
             <DashPanel title="Coming up" to="/teacher/assignments" linkText="All assignments →">
               {upcoming.length === 0 ? (
-                <p className="muted small">No assignments due soon.</p>
+                <p className="ds-note">No assignments due soon.</p>
               ) : (
-                <ul className="dash-list">
+                <ul className="ds-dash-list">
                   {upcoming.map((a) => (
                     <li key={a.id}>
                       <Link to={assignmentLink(a)}>{a.title}</Link>
-                      <div className="muted small">
+                      <div className="ds-muted ds-small">
                         {classLabel(a)} · due {formatDateTime(a.due_at)}
                       </div>
                     </li>

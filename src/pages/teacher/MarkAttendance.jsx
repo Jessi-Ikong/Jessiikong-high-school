@@ -7,6 +7,8 @@ import { useAsyncData } from '../../hooks/useAsyncData'
 import { useAuth } from '../../hooks/useAuth'
 import { Roster } from '../../components/AttendanceRoster'
 import { isEditable } from '../../lib/attendance'
+import { Alert, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select } from '../../components/ui/Form'
 
 // How far back a teacher can pick: this many past occurrences of the class.
 const RECENT_WEEKS = 4
@@ -38,16 +40,16 @@ export default function MarkAttendance() {
   const { profile } = useAuth()
   const slotQuery = useAsyncData(() => fetchOwnSlot(profile.id, slotId), `own-slot:${profile.id}:${slotId}`)
 
-  if (slotQuery.loading) return <p className="muted">Loading class…</p>
-  if (slotQuery.error) return <p className="alert alert-error" role="alert">{friendlyDbError(slotQuery.error)}</p>
+  if (slotQuery.loading) return <LoadingState lines={5} label="Loading class…" />
+  if (slotQuery.error) return <Alert tone="danger">{friendlyDbError(slotQuery.error)}</Alert>
   if (!slotQuery.data) {
     return (
       <>
-        <h1>Mark attendance</h1>
-        <p className="alert alert-error" role="alert">
-          This class isn&apos;t on your timetable, so you can&apos;t view or mark its attendance.
-        </p>
-        <Link to="/teacher">← Back to today&apos;s classes</Link>
+        <PageHeader title="Mark attendance" />
+        <Alert tone="danger">This class isn&apos;t on your timetable, so you can&apos;t view or mark its attendance.</Alert>
+        <Link to="/teacher" className="ds-btn ds-btn-link" style={{ paddingLeft: 0 }}>
+          ← Back to today&apos;s classes
+        </Link>
       </>
     )
   }
@@ -66,33 +68,35 @@ function AttendanceForSlot({ slot }) {
 
   return (
     <>
-      <Link to="/teacher" className="back-link">
+      <Link to="/teacher" className="ds-btn ds-btn-link" style={{ paddingLeft: 0 }}>
         ← Today&apos;s classes
       </Link>
-      <h1>{title}</h1>
-      <p className="muted">
-        {when} · {term.name}
-      </p>
+      <PageHeader title={title} subtitle={`${when} · ${term.name}`} />
 
       {dates.length === 0 ? (
-        <p className="empty-state">
-          There is no {capitalise(slot.day_of_week)} in {term.name} up to today yet, so there is nothing to mark.
-        </p>
+        <Card>
+          <EmptyState icon="calendar">
+            There is no {capitalise(slot.day_of_week)} in {term.name} up to today yet, so there is nothing to mark.
+          </EmptyState>
+        </Card>
       ) : (
         <>
-          <label className="inline-field">
-            Date
-            <select value={date} onChange={(e) => setSearchParams({ date: e.target.value }, { replace: true })}>
-              {dates.map((d) => (
-                <option key={d} value={d}>
-                  {formatDate(d)}
-                  {d === toIsoDate(new Date()) ? ' (today)' : isEditable(d) ? '' : ' (view only)'}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="ds-filters">
+            <Field label="Date">
+              {(p) => (
+                <Select {...p} value={date} onChange={(e) => setSearchParams({ date: e.target.value }, { replace: true })}>
+                  {dates.map((d) => (
+                    <option key={d} value={d}>
+                      {formatDate(d)}
+                      {d === toIsoDate(new Date()) ? ' (today)' : isEditable(d) ? '' : ' (view only)'}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          </div>
           {requested && requested !== date && (
-            <p className="muted small">
+            <p className="ds-note">
               {formatDate(requested)} can&apos;t be marked for this class (wrong weekday, future, outside the term or
               more than {RECENT_WEEKS} weeks ago), so the most recent class date is shown instead.
             </p>

@@ -6,6 +6,9 @@ import { formatTime } from '../../lib/format'
 import { fullName, byName } from '../../lib/people'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import DeleteAction from '../../components/DeleteAction'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 const DAYS = [
   { value: 'monday', label: 'Monday' },
@@ -46,9 +49,8 @@ async function fetchSetup() {
 export default function Timetable() {
   const setup = useAsyncData(fetchSetup, 'timetable-setup')
 
-  if (setup.loading) return <p className="muted">Loading…</p>
-  if (setup.error) return <p className="alert alert-error" role="alert">{friendlyDbError(setup.error)}</p>
-
+  if (setup.loading) return <LoadingState lines={6} />
+  if (setup.error) return <Alert tone="danger">{friendlyDbError(setup.error)}</Alert>
   const { terms, sections, periods, subjects } = setup.data
   const missing = [
     terms.length === 0 && <Link key="terms" to="/admin/terms">a term</Link>,
@@ -60,17 +62,19 @@ export default function Timetable() {
   if (missing.length > 0) {
     return (
       <>
-        <h1>Timetable</h1>
-        <p className="empty-state">
-          Before building a timetable, create{' '}
-          {missing.map((item, i) => (
-            <span key={item.key}>
-              {i > 0 && (i === missing.length - 1 ? ' and ' : ', ')}
-              {item}
-            </span>
-          ))}
-          .
-        </p>
+        <PageHeader title="Timetable" />
+        <Card>
+          <EmptyState icon="calendar" title="A few things first">
+            Before building a timetable, create{' '}
+            {missing.map((item, i) => (
+              <span key={item.key}>
+                {i > 0 && (i === missing.length - 1 ? ' and ' : ', ')}
+                {item}
+              </span>
+            ))}
+            .
+          </EmptyState>
+        </Card>
       </>
     )
   }
@@ -111,153 +115,157 @@ function TimetableBuilder({ setup }) {
 
   return (
     <>
-      <h1>Timetable</h1>
-      <p className="muted">
-        Choose a term and a section, then add classes to each day and period. A cell can hold several classes at once
-        (parallel electives); each student attends the one matching their own subjects.
-      </p>
+      <PageHeader
+        title="Timetable"
+        subtitle="Choose a term and a section, then add classes to each day and period. A cell can hold several classes at once (parallel electives); each student attends the one matching their own subjects."
+      />
 
-      <div className="filter-bar">
-        <label className="inline-field">
-          Term
-          <select
-            value={term.id}
-            onChange={(e) => {
-              setChosenTermId(e.target.value)
-              setOpenCell(null)
-            }}
-          >
-            {terms.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}, {t.sessions.name}
-                {t.is_current ? ' (current)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          Class
-          <select
-            value={cls.id}
-            onChange={(e) => {
-              setChosenClassId(e.target.value)
-              setChosenSectionId(null)
-              setOpenCell(null)
-            }}
-          >
-            {classesWithSections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          Section
-          <select
-            value={section.id}
-            onChange={(e) => {
-              setChosenSectionId(e.target.value)
-              setOpenCell(null)
-            }}
-          >
-            {classSections.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="ds-filters">
+        <Field label="Term">
+          {(p) => (
+            <Select
+              {...p}
+              value={term.id}
+              onChange={(e) => {
+                setChosenTermId(e.target.value)
+                setOpenCell(null)
+              }}
+            >
+              {terms.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}, {t.sessions.name}
+                  {t.is_current ? ' (current)' : ''}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Class">
+          {(p) => (
+            <Select
+              {...p}
+              value={cls.id}
+              onChange={(e) => {
+                setChosenClassId(e.target.value)
+                setChosenSectionId(null)
+                setOpenCell(null)
+              }}
+            >
+              {classesWithSections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Section">
+          {(p) => (
+            <Select
+              {...p}
+              value={section.id}
+              onChange={(e) => {
+                setChosenSectionId(e.target.value)
+                setOpenCell(null)
+              }}
+            >
+              {classSections.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </div>
 
-      {slotsQuery.loading ? (
-        <p className="muted">Loading timetable…</p>
-      ) : slotsQuery.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(slotsQuery.error)}</p>
-      ) : (
-        <>
-          <h2>
-            {sectionLabel} — {term.name}, {term.sessions.name}
-          </h2>
-          <div className="table-wrap">
-            <table className="timetable-grid">
-              <thead>
-                <tr>
-                  <th>Period</th>
-                  {DAYS.map((d) => (
-                    <th key={d.value}>{d.label}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {periods.map((period) => (
-                  <tr key={period.id}>
-                    <th scope="row" className="period-cell">
-                      {period.name}
-                      <span className="muted small">
-                        {formatTime(period.start_time)}–{formatTime(period.end_time)}
-                      </span>
-                    </th>
-                    {period.is_break ? (
-                      <td colSpan={DAYS.length} className="break-cell">
-                        Break
-                      </td>
-                    ) : (
-                      DAYS.map((d) => {
-                        const cellKey = `${period.id}:${d.value}`
-                        return (
-                          <TimetableCell
-                            key={cellKey}
-                            entries={slots.filter((s) => s.period_id === period.id && s.day_of_week === d.value)}
-                            term={term}
-                            section={section}
-                            sectionLabel={sectionLabel}
-                            period={period}
-                            day={d.value}
-                            subjects={subjects}
-                            teachers={teachers}
-                            adding={openCell === cellKey}
-                            onStartAdd={() => setOpenCell(cellKey)}
-                            onStopAdd={() => setOpenCell(null)}
-                            onChanged={slotsQuery.reload}
-                          />
-                        )
-                      })
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <Card title={`${sectionLabel} — ${term.name}, ${term.sessions.name}`} flush>
+        {slotsQuery.loading ? (
+          <LoadingState lines={6} />
+        ) : slotsQuery.error ? (
+          <div className="ds-card-body">
+            <Alert tone="danger">{friendlyDbError(slotsQuery.error)}</Alert>
           </div>
-        </>
-      )}
+        ) : (
+          // One row per period, one column per day. On phones each period is a
+          // card listing Monday–Friday; from 600px of width it is the usual grid.
+          <DataTable
+            caption={`Timetable for ${sectionLabel}`}
+            rowKey={(p) => p.id}
+            rows={periods}
+            columns={[
+              {
+                key: 'period',
+                header: 'Period',
+                primary: true,
+                render: (period) => (
+                  <span className="ds-inline">
+                    {period.name}
+                    <span className="ds-muted ds-small">
+                      {formatTime(period.start_time)}–{formatTime(period.end_time)}
+                    </span>
+                    {period.is_break && <Badge tone="neutral">Break</Badge>}
+                  </span>
+                ),
+              },
+              ...DAYS.map((d) => ({
+                key: d.value,
+                header: d.label,
+                stack: true,
+                render: (period) => {
+                  if (period.is_break) return <span className="ds-muted ds-small">Break</span>
+                  const cellKey = `${period.id}:${d.value}`
+                  return (
+                    <TimetableCell
+                      entries={slots.filter((s) => s.period_id === period.id && s.day_of_week === d.value)}
+                      term={term}
+                      section={section}
+                      sectionLabel={sectionLabel}
+                      period={period}
+                      day={d.value}
+                      subjects={subjects}
+                      teachers={teachers}
+                      adding={openCell === cellKey}
+                      onStartAdd={() => setOpenCell(cellKey)}
+                      onStopAdd={() => setOpenCell(null)}
+                      onChanged={slotsQuery.reload}
+                    />
+                  )
+                },
+              })),
+            ]}
+          />
+        )}
+      </Card>
     </>
   )
 }
 
+// The contents of one day/period cell: its classes (with ×), and "+ Add class".
 function TimetableCell({ entries, term, section, sectionLabel, period, day, subjects, teachers, adding, onStartAdd, onStopAdd, onChanged }) {
   const sorted = [...entries].sort((a, b) => a.subjects.name.localeCompare(b.subjects.name))
 
   return (
-    <td className={`timetable-cell${sorted.length === 0 ? ' is-empty' : ''}`}>
+    <div className="ds-tt-cell">
       {sorted.length === 0 ? (
-        <span className="muted small">No class scheduled</span>
+        <span className="ds-muted ds-small">No class scheduled</span>
       ) : (
-        <ul className="slot-chips">
+        <ul className="ds-tt-chips">
           {sorted.map((slot) => {
             const teacherName = slot.teachers ? fullName(slot.teachers.users) : null
             return (
-              <li key={slot.id} className="slot-chip">
+              <li key={slot.id} className="ds-tt-chip">
                 <span>
-                  <strong>{slot.subjects.name}</strong> — {teacherName ?? <em>No teacher yet</em>}
+                  <strong>{slot.subjects.name}</strong>
+                  <span className="ds-tt-teacher">{teacherName ?? <em>No teacher yet</em>}</span>
                   {slot.teachers && !slot.teachers.users.is_active && (
-                    <span className="badge badge-warning" title="This teacher is deactivated: give the class to someone else">deactivated</span>
+                    <Badge tone="warning">deactivated</Badge>
                   )}
                 </span>
                 <DeleteAction
                   itemName={`${slot.subjects.name} (${sectionLabel}, ${dayLabel(day)} ${period.name})`}
                   buttonLabel="×"
-                  buttonClassName="chip-remove"
+                  buttonClassName="ds-tt-remove"
                   dependencyChecks={[
                     { table: 'attendance_records', column: 'timetable_slot_id', value: slot.id, label: ['attendance record', 'attendance records'] },
                   ]}
@@ -269,7 +277,7 @@ function TimetableCell({ entries, term, section, sectionLabel, period, day, subj
           })}
         </ul>
       )}
-      {sorted.length > 1 && <span className="muted small parallel-note">Parallel classes</span>}
+      {sorted.length > 1 && <span className="ds-muted ds-small">Parallel classes</span>}
 
       {adding ? (
         <AddClassForm
@@ -288,11 +296,11 @@ function TimetableCell({ entries, term, section, sectionLabel, period, day, subj
           onCancel={onStopAdd}
         />
       ) : (
-        <button type="button" className="button-link add-class" onClick={onStartAdd}>
+        <button type="button" className="ds-btn ds-btn-link" onClick={onStartAdd}>
           + Add class
         </button>
       )}
-    </td>
+    </div>
   )
 }
 
@@ -363,8 +371,8 @@ function AddClassForm({ entries, term, section, sectionLabel, period, day, subje
   }
 
   return (
-    <form className="add-class-form" onSubmit={handleSubmit}>
-      <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} aria-label="Subject" required autoFocus>
+    <form className="ds-stack" onSubmit={handleSubmit} style={{ marginTop: 8 }}>
+      <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} aria-label="Subject" required autoFocus>
         <option value="">Subject…</option>
         {subjects.map((s) => (
           <option key={s.id} value={s.id} disabled={usedSubjectIds.includes(s.id)}>
@@ -372,23 +380,23 @@ function AddClassForm({ entries, term, section, sectionLabel, period, day, subje
             {usedSubjectIds.includes(s.id) ? ' (already here)' : ''}
           </option>
         ))}
-      </select>
-      <select value={teacherId} onChange={(e) => setTeacherId(e.target.value)} aria-label="Teacher">
+      </Select>
+      <Select value={teacherId} onChange={(e) => setTeacherId(e.target.value)} aria-label="Teacher">
         <option value="">No teacher yet</option>
         {teachers.map((t) => (
           <option key={t.id} value={t.id}>
             {t.name}
           </option>
         ))}
-      </select>
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
-      <div className="form-actions">
-        <button type="submit" disabled={saving}>
+      </Select>
+      {error && <Alert tone="danger">{error}</Alert>}
+      <div className="ds-inline">
+        <Button type="submit" disabled={saving}>
           {saving ? 'Saving…' : 'Save'}
-        </button>
-        <button type="button" className="button-secondary" onClick={onCancel} disabled={saving}>
+        </Button>
+        <Button variant="secondary" onClick={onCancel} disabled={saving}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   )

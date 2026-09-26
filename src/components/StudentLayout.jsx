@@ -1,33 +1,14 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { fullName } from '../lib/people'
-import SignOutButton from './SignOutButton'
+import AppShell from './AppShell'
 
+// The student portal: the shared design-system shell (AppShell) with the student
+// links from src/lib/portalNav.js. Pages are routed in App.jsx.
 export default function StudentLayout() {
   const { profile } = useAuth()
-
   return (
-    <div className="portal-shell">
-      <header className="portal-topbar">
-        <div className="portal-brand">
-          Jessiikong High School <span className="muted small">Student</span>
-        </div>
-        <nav className="portal-nav" aria-label="Student">
-          <NavLink to="/student" end>
-            Home
-          </NavLink>
-          <NavLink to="/student/assignments">Assignments</NavLink>
-          <NavLink to="/student/announcements">Announcements</NavLink>
-          <NavLink to="/student/profile">My Profile</NavLink>
-        </nav>
-        <div className="portal-user">
-          <span className="muted small">{fullName(profile)}</span>
-          <SignOutButton />
-        </div>
-      </header>
-      <div className="portal-content">
-        <Outlet />
-      </div>
-    </div>
+    <AppShell role="student" profile={profile}>
+      <Outlet />
+    </AppShell>
   )
 }

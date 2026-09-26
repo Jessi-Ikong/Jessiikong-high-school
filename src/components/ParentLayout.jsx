@@ -1,34 +1,14 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { fullName } from '../lib/people'
-import SignOutButton from './SignOutButton'
+import AppShell from './AppShell'
 
+// The parent portal: the shared design-system shell (AppShell) with the parent
+// links from src/lib/portalNav.js. Pages are routed in App.jsx.
 export default function ParentLayout() {
   const { profile } = useAuth()
-
   return (
-    <div className="portal-shell">
-      <header className="portal-topbar">
-        <div className="portal-brand">
-          Jessiikong High School <span className="muted small">Parent</span>
-        </div>
-        <nav className="portal-nav" aria-label="Parent">
-          <NavLink to="/parent" end>
-            Home
-          </NavLink>
-          <NavLink to="/parent/fees">Fees</NavLink>
-          <NavLink to="/parent/messages">Messages</NavLink>
-          <NavLink to="/parent/announcements">Announcements</NavLink>
-          <NavLink to="/parent/profile">My Profile</NavLink>
-        </nav>
-        <div className="portal-user">
-          <span className="muted small">{fullName(profile)}</span>
-          <SignOutButton />
-        </div>
-      </header>
-      <div className="portal-content">
-        <Outlet />
-      </div>
-    </div>
+    <AppShell role="parent" profile={profile}>
+      <Outlet />
+    </AppShell>
   )
 }

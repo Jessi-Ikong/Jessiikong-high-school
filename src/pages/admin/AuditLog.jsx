@@ -6,6 +6,8 @@ import { toIsoDate } from '../../lib/dates'
 import { ENTITY_LABELS, changeLines, describeAction, resolveNames, targetLabel } from '../../lib/audit'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useAuth } from '../../hooks/useAuth'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select, TextInput } from '../../components/ui/Form'
 
 const PAGE_SIZE = 25
 const NO_USER = 'none'
@@ -73,62 +75,63 @@ function AuditLogViewer({ profile }) {
 
   return (
     <>
-      <h1>Audit log</h1>
-      <p className="muted">
-        Changes made in the system: who did it, when, and what changed. Newest first. Message text and raw
-        payment-provider replies are never stored here.
-      </p>
-      <p className="alert alert-info-plain">
+      <PageHeader
+        title="Audit log"
+        subtitle="Changes made in the system: who did it, when, and what changed. Newest first. Message text and raw payment-provider replies are never stored here."
+      />
+      <Alert tone="info">
         {isSuperAdmin
           ? "As a super admin you see every change, including other admins' changes."
           : 'As a limited admin you see changes made by teachers, students, parents and the system, plus your own. Changes made by other admins are not shown to you.'}
-      </p>
+      </Alert>
 
-      <div className="filter-bar">
-        <label className="inline-field">
-          What was changed
-          <select value={filters.entity} onChange={(e) => setFilter('entity', e.target.value)}>
-            <option value="">Everything</option>
-            {Object.entries(ENTITY_LABELS)
-              .sort((a, b) => a[1][1].localeCompare(b[1][1]))
-              .map(([table, [, plural]]) => (
-                <option key={table} value={table}>
-                  {plural.charAt(0).toUpperCase() + plural.slice(1)}
-                </option>
+      <div className="ds-filters">
+        <Field label="What was changed">
+          {(p) => (
+            <Select {...p} value={filters.entity} onChange={(e) => setFilter('entity', e.target.value)}>
+              <option value="">Everything</option>
+              {Object.entries(ENTITY_LABELS)
+                .sort((a, b) => a[1][1].localeCompare(b[1][1]))
+                .map(([table, [, plural]]) => (
+                  <option key={table} value={table}>
+                    {plural.charAt(0).toUpperCase() + plural.slice(1)}
+                  </option>
+                ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Done by">
+          {(p) => (
+            <Select {...p} value={filters.userId} onChange={(e) => setFilter('userId', e.target.value)} disabled={usersQuery.loading}>
+              <option value="">Anyone</option>
+              <option value={NO_USER}>No signed-in user (database / server)</option>
+              {!isSuperAdmin && <option value={profile.id}>You ({fullName(profile)})</option>}
+              {ROLE_GROUPS.filter(([role]) => isSuperAdmin || role !== 'admin').map(([role, label]) => (
+                <optgroup key={role} label={label}>
+                  {users
+                    .filter((u) => u.role === role)
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {fullName(u)}
+                      </option>
+                    ))}
+                </optgroup>
               ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          Done by
-          <select value={filters.userId} onChange={(e) => setFilter('userId', e.target.value)} disabled={usersQuery.loading}>
-            <option value="">Anyone</option>
-            <option value={NO_USER}>No signed-in user (database / server)</option>
-            {!isSuperAdmin && <option value={profile.id}>You ({fullName(profile)})</option>}
-            {ROLE_GROUPS.filter(([role]) => isSuperAdmin || role !== 'admin').map(([role, label]) => (
-              <optgroup key={role} label={label}>
-                {users
-                  .filter((u) => u.role === role)
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {fullName(u)}
-                    </option>
-                  ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          From
-          <input type="date" value={filters.from} max={filters.to || toIsoDate(new Date())} onChange={(e) => setFilter('from', e.target.value)} />
-        </label>
-        <label className="inline-field">
-          To
-          <input type="date" value={filters.to} min={filters.from || undefined} onChange={(e) => setFilter('to', e.target.value)} />
-        </label>
-        {hasFilters && (
+            </Select>
+          )}
+        </Field>
+        <Field label="From">
+          {(p) => <TextInput {...p} type="date" value={filters.from} max={filters.to || toIsoDate(new Date())} onChange={(e) => setFilter('from', e.target.value)} />}
+        </Field>
+        <Field label="To">
+          {(p) => <TextInput {...p} type="date" value={filters.to} min={filters.from || undefined} onChange={(e) => setFilter('to', e.target.value)} />}
+        </Field>
+      </div>
+      {hasFilters && (
+        <div className="ds-row-actions" style={{ marginBottom: 12 }}>
           <button
             type="button"
-            className="button-link filter-reset"
+            className="ds-btn ds-btn-link"
             onClick={() => {
               setFilters({ entity: '', userId: '', from: '', to: '' })
               setPage(0)
@@ -136,36 +139,40 @@ function AuditLogViewer({ profile }) {
           >
             Clear filters
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {pageQuery.loading ? (
-        <p className="muted">Loading the audit log…</p>
+        <LoadingState lines={6} label="Loading the audit log…" />
       ) : pageQuery.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(pageQuery.error)}</p>
+        <Alert tone="danger">{friendlyDbError(pageQuery.error)}</Alert>
       ) : pageQuery.data.entries.length === 0 ? (
-        <p className="empty-state">{hasFilters ? 'No changes match these filters.' : 'Nothing has been logged yet.'}</p>
+        <Card>
+          <EmptyState icon="shield">{hasFilters ? 'No changes match these filters.' : 'Nothing has been logged yet.'}</EmptyState>
+        </Card>
       ) : (
         <>
-          <p className="muted small">
+          <p className="ds-note">
             {total} {total === 1 ? 'change' : 'changes'}
             {hasFilters ? ' match these filters' : ''} · page {page + 1} of {pages}
           </p>
-          <ol className="audit-list">
-            {pageQuery.data.entries.map((entry) => (
-              <AuditEntry key={entry.id} entry={entry} names={pageQuery.data.names} rowsByEntity={pageQuery.data.rowsByEntity} />
-            ))}
-          </ol>
-          <div className="pager">
-            <button type="button" className="button-secondary" onClick={() => setPage((p) => p - 1)} disabled={page === 0 || pageQuery.refreshing}>
+          <Card flush>
+            <ol className="ds-list">
+              {pageQuery.data.entries.map((entry) => (
+                <AuditEntry key={entry.id} entry={entry} names={pageQuery.data.names} rowsByEntity={pageQuery.data.rowsByEntity} />
+              ))}
+            </ol>
+          </Card>
+          <div className="ds-pager">
+            <Button variant="secondary" onClick={() => setPage((p) => p - 1)} disabled={page === 0 || pageQuery.refreshing}>
               ← Newer
-            </button>
-            <span className="muted small">
+            </Button>
+            <span className="ds-muted ds-small">
               Page {page + 1} of {pages}
             </span>
-            <button type="button" className="button-secondary" onClick={() => setPage((p) => p + 1)} disabled={page + 1 >= pages || pageQuery.refreshing}>
+            <Button variant="secondary" onClick={() => setPage((p) => p + 1)} disabled={page + 1 >= pages || pageQuery.refreshing}>
               Older →
-            </button>
+            </Button>
           </div>
         </>
       )}
@@ -180,27 +187,27 @@ function AuditEntry({ entry, names, rowsByEntity }) {
   const shown = lines.slice(0, 8)
 
   return (
-    <li className={`audit-entry audit-${verb.toLowerCase()}`}>
-      <div className="audit-head">
-        <span className="audit-verb">{verb}</span>{' '}
+    <li className="ds-list-item" style={{ display: 'block' }}>
+      <div className="ds-inline" style={{ overflowWrap: 'anywhere' }}>
+        <Badge status={verb}>{verb}</Badge>
         <span>
           {noun}: <strong>{targetLabel(entry, names, rowsByEntity)}</strong>
         </span>
       </div>
-      <div className="muted small">
+      <div className="ds-muted ds-small" style={{ marginTop: 4 }}>
         {dateTime.format(new Date(entry.created_at))} · by {who}
         {entry.users?.role ? ` (${entry.users.role})` : ''}
       </div>
       {shown.length > 0 && (
-        <ul className="audit-changes">
+        <ul className="ds-audit-changes">
           {shown.map((line) => (
             <li key={line}>{line}</li>
           ))}
-          {lines.length > shown.length && <li className="muted">…and {lines.length - shown.length} more</li>}
+          {lines.length > shown.length && <li className="ds-muted">…and {lines.length - shown.length} more</li>}
         </ul>
       )}
-      <details className="audit-raw">
-        <summary className="small">Raw data</summary>
+      <details className="ds-audit-raw">
+        <summary>Raw data</summary>
         <pre>{JSON.stringify({ action: entry.action, entity: entry.entity, entity_id: entry.entity_id, changes: entry.changes }, null, 2)}</pre>
       </details>
     </li>

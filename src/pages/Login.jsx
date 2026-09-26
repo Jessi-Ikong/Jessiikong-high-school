@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../hooks/useAuth'
 import { ROLE_HOME } from '../lib/roles'
 import { friendlyAuthError, PROFILE_ERROR_MESSAGES } from '../lib/authErrors'
+import AuthLayout, { AuthLoading } from '../components/AuthLayout'
+import { Alert, Button } from '../components/ui/Primitives'
+import { Field, TextInput } from '../components/ui/Form'
 
 export default function Login() {
   const { user, profile, profileError, loading, signOut } = useAuth()
@@ -26,7 +29,7 @@ export default function Login() {
   // Already signed in (or just signed in): go to the right dashboard.
   if (!loading && profile) return <Navigate to={ROLE_HOME[profile.role]} replace />
   // Initial session check: don't flash the form at someone who is signed in.
-  if (loading && !submitting) return <p className="page-loading">Loading…</p>
+  if (loading && !submitting) return <AuthLoading>Loading…</AuthLoading>
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -42,43 +45,37 @@ export default function Login() {
   }
 
   return (
-    <main className="auth-page">
-      <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Jessiikong High School</h1>
-        <p className="muted">Sign in to your account</p>
-
-        {shownError && <p className="alert alert-error" role="alert">{shownError}</p>}
-        {!shownError && notice && <p className="alert alert-success" role="status">{notice}</p>}
-
-        <label>
-          Email
-          <input
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </label>
-
-        <button type="submit" disabled={submitting}>
-          {submitting ? 'Signing in…' : 'Sign in'}
-        </button>
-        <Link to="/forgot-password">Forgot password?</Link>
-        <Link to="/" className="auth-back">
+    <AuthLayout
+      as="form"
+      onSubmit={handleSubmit}
+      title="Sign in"
+      subtitle="Sign in to your account."
+      footer={
+        <Link to="/" className="ds-btn ds-btn-link">
           ← Back to the school website
         </Link>
-      </form>
-    </main>
+      }
+    >
+      {shownError && <Alert tone="danger">{shownError}</Alert>}
+      {!shownError && notice && <Alert tone="success">{notice}</Alert>}
+
+      <Field label="Email">
+        {(p) => <TextInput {...p} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />}
+      </Field>
+      <Field label="Password">
+        {(p) => (
+          <TextInput {...p} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        )}
+      </Field>
+
+      <Button type="submit" block disabled={submitting}>
+        {submitting ? 'Signing in…' : 'Sign in'}
+      </Button>
+      <div className="ds-auth-links">
+        <Link to="/forgot-password" className="ds-btn ds-btn-link">
+          Forgot password?
+        </Link>
+      </div>
+    </AuthLayout>
   )
 }

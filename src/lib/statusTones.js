@@ -20,6 +20,13 @@ export const STATUS_TONES = {
   successful: 'success',
   pending: 'warning',
   failed: 'danger',
+  // setup & grading configuration
+  complete: 'success',
+  incomplete: 'warning',
+  'not set up': 'neutral',
+  current: 'success',
+  editing: 'info',
+  break: 'neutral',
   // accounts & enrollments
   active: 'success',
   deactivated: 'neutral',
@@ -36,6 +43,23 @@ export const STATUS_TONES = {
   draft: 'neutral',
   scheduled: 'info',
   published: 'success',
+  hidden: 'neutral',
+  // audit log & ID cards
+  created: 'success',
+  updated: 'info',
+  deleted: 'danger',
+  corrected: 'warning',
+  revoked: 'danger',
+  // messages
+  unread: 'warning',
+  read: 'neutral',
+  // dashboards
+  marked: 'success',
+  'not marked': 'warning',
+  'to grade': 'warning',
+  'no hand-in': 'neutral',
+  low: 'warning',
+  due: 'neutral',
 }
 
 export function toneFor(status) {

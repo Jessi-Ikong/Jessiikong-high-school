@@ -11,6 +11,8 @@ import { useAuth } from '../../hooks/useAuth'
 import ChildSwitcher from '../../components/ChildSwitcher'
 import { useChosenChild } from '../../hooks/useChosenChild'
 import { InvoiceStatusBadge, PaymentStatusBadge } from '../../components/PaymentBadges'
+import { Alert, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import DataTable from '../../components/ui/DataTable'
 
 // The child's invoices (every term) and the payments made against them.
 // RLS only returns invoices / payments for the parent's own children.
@@ -43,13 +45,15 @@ export default function Fees() {
   const { profile } = useAuth()
   const query = useAsyncData(() => fetchMyChildren(profile.id), `my-children:${profile.id}`)
 
-  if (query.loading) return <p className="muted">Loading…</p>
-  if (query.error) return <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+  if (query.loading) return <LoadingState lines={5} />
+  if (query.error) return <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
   if (query.data.length === 0) {
     return (
       <>
-        <h1>School fees</h1>
-        <p className="empty-state">No children are linked to your account yet. Please contact the school office.</p>
+        <PageHeader title="School fees" />
+        <Card>
+          <EmptyState icon="users">No children are linked to your account yet. Please contact the school office.</EmptyState>
+        </Card>
       </>
     )
   }
@@ -60,7 +64,7 @@ function FeesForChildren({ list }) {
   const [child, chooseChild] = useChosenChild(list)
   return (
     <>
-      <h1>School fees</h1>
+      <PageHeader title="School fees" />
       <ChildSwitcher list={list} chosen={child} onChoose={chooseChild} />
       <ChildFees key={child.id} child={child} />
     </>
@@ -70,111 +74,138 @@ function FeesForChildren({ list }) {
 function ChildFees({ child }) {
   const query = useAsyncData(() => fetchChildFees(child.id), `child-fees:${child.id}`)
 
-  if (query.loading) return <p className="muted">Loading fees…</p>
-  if (query.error) return <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+  if (query.loading) return <LoadingState lines={5} label="Loading fees…" />
+  if (query.error) return <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
 
   const { invoices, payments } = query.data
   const outstanding = invoices.reduce((sum, i) => sum + Math.max(Number(i.amount_due) - Number(i.amount_paid), 0), 0)
 
   return (
     <>
-      <p className="muted">
+      <p className="ds-subtitle" style={{ marginTop: 0 }}>
         {fullName(child)}
         {child.className ? ` · ${child.className}` : ''} · Admission no. {child.admissionNumber}
       </p>
 
-      <section className="panel">
-        <h2>Invoices</h2>
+      <Card title="Invoices" flush>
         {invoices.length === 0 ? (
-          <p className="empty-state">No fees have been billed for {child.first_name} yet.</p>
+          <EmptyState icon="money">No fees have been billed for {child.first_name} yet.</EmptyState>
         ) : (
           <>
-            <p className={outstanding > 0 ? 'fee-balance' : 'fee-balance is-clear'}>
-              {outstanding > 0 ? (
-                <>
-                  Total outstanding: <strong>{formatNaira(outstanding)}</strong>
-                </>
-              ) : (
-                'All fees are paid. Thank you!'
-              )}
-            </p>
-            <div className="table-wrap">
-              <table className="data-table fee-table">
-                <thead>
-                  <tr>
-                    <th>Fee</th>
-                    <th>Amount due</th>
-                    <th>Paid so far</th>
-                    <th>Status</th>
-                    <th>Due date</th>
-                    <th aria-label="Pay" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoices.map((inv) => (
-                    <InvoiceRow key={inv.id} invoice={inv} />
-                  ))}
-                </tbody>
-              </table>
+            <div className="ds-card-body" style={{ paddingBottom: 0 }}>
+              <Alert tone={outstanding > 0 ? 'warning' : 'success'}>
+                {outstanding > 0 ? (
+                  <>
+                    Total outstanding: <strong>{formatNaira(outstanding)}</strong>
+                  </>
+                ) : (
+                  'All fees are paid. Thank you!'
+                )}
+              </Alert>
             </div>
-            <p className="muted small">
-              Payments are made securely through Paystack. &quot;Pay&quot; charges the full remaining balance of that fee.
-              A payment shows here as soon as Paystack confirms it (usually within a minute).
+            <DataTable
+              caption={`Invoices for ${fullName(child)}`}
+              rowKey={(inv) => inv.id}
+              rows={invoices}
+              columns={[
+                {
+                  key: 'fee',
+                  header: 'Fee',
+                  primary: true,
+                  render: (inv) => (
+                    <span>
+                      {inv.fee_structures?.name}
+                      <span className="ds-muted ds-small" style={{ display: 'block', fontWeight: 400 }}>
+                        {inv.terms?.name}, {inv.terms?.sessions?.name}
+                      </span>
+                    </span>
+                  ),
+                },
+                { key: 'due', header: 'Amount due', numeric: true, render: (inv) => formatNaira(inv.amount_due) },
+                {
+                  key: 'paid',
+                  header: 'Paid so far',
+                  numeric: true,
+                  render: (inv) => {
+                    const balance = Number(inv.amount_due) - Number(inv.amount_paid)
+                    return (
+                      <span>
+                        {formatNaira(inv.amount_paid)}
+                        {balance < 0 && (
+                          <span className="ds-small ds-text-danger" style={{ display: 'block' }}>
+                            Overpaid by {formatNaira(-balance)}: the school will contact you.
+                          </span>
+                        )}
+                      </span>
+                    )
+                  },
+                },
+                { key: 'status', header: 'Status', render: (inv) => <InvoiceStatusBadge status={inv.status} /> },
+                { key: 'due-date', header: 'Due date', render: (inv) => (inv.due_date ? formatDate(inv.due_date) : '—') },
+                { key: 'pay', header: 'Pay', render: (inv) => <PayButton invoice={inv} /> },
+              ]}
+            />
+            <p className="ds-note ds-card-body" style={{ margin: 0 }}>
+              Payments are made securely through Paystack. &quot;Pay&quot; charges the full remaining balance of that fee. A payment shows here as soon as
+              Paystack confirms it (usually within a minute).
             </p>
           </>
         )}
-      </section>
+      </Card>
 
-      <section className="panel">
-        <h2>Payment history</h2>
-        {payments.length === 0 ? (
-          <p className="empty-state">No payments yet.</p>
-        ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Fee</th>
-                  <th>Amount</th>
-                  <th>Method</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payments.map((p) => (
-                  <tr key={p.id}>
-                    <td className="small">{formatDateTime(p.paid_at ?? p.created_at)}</td>
-                    <td>
-                      {p.invoices.fee_structures?.name}
-                      <span className="muted small"> · {p.invoices.terms?.name}</span>
-                    </td>
-                    <td>{formatNaira(p.amount)}</td>
-                    <td className="small">
-                      {p.provider === 'manual' ? 'At the school' : 'Paystack'}
-                      {p.provider_ref && <div className="muted small reference">{p.provider_ref}</div>}
-                    </td>
-                    <td>
-                      <PaymentStatusBadge status={p.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <Card title="Payment history" flush>
+        <DataTable
+          caption="Payment history"
+          rowKey={(p) => p.id}
+          rows={payments}
+          empty={<EmptyState icon="money">No payments yet.</EmptyState>}
+          columns={[
+            {
+              key: 'fee',
+              header: 'Fee',
+              primary: true,
+              render: (p) => (
+                <span>
+                  {p.invoices.fee_structures?.name}
+                  <span className="ds-muted ds-small" style={{ fontWeight: 400 }}>
+                    {' '}
+                    · {p.invoices.terms?.name}
+                  </span>
+                </span>
+              ),
+            },
+            { key: 'date', header: 'Date', render: (p) => <span className="ds-small">{formatDateTime(p.paid_at ?? p.created_at)}</span> },
+            { key: 'amount', header: 'Amount', numeric: true, render: (p) => formatNaira(p.amount) },
+            {
+              key: 'method',
+              header: 'Method',
+              render: (p) => (
+                <span className="ds-small">
+                  {p.provider === 'manual' ? 'At the school' : 'Paystack'}
+                  {p.provider_ref && (
+                    <span className="ds-muted" style={{ display: 'block', overflowWrap: 'anywhere' }}>
+                      {p.provider_ref}
+                    </span>
+                  )}
+                </span>
+              ),
+            },
+            { key: 'status', header: 'Status', render: (p) => <PaymentStatusBadge status={p.status} /> },
+          ]}
+        />
         {payments.some((p) => p.status === 'pending') && (
-          <p className="muted small">
-            &quot;Pending&quot; means the payment was started but Paystack hasn&apos;t confirmed it (for example, the
-            checkout was closed before paying). You are only charged for payments marked &quot;Successful&quot;.
+          <p className="ds-note ds-card-body" style={{ margin: 0 }}>
+            &quot;Pending&quot; means the payment was started but Paystack hasn&apos;t confirmed it (for example, the checkout was closed before paying).
+            You are only charged for payments marked &quot;Successful&quot;.
           </p>
         )}
-      </section>
+      </Card>
     </>
   )
 }
 
-function InvoiceRow({ invoice }) {
+// "Pay ₦…" for one invoice (the full remaining balance), via Paystack's checkout.
+function PayButton({ invoice }) {
   const [paying, setPaying] = useState(false)
   const [error, setError] = useState(null)
   const balance = Number(invoice.amount_due) - Number(invoice.amount_paid)
@@ -193,35 +224,19 @@ function InvoiceRow({ invoice }) {
     }
   }
 
+  if (balance <= 0 && !error) return <span className="ds-muted">—</span>
   return (
-    <tr>
-      <td>
-        {invoice.fee_structures?.name}
-        <div className="muted small">
-          {invoice.terms?.name}, {invoice.terms?.sessions?.name}
-        </div>
-      </td>
-      <td>{formatNaira(invoice.amount_due)}</td>
-      <td>
-        {formatNaira(invoice.amount_paid)}
-        {balance < 0 && <div className="small late-text">Overpaid by {formatNaira(-balance)}: the school will contact you.</div>}
-      </td>
-      <td>
-        <InvoiceStatusBadge status={invoice.status} />
-      </td>
-      <td className="small">{invoice.due_date ? formatDate(invoice.due_date) : '—'}</td>
-      <td>
-        {balance > 0 && (
-          <button type="button" onClick={pay} disabled={paying}>
-            {paying ? 'Opening Paystack…' : `Pay ${formatNaira(balance)}`}
-          </button>
-        )}
-        {error && (
-          <p className="alert alert-error small" role="alert">
-            {error}
-          </p>
-        )}
-      </td>
-    </tr>
+    <span style={{ display: 'block' }}>
+      {balance > 0 && (
+        <Button onClick={pay} disabled={paying}>
+          {paying ? 'Opening Paystack…' : `Pay ${formatNaira(balance)}`}
+        </Button>
+      )}
+      {error && (
+        <span style={{ display: 'block', marginTop: 8 }}>
+          <Alert tone="danger">{error}</Alert>
+        </span>
+      )}
+    </span>
   )
 }

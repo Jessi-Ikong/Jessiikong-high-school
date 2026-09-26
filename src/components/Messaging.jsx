@@ -17,10 +17,15 @@ import {
 import { useAsyncData } from '../hooks/useAsyncData'
 import { useAuth } from '../hooks/useAuth'
 import { usePolling } from '../hooks/usePolling'
+import { Alert, Badge, Button, EmptyState, LoadingState } from './ui/Primitives'
 
 // Thread list + conversation, shared by the parent and teacher Messages pages.
 // viewer: 'parent' | 'teacher' (only changes the wording).
 // The open thread is kept in the address (?thread=<id>).
+// Layout (styles/app.css, .ds-messaging): when the component is narrower than
+// 720px (phones, and tablets beside the sidebar) it shows EITHER the thread
+// list OR the open conversation, with "← All conversations" to go back; wider,
+// both side by side.
 export default function Messaging({ viewer }) {
   const { profile } = useAuth()
   const threadsQuery = useAsyncData(fetchThreads, `message-threads:${profile.id}`)
@@ -42,21 +47,22 @@ export default function Messaging({ viewer }) {
     )
   }
 
-  if (threadsQuery.loading) return <p className="muted">Loading messages…</p>
-  if (threadsQuery.error) return <p className="alert alert-error" role="alert">{friendlyDbError(threadsQuery.error)}</p>
+  if (threadsQuery.loading) return <LoadingState lines={4} label="Loading messages…" />
+  if (threadsQuery.error) return <Alert tone="danger">{friendlyDbError(threadsQuery.error)}</Alert>
 
   const threads = threadsQuery.data
   const open = threads.find((t) => t.thread_id === openId) ?? null
 
   return (
-    <div className={`messaging${open ? ' has-open-thread' : ''}`}>
-      <aside className="thread-list-panel">
-        <div className="thread-list-header">
-          <h2>Conversations</h2>
-          <button type="button" className="button-secondary" onClick={() => setShowNew((v) => !v)} aria-expanded={showNew}>
+    <div className="ds-messaging">
+      <div className={`ds-messaging-grid${open ? ' has-open-thread' : ''}`}>
+      <aside className="ds-card ds-thread-panel">
+        <header className="ds-card-header">
+          <h2 className="ds-h2">Conversations</h2>
+          <Button variant="secondary" onClick={() => setShowNew((v) => !v)} aria-expanded={showNew}>
             {showNew ? 'Close' : '+ New'}
-          </button>
-        </div>
+          </Button>
+        </header>
         {showNew && (
           <NewConversation
             viewer={viewer}
@@ -67,36 +73,36 @@ export default function Messaging({ viewer }) {
           />
         )}
         {threads.length === 0 ? (
-          <p className="empty-state">
+          <EmptyState icon="inbox">
             No conversations yet.{' '}
             {viewer === 'parent' ? 'Use "+ New" to message one of your child’s teachers.' : 'Use "+ New" to message a parent.'}
-          </p>
+          </EmptyState>
         ) : (
-          <ul className="thread-list">
+          <ul className="ds-thread-list">
             {threads.map((t) => (
               <li key={t.thread_id}>
                 <button
                   type="button"
-                  className={`thread-item${t.thread_id === openId ? ' is-open' : ''}${t.unread_count > 0 ? ' is-unread' : ''}`}
+                  className={`ds-thread-item${t.thread_id === openId ? ' is-open' : ''}${t.unread_count > 0 ? ' is-unread' : ''}`}
                   onClick={() => openThread(t.thread_id)}
                   aria-current={t.thread_id === openId ? 'true' : undefined}
                 >
-                  <span className="thread-item-top">
+                  <span className="ds-thread-item-top">
                     <strong>{t.other_name}</strong>
                     {t.unread_count > 0 && (
-                      <span className="badge badge-late" aria-label={`${t.unread_count} unread`}>
-                        {t.unread_count}
+                      <span aria-label={`${t.unread_count} unread`}>
+                        <Badge status="unread">{t.unread_count}</Badge>
                       </span>
                     )}
                   </span>
-                  <span className="muted small">{t.links ?? 'No shared class this session (read-only)'}</span>
+                  <span className="ds-muted ds-small">{t.links ?? 'No shared class this session (read-only)'}</span>
                   {t.last_message && (
-                    <span className="thread-preview small">
+                    <span className="ds-thread-preview ds-small">
                       {t.last_sender_is_me ? 'You: ' : ''}
                       {t.last_message}
                     </span>
                   )}
-                  <span className="muted small">{formatDateTime(t.last_message_at ?? t.created_at)}</span>
+                  <span className="ds-muted ds-small">{formatDateTime(t.last_message_at ?? t.created_at)}</span>
                 </button>
               </li>
             ))}
@@ -104,7 +110,7 @@ export default function Messaging({ viewer }) {
         )}
       </aside>
 
-      <section className="conversation-panel">
+      <section className="ds-card ds-conversation-panel">
         {open ? (
           <Conversation
             key={open.thread_id}
@@ -115,9 +121,10 @@ export default function Messaging({ viewer }) {
             onBack={() => openThread(null)}
           />
         ) : (
-          <p className="empty-state conversation-placeholder">Choose a conversation{threads.length ? '' : ' or start a new one'}.</p>
+          <EmptyState icon="inbox">Choose a conversation{threads.length ? '' : ' or start a new one'}.</EmptyState>
         )}
       </section>
+      </div>
     </div>
   )
 }
@@ -139,33 +146,33 @@ function NewConversation({ viewer, onStarted }) {
     }
   }
 
-  if (contactsQuery.loading) return <p className="muted small">Loading…</p>
-  if (contactsQuery.error) return <p className="alert alert-error">{friendlyDbError(contactsQuery.error)}</p>
+  if (contactsQuery.loading) return <LoadingState lines={2} />
+  if (contactsQuery.error) return <Alert tone="danger">{friendlyDbError(contactsQuery.error)}</Alert>
   const contacts = contactsQuery.data
 
   return (
-    <div className="new-conversation">
-      <p className="muted small">
+    <div className="ds-new-conversation">
+      <p className="ds-note">
         {viewer === 'parent'
           ? 'Teachers who teach your child a subject this session, that you don’t have a conversation with yet:'
           : 'Parents of students you teach this session, that you don’t have a conversation with yet:'}
       </p>
-      {error && <p className="alert alert-error small">{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
       {contacts.length === 0 ? (
-        <p className="muted small">
+        <p className="ds-note">
           No one else. {viewer === 'parent' ? 'You already have a conversation with every teacher you can message.' : 'You already have a conversation with every parent you can message.'}
         </p>
       ) : (
-        <ul className="contact-list">
+        <ul className="ds-contact-list">
           {contacts.map((c) => (
             <li key={c.teacher_id + c.parent_id}>
-              <span>
+              <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                 <strong>{c.name}</strong>
-                <span className="muted small"> · {c.links}</span>
+                <span className="ds-muted ds-small"> · {c.links}</span>
               </span>
-              <button type="button" onClick={() => start(c)} disabled={busy !== null}>
+              <Button onClick={() => start(c)} disabled={busy !== null}>
                 {busy === c.teacher_id + c.parent_id ? 'Starting…' : 'Start'}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
@@ -248,22 +255,22 @@ function Conversation({ thread, viewer, myUserId, onChanged, onBack }) {
   }
 
   return (
-    <div className="conversation">
-      <header className="conversation-header">
-        <button type="button" className="button-link conversation-back" onClick={onBack}>
+    <div className="ds-conversation">
+      <header className="ds-conversation-header">
+        <button type="button" className="ds-btn ds-btn-link ds-conversation-back" onClick={onBack}>
           ← All conversations
         </button>
-        <h2>{thread.other_name}</h2>
-        <p className="muted small">{thread.links ?? 'No shared class this session'}</p>
+        <h2 className="ds-h2">{thread.other_name}</h2>
+        <p className="ds-muted ds-small">{thread.links ?? 'No shared class this session'}</p>
       </header>
 
-      <div className="message-list" aria-live="polite">
+      <div className="ds-message-list" aria-live="polite">
         {messagesQuery.loading ? (
-          <p className="muted">Loading…</p>
+          <LoadingState lines={3} />
         ) : messagesQuery.error ? (
-          <p className="alert alert-error" role="alert">{friendlyDbError(messagesQuery.error)}</p>
+          <Alert tone="danger">{friendlyDbError(messagesQuery.error)}</Alert>
         ) : messages.length === 0 ? (
-          <p className="muted small">No messages yet. Say hello below.</p>
+          <p className="ds-note">No messages yet. Say hello below.</p>
         ) : (
           messages.map((m) => {
             const mine = m.sender_id === myUserId
@@ -298,23 +305,24 @@ function Conversation({ thread, viewer, myUserId, onChanged, onBack }) {
       </div>
 
       {thread.can_send ? (
-        <form className="compose" onSubmit={handleSend}>
-          {error && <p className="alert alert-error" role="alert">{error}</p>}
+        <form className="ds-compose" onSubmit={handleSend}>
+          {error && <Alert tone="danger">{error}</Alert>}
           {replyingTo && (
-            <div className="reply-bar">
-              <button type="button" className="reply-bar-quote" onClick={() => jumpTo(replyingTo.id)}>
-                <span className="quote-author">Replying to {authorOf(replyingTo)}</span>
-                <span className="quote-text">{snippet(replyingTo.body)}</span>
+            <div className="ds-reply-bar">
+              <button type="button" className="ds-quote" onClick={() => jumpTo(replyingTo.id)}>
+                <span className="ds-quote-author">Replying to {authorOf(replyingTo)}</span>
+                <span className="ds-quote-text">{snippet(replyingTo.body)}</span>
               </button>
-              <button type="button" className="reply-bar-clear" onClick={() => setReplyToId(null)} aria-label="Cancel reply" title="Cancel reply">
+              <button type="button" className="ds-btn ds-btn-secondary ds-reply-clear" onClick={() => setReplyToId(null)} aria-label="Cancel reply" title="Cancel reply">
                 ✕
               </button>
             </div>
           )}
-          <label className="visually-hidden" htmlFor={`compose-${thread.thread_id}`}>
+          <label className="ds-visually-hidden" htmlFor={`compose-${thread.thread_id}`}>
             Message to {thread.other_name}
           </label>
           <textarea
+            className="ds-textarea"
             id={`compose-${thread.thread_id}`}
             ref={composeRef}
             rows={3}
@@ -323,23 +331,23 @@ function Conversation({ thread, viewer, myUserId, onChanged, onBack }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />
-          <div className="compose-actions">
-            <span className="muted small">
+          <div className="ds-compose-actions">
+            <span className="ds-muted ds-small">
               {draft.length}/{MAX_MESSAGE_LENGTH}
             </span>
-            <button type="submit" disabled={sending || !draft.trim()}>
+            <Button type="submit" disabled={sending || !draft.trim()}>
               {sending ? 'Sending…' : 'Send'}
-            </button>
+            </Button>
           </div>
         </form>
       ) : (
-        <p className="alert alert-info-plain read-only-note" role="status">
+        <Alert tone="info">
           🔒 This conversation is read-only.{' '}
           {viewer === 'parent'
             ? `${thread.other_name} doesn’t teach any of your children a subject this session, so new messages can’t be sent.`
             : `You don’t teach any of ${thread.other_name}’s children a subject this session, so new messages can’t be sent.`}{' '}
           You can still read the history.
-        </p>
+        </Alert>
       )}
     </div>
   )
@@ -386,24 +394,25 @@ function MessageItem({
   return (
     <div
       id={`msg-${message.id}`}
-      className={`message ${mine ? 'is-mine' : 'is-theirs'}${editing ? ' is-editing' : ''}${highlighted ? ' is-highlighted' : ''}`}
+      className={`ds-message ${mine ? 'is-mine' : 'is-theirs'}${editing ? ' is-editing' : ''}${highlighted ? ' is-highlighted' : ''}`}
     >
       {/* The quote shows the original's CURRENT text; no quote if it isn't there. */}
       {quoted && !editing && (
-        <button type="button" className="message-quote" onClick={() => onJump(quoted.id)} title="Go to the original message">
-          <span className="quote-author">{quotedAuthor}</span>
-          <span className="quote-text">
+        <button type="button" className="ds-quote" onClick={() => onJump(quoted.id)} title="Go to the original message">
+          <span className="ds-quote-author">{quotedAuthor}</span>
+          <span className="ds-quote-text">
             {snippet(quoted.body)}
-            {quoted.edited_at && <span className="muted"> (edited)</span>}
+            {quoted.edited_at && <span className="ds-muted"> (edited)</span>}
           </span>
         </button>
       )}
       {editing ? (
-        <form className="message-edit" onSubmit={save}>
-          <label className="visually-hidden" htmlFor={`edit-${message.id}`}>
+        <form className="ds-message-edit" onSubmit={save}>
+          <label className="ds-visually-hidden" htmlFor={`edit-${message.id}`}>
             Edit your message
           </label>
           <textarea
+            className="ds-textarea"
             id={`edit-${message.id}`}
             rows={3}
             maxLength={MAX_MESSAGE_LENGTH}
@@ -411,30 +420,32 @@ function MessageItem({
             onChange={(e) => setText(e.target.value)}
             autoFocus
           />
-          {error && <p className="alert alert-error small" role="alert">{error}</p>}
-          <div className="message-edit-actions">
-            <span className="muted small">
+          {error && <Alert tone="danger">{error}</Alert>}
+          <div className="ds-compose-actions">
+            <span className="ds-muted ds-small">
               {text.length}/{MAX_MESSAGE_LENGTH}
             </span>
-            <button type="button" className="button-secondary" onClick={onCancel} disabled={saving}>
-              Cancel
-            </button>
-            <button type="submit" disabled={saving || !text.trim()}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
+            <span className="ds-inline">
+              <Button variant="secondary" onClick={onCancel} disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving || !text.trim()}>
+                {saving ? 'Saving…' : 'Save'}
+              </Button>
+            </span>
           </div>
         </form>
       ) : (
-        <div className="message-body">{message.body}</div>
+        <div className="ds-message-body">{message.body}</div>
       )}
-      <div className="message-meta muted small">
+      <div className="ds-message-meta ds-muted ds-small">
         {authorName} · {formatDateTime(message.sent_at)}
         {message.edited_at && <span title={`Edited ${formatDateTime(message.edited_at)}`}> (edited)</span>}
         {mine && (message.read_at ? ` · Read ${formatDateTime(message.read_at)}` : ' · Not read yet')}
         {canReply && !editing && (
           <>
             {' · '}
-            <button type="button" className="button-link message-edit-link" onClick={onReply}>
+            <button type="button" className="ds-message-action" onClick={onReply}>
               Reply
             </button>
           </>
@@ -442,7 +453,7 @@ function MessageItem({
         {canEdit && !editing && (
           <>
             {' · '}
-            <button type="button" className="button-link message-edit-link" onClick={onEdit}>
+            <button type="button" className="ds-message-action" onClick={onEdit}>
               Edit
             </button>
           </>

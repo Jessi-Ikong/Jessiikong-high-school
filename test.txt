@@ -3628,3 +3628,578 @@ Known issues / follow-ups:
   5. Other admin pages are unchanged (old styles) until the next task; old wide tables may scroll sideways inside their box on phones until then.
   Not committed yet.
 -------------------------------------------
+
+[2026-09-25 23:17] Task: Roll out the design system to every remaining admin page
+
+Files changed/added:
+  Pages (src/pages/admin/): Students, Staff, Parents, Sessions, Terms, ClassesSections, Subjects, Periods, Timetable,
+    AssessmentComponents, GradeScale, ClassRanking, CorrectAttendance, CorrectScores, CorrectAssignmentGrades,
+    FeeStructures, StuckPayments, Announcements, PublicNews, PublicGallery, AdmissionsInquiries, ContactMessages,
+    AuditLog, IdCards
+  Shared components: src/components/ConfirmDialog.jsx (rebuilt on Dialog), PersonEdit.jsx (Dialog + Form components),
+    TermClassSectionPicker.jsx (Form components), ScoreGradebook.jsx and AssignmentGrading.jsx (data-label attributes and
+    the "ds-collapse" class only)
+  Design system: src/components/ui/Dialog.jsx (dismissOnBackdrop prop, [data-autofocus], Esc closes only the TOP dialog when
+    two are stacked), src/components/ui/DataTable.jsx (column option `stack`), src/lib/statusTones.js (new statuses:
+    complete, incomplete, not set up, current, editing, break, hidden, created, updated, deleted, corrected, revoked),
+    src/styles/app.css (page-layout helpers, admin "safety net" for shared legacy components, timetable cells, facts list,
+    audit list, pager, 2-line clamp)
+  Dev only: src/dev/PagePreviews.jsx (NEW), src/dev/DevPreview.jsx (route /__dev/page/:name)
+
+What was done:
+  - Every admin page except AdminLayout/AdminShell and AdminDashboard (done earlier) now uses PageHeader, Card, Alert,
+    LoadingState, EmptyState, Badge, Button, and the Form components (Field / TextInput / TextArea / Select / Checkbox).
+  - Every table is a DataTable: at phone width each row becomes a card, so nothing scrolls sideways. Shared tables
+    (gradebook, assignment grading, attendance roster) use the same card collapse inside the admin shell via
+    table.ds-collapse + data-label.
+  - Pop-up forms use Dialog (full screen on phones): edit person, subjects, confirmations, revoke card, the news post form,
+    and the inquiry / contact-message details.
+  - Every status/badge goes through statusTones.js (Badge status=...).
+  - Tap targets: row actions are 44px link buttons; timetable "+ Add class" / remove are 44px.
+
+  Behaviour changes: NONE to logic, data queries or business rules. The fetchers, write calls, validation, permissions,
+  state and messages are unchanged; only the markup, layout and styling changed. These visual/structural changes are worth
+  knowing about:
+  1. News & Events: the new/edit post form opens in a dialog (it used to appear inline above the list). Same fields, same save.
+  2. Admissions Inquiries and Contact Messages: "View" opens the details (contact info, status, internal notes, Save,
+     Delete) in a dialog, not an expanding table row. Same fields and actions; Esc or × closes it.
+  3. ConfirmDialog (used by every portal) now has the design-system look everywhere. Behaviour is the same: tapping outside
+     doesn't close it, and the confirm button gets focus.
+  4. Fees: the table's totals row became a "Total: …" line under the table. "Partial" invoice badges are now gold
+     (warning), not blue, following statusTones.
+  5. Timetable: rows are periods; on phones each period is a card listing the days. Break rows show "Break" for each day.
+  6. Admissions Inquiries / Contact Messages / ID cards / Stuck payments: on phones the person's name is the card title,
+     so the name column moved to the first position.
+  7. Gallery and News are shown as a responsive card grid; unpublished photos are dimmed.
+  8. Audit log: the verb (Created/Updated/Deleted/Corrected) is a coloured badge; "Raw data" still expands in place and
+     scrolls inside its box.
+  9. Announcements: the body preview in the table is clamped to 2 lines (it was cut to 1 line).
+
+Automated tests run:
+  - npm run lint (oxlint): 0 warnings, 0 errors. npm run build: OK; the dev previews are not in the production bundle.
+  - Node unit tests (scratchpad *_test.mjs, 11 files): all pass (attendance 4, dashboard 21, gender/dob 7, id-card PDF 21,
+    paystack 18, people edit 8, process payment 9, public content 13, public site text 13, reconcile 24, verify card 13).
+  - A browser script loaded the REAL pages with sample data (/__dev/page/students, timetable, grades, corrections,
+    stuck-payments, announcements, inquiries, id-cards) at 375, 768 and 1280 px:
+      - no horizontal overflow on any of them (24 checks);
+      - no interactive control under 44px tall;
+      - no error alerts.
+    The inquiry dialog is full screen at 375 px. Esc with the delete confirmation open closes only the confirmation;
+    a second Esc closes the details dialog.
+
+How to test manually (phone width = browser dev tools at 375 px, or on the phone at http://<PC IP>:5173):
+  Sample-data previews without signing in: npm run dev, then /__dev/page/<name>, or at an exact width:
+  /__dev/frame?src=/__dev/page/students&w=375&h=812
+  - People (Students): each student is a card (name as title, then admission no., class, status badge, email, photo, and
+    Edit / Subjects / Deactivate). Tap Edit: the dialog fills the screen and Save/Cancel stay at the bottom.
+  - School setup (Timetable): choose a section. Each period is a card listing Monday–Friday. "+ Add class" opens the small
+    form in the cell, and nothing scrolls sideways.
+  - Grading (Grade scale): the bands table becomes cards with full-width inputs. "Try a score" works.
+  - Corrections (Correct scores): pick term / class / section / subject. The gradebook becomes one card per student, with
+    labelled score inputs.
+  - Fees (Stuck payments): each payment is a card, and "Re-check now" is a full-size button. The check summary badge is
+    amber, red or grey.
+  - Communication (Announcements): the form fields are full width. Each announcement is a card with Edit / Delete.
+  - Website (Admissions Inquiries): tap View. The details open full screen; change the status, Save, and Esc closes.
+  - System (ID cards): the "Generate cards" card, then each card as a row card with Download / Revoke. Revoke asks for a
+    reason in the confirmation dialog.
+  Also check one page at 768 px and 1280 px: the tables become normal tables, and the sidebar shows from 768 px.
+
+Known issues / follow-ups / assumptions:
+  - Assumption: inline create forms (add student, add subject, add fee, upload photo, new announcement...) stay inline in
+    a Card rather than moving into dialogs. That keeps the flow exactly as before. Only forms that were already
+    pop-up-like, or row-expanding, became dialogs (items 1–2 above).
+  - Assumption: components shared with the teacher/student/parent portals (gradebook, assignment grading, attendance
+    roster, photo upload) keep their markup. Inside the admin shell they get the design-system look from a scoped
+    "safety net" in app.css (.ds .admin-content ...). The other portals look unchanged, except ConfirmDialog (item 3).
+  - The /__dev/page previews swap the Supabase client for a read-only fake while open (every write is refused with
+    "Preview only: nothing is saved"). Development only; reload the tab after using one.
+  - Note: port 5173 on this PC was being served by a different project during testing, so the checks used port 5180.
+  Not committed yet.
+-------------------------------------------
+
+[2026-09-26 00:11] Task: Roll out the design system to the TEACHER, STUDENT and PARENT portals (shared AppShell)
+
+Files changed/added:
+  NEW:
+    src/components/AppShell.jsx (the one shell for all four portals)
+    src/lib/portalNav.js (each portal's links, bottom bar and page titles)
+  Shell:
+    src/components/AdminShell.jsx (now a thin wrapper: <AppShell role="admin">)
+    src/components/TeacherLayout.jsx, StudentLayout.jsx, ParentLayout.jsx (now <AppShell role=...>)
+    src/lib/adminNav.js (only the admin link lists now; the helpers moved to portalNav.js)
+  Shared components (now built from the design system directly, in every portal):
+    AttendanceRoster, ScoreGradebook, AssignmentGrading, Messaging, PhotoUpload, SubmissionBadges,
+    PaymentBadges, DeleteAction, CorrectionConfirm, SignOutButton, AnnouncementFeed, ChildSwitcher,
+    DashboardParts
+  REMOVED:
+    src/components/DashboardPlaceholder.jsx (unused)
+    the admin-only "safety net" in src/styles/app.css (.ds .admin-content ... and table.ds-collapse)
+  Pages:
+    src/pages/TeacherDashboard.jsx, StudentDashboard.jsx, ParentDashboard.jsx, Profile.jsx, NotFound.jsx,
+    teacher/Gradebook.jsx, teacher/Assignments.jsx, teacher/MarkAttendance.jsx, teacher/Messages.jsx,
+    student/Assignments.jsx, parent/Fees.jsx, parent/PaymentCallback.jsx, parent/Messages.jsx.
+    The Announcements pages of all three portals use the restyled AnnouncementFeed.
+  Other:
+    src/lib/statusTones.js (new statuses: unread, read, marked, not marked, to grade, no hand-in, low, due)
+    src/styles/app.css (roster, messaging, dashboards, assignment cards, spinner, profile, segmented buttons)
+    Line endings only: TeacherDashboard.jsx, StudentDashboard.jsx and ParentDashboard.jsx had Windows line endings (CRLF) and are now LF.
+  Dev only: src/dev/PagePreviews.jsx (portal previews + sample data), src/dev/DevPreview.jsx (route for the attendance preview)
+
+What was done:
+  1. SHARED SHELL (AppShell): the same frame for admin, teacher, student and parent. A portal is one entry in
+     src/lib/portalNav.js with:
+       - its grouped links (the sidebar, and the full-screen menu on phones);
+       - its phone bottom bar;
+       - page names for routes that aren't menu links ("Mark attendance", "Payment").
+     Phones (< 768px):
+       - dark top bar: crest + current page + YOUR AVATAR. Tapping the avatar opens the full-screen menu:
+         your name, role, Log out, then every page of the portal, grouped;
+       - fixed bottom bar.
+     768px and up: sidebar with the grouped links; name, role and Log out in the top bar.
+     Esc, the × or choosing a page closes the menu; the page behind doesn't scroll while it's open.
+     CONFIRMED for all four roles in the previews:
+       - admin: bottom bar Overview | Students | Attendance | Inquiries | Menu; the menu has 25 links and a
+         search box (unchanged);
+       - teacher: bottom bar Today | Gradebook | Assignments | Messages | News; the menu has 6 links in 3 groups
+         (Teaching / Communication / Account) + Log out, no search;
+       - student: bottom bar Home | Assignments | News; the menu has 4 links;
+       - parent: bottom bar Home | Fees | Messages | News; the menu has 5 links.
+     NAV CHOICE (as asked, explained):
+       - The small portals have NO "Menu" item. Every page except My Profile fits in the bottom bar (3 to 5 items).
+       - My Profile and Log out live behind the avatar in the top bar, the usual place for account things on
+         phones, and the same in all three portals.
+       - Admin keeps 4 links + "Menu" because 25 pages can't fit.
+       - The avatar button also exists in the admin top bar now (same menu), so all four portals work the same way.
+       - Search in the menu only appears when a portal has more than 8 pages (admin).
+  2. SAFETY NET REMOVED: the shared components (attendance roster, gradebook, assignment grading, messaging,
+     photo upload, badges, delete / correction confirmations) now use the design system's components and classes
+     directly. They look the same in all four portals, with no admin-only CSS workaround.
+     - The gradebook and grading tables are real DataTables: on phones each student is a card, with the score
+       boxes / grade form stacked under their labels.
+     - The roster status choices (Present / Absent / Late / Excused) are four 44px buttons coloured by statusTones.
+  3. PAGES:
+     - Every page uses PageHeader, Card, Alert, LoadingState and EmptyState, and the Form components for inputs.
+     - Tables are DataTables that turn into cards on phones: gradebook, grading, invoices, payment history.
+     - Every status badge goes through statusTones.js: submission status, late / overdue, invoice and payment
+       status, unread, attendance marked, low attendance, due dates.
+     MESSAGING (teacher + parent):
+       - The layout switches on the component's OWN width (a container query), not the screen's.
+       - Below 720px it shows EITHER the conversation list OR the open conversation, never both squeezed. This
+         covers phones AND tablets, where the 768px sidebar leaves about 470px. "← All conversations" goes back.
+       - Wider, list and conversation sit side by side.
+       - The open conversation stays in the address (?thread=), as before, so the phone Back button also returns
+         to the list.
+       - This mode already existed for screens ≤800px; it now also works correctly beside the new sidebar.
+
+  BEHAVIOUR: NO logic, data, query or business-rule changes: the same fetches, saves, validation, permissions, state and
+  messages. Visual/structural side effects worth knowing:
+  1. Account menu (all portals): on phones, My Profile and Log out are behind the avatar in the top bar.
+     They are no longer in the header row.
+  2. Teacher "New assignment": the form opens in a dialog (full screen on phones) instead of expanding inline.
+     Same fields and same save.
+  3. Student "Hand in work" / "Change my submission": the form opens in a dialog instead of inside the card.
+     Same fields, same rules.
+  4. Status colours now follow statusTones everywhere, so a few colours changed:
+     - "Not submitted" is grey, not gold, on the student dashboard (it matches the Assignments page);
+     - "Current term" is green, not blue;
+     - "Part paid" invoices are gold, not blue (as in admin);
+     - overdue fees on the parent dashboard are red, not gold;
+     - unread message counts are gold, not red.
+  5. Parent Fees: an invoice that's fully paid shows "—" in the Pay column (it was blank). The outstanding total is a
+     coloured alert: gold = something to pay, green = all paid.
+  6. Parent dashboard: each child is a Card, with Attendance / Recent grades / Fees side by side on wider screens.
+     "School fees →" is a 44px link.
+  7. Teacher Today: lesson cards have a coloured left edge (green = attendance marked, gold = not yet).
+  8. Page not found (inside a portal): now has a "Go to your home page" link; it used to say "Placeholder page."
+  9. Messaging: messages are chat bubbles (yours green on the right). Reply / Edit are 44px buttons, and the
+     unread count is a badge.
+  10. Admin: the admin-only safety net is gone. Admin pages look the same, because the shared components now carry
+      the design system themselves.
+  11. Assignment lists (teacher and student) are Cards (one per assignment, expanding to its grading table), not a
+      DataTable. Each assignment holds a description, a file and a whole grading table, so a table row doesn't fit;
+      this matches the admin "Correct assignment grades" page.
+
+Automated tests run:
+  - npm run lint (oxlint): 0 warnings, 0 errors. npm run build: OK. The dev previews are not in the production bundle
+    (checked dist/).
+  - Node unit tests (scratchpad *_test.mjs, 11 files): all pass (4 + 21 + 7 + 21 + 18 + 8 + 9 + 13 + 13 + 24 + 13).
+  - Browser, through /__dev/page previews (REAL pages, sample data), at content widths 375 / 768 / 1280.
+    The first run showed a pitfall: an iframe's scrollbar makes a "768" frame 753px wide (phone layout), so the
+    frames were widened by the scrollbar width.
+    Pages checked: teacher Today, Gradebook, Assignments, Mark attendance, Messages (list and open thread), Profile;
+    student Home, Assignments, Announcements; parent Home, Fees, Messages (list and open thread), Profile; admin
+    Students, Correct attendance, Stuck payments, Inquiries. Results:
+      - NO horizontal overflow on any page at any width (57 checks);
+      - no control under 44px tall (the only exception is the previews' stand-in "Log out" button);
+      - no error alerts;
+      - bottom bar on phones, sidebar from 768px.
+    Messaging:
+      - 375 and 768: the list only; tap a thread → the conversation only (?thread=th1), "← All conversations" →
+        back to the list;
+      - 1280: both side by side;
+      - "+ New" lists the contacts without overflow.
+    Menus:
+      - teacher avatar menu: 6 links, 3 groups, Log out, no search; Esc closes; page scroll locked while open;
+      - admin "Menu": 25 links + search.
+    Other checks:
+      - student "Hand in work" dialog is full screen at 375 (386×796 in the frame), focus in the answer box;
+      - parent Fees (?child=st1): two 44px child buttons; invoices + payment history as cards up to 768, tables at
+        1280; badges Paid (green), Overdue (red), Part paid (gold); Pay buttons 44px;
+      - attendance roster at 375: 4 status buttons of 44×71px per student; the unmarked student highlighted.
+  - NOT seen: the teacher's lesson cards on Today. The preview ran on a Saturday, so the page correctly showed "It's
+    the weekend". The cards are covered by the overflow check on weekdays only; please look at them on a school day.
+
+How to test manually:
+  Previews without signing in: npm run dev, then /__dev/page/<name>. Names:
+    - teacher: teacher-today, teacher-gradebook, teacher-assignments, teacher-messages, teacher-profile,
+      teacher-attendance/11111111-1111-4111-8111-111111111111;
+    - student: student-home, student-assignments, student-announcements;
+    - parent: parent-home, parent-fees, parent-messages, parent-profile.
+  For an exact phone size: /__dev/frame?src=/__dev/page/parent-messages&w=375&h=812
+  (in the frame's src, write "?" as %3F and "=" as %3D, e.g. parent-messages%3Fthread%3Dth1).
+  Or sign in with a real teacher / parent account.
+
+  MESSAGING SPOT-CHECK AT PHONE WIDTH (teacher or parent; dev tools at 375px, or a real phone):
+    1. Open Messages. You see ONLY the conversation list (name, bold unread preview, gold unread badge, time) and
+       "+ New". No conversation pane beside it.
+    2. Tap a conversation. The list disappears and the conversation fills the width:
+       - "← All conversations" at the top, the person's name and shared class;
+       - chat bubbles (yours green on the right);
+       - Reply / Edit under your recent messages;
+       - the message box and Send at the bottom.
+       The address ends with ?thread=...
+    3. Tap Reply on a message: a quote bar appears above the box (✕ cancels). Send a message: it appears at the bottom.
+    4. Tap "← All conversations" (or the phone's Back button): the list returns. No sideways scrolling at any point.
+    5. Tablet (768px, sidebar visible): same single-pane behaviour. Desktop (1280px): list and conversation side by side.
+    6. A read-only conversation (no shared class) shows a blue "🔒 This conversation is read-only" note instead of the
+       message box.
+  SHELL: on a phone, check the bottom bar for each role. Tap the avatar (top right) → the menu with your name,
+  Log out, all pages and My Profile. Esc / × close it. At 768px+ the sidebar shows and the bottom bar is gone.
+
+Known issues / follow-ups / assumptions:
+  - NAV ASSUMPTIONS:
+    - Teacher bottom bar: Today, Gradebook, Assignments, Messages, News. "Mark attendance" is reached from Today's
+      lesson cards, as before, and is not a menu link.
+    - Student: Home, Assignments, News. Parent: Home, Fees, Messages, News.
+    - "News" is the short bottom-bar label for Announcements (the full name is used in the sidebar and page titles),
+      so five labels fit at 375px.
+    - My Profile is in the avatar menu (and the sidebar's "Account" group) for everyone.
+    - The payment result page (/parent/payment-callback) is titled "Payment" in the top bar, but is not in the menu,
+      because Paystack opens it.
+  - Old styles for the replaced portal markup (portal-shell, roster, messaging, dash-*, slot-card... in index.css)
+    are no longer used by these pages but were left in index.css. Removing them is a safe follow-up clean-up.
+  - The previews' top bar shows the portal name rather than the page name, and no bottom-bar item is highlighted,
+    because the preview address isn't a real portal route. With real routes the page name shows and the item is
+    highlighted.
+  Not committed yet.
+-------------------------------------------
+
+[2026-09-26 10:42] Task: Pre-deployment fixes: restyled sign-in pages, "Visit school website" link, Change password (all roles) + admin My Profile
+
+Files changed/added:
+  NEW:
+    src/components/AuthLayout.jsx (frame of the sign-in pages)
+    src/components/ChangePassword.jsx
+    src/lib/passwords.js (the password rules, moved out of SetPassword so both forms share them)
+  CHANGED:
+    src/pages/Login.jsx, ForgotPassword.jsx, SetPassword.jsx (design system; SetPassword now uses lib/passwords.js)
+    src/pages/Profile.jsx (Change password section; admin tier label; admin photo wording)
+    src/components/AppShell.jsx ("Visit school website" in the phone menu and the sidebar)
+    src/lib/adminNav.js (Account → My Profile)
+    src/App.jsx (route /admin/profile)
+    src/styles/app.css (sign-in page styles, website link)
+  Dev only: src/dev/PagePreviews.jsx
+    - admin-profile and limited-admin-profile previews;
+    - a fake sign-in check for the Change password tests;
+    - the fake client is now installed once and never undone. Before, React's development double-run could
+      reinstall a stale copy.
+  No database changes (none needed, see 3).
+
+What was done:
+  1. SIGN-IN PAGES (Login, Forgot password, Set password; also "Check your email", the invalid-link page and the
+     "Checking your link…" / "Loading…" states):
+     - the crest + "Jessiikong High School / School portal" on the brand green band, then the form in a white card;
+     - the design system's Field / TextInput (48px, 16px text so phones don't zoom), Alert, and full-width Button;
+     - links are 44px link-buttons.
+     Phones: the card fills the width (16px margins). 480px and up: a centred 420px card.
+     Logic, validation, messages and redirects are exactly as before. SetPassword's rules now come from
+     lib/passwords.js, with the same wording and order (unit-tested).
+     Wording: the Login card's heading is now "Sign in", because the school name moved into the header above the card.
+  2. "VISIT SCHOOL WEBSITE": a link to "/" at the end of the menu, for all four roles:
+     - phones: in the menu opened from the avatar, below My Profile, pinned so it's always visible, with Log out at the top;
+     - 768px and up: at the bottom of the sidebar.
+     It is an ordinary in-app link: no sign-out, no page reload, the session stays. The public header decides its button
+     from the SAME signed-in state as the portals ("My portal" when signed in, else "Portal login"). This logic in
+     PublicLayout.jsx was checked and not changed.
+  3. CHANGE PASSWORD (My Profile, every role) + ADMIN MY PROFILE:
+     - Fields: current password, new password, confirm new password.
+     - Checks before anything is sent:
+       - the current password is filled in;
+       - the new password passes the SAME rules as "Set your password" (at least 8 characters; the two must match);
+       - the new password differs from the current one.
+     - Then RE-AUTHENTICATION: supabase.auth.signInWithPassword(email of the signed-in account, current password).
+       - Only if Supabase accepts it (and it is the same account) does it call supabase.auth.updateUser({ password }).
+       - A wrong current password → "Your current password is incorrect." Nothing is changed, and the session is left
+         exactly as it was: Supabase returns the error without touching it (checked in supabase-js).
+     - Messages:
+       - "The two passwords do not match."
+       - "Your password must be at least 8 characters long."
+       - "Your new password must be different from your current password."
+       - "Your current password is incorrect."
+       - network / too-many-attempts messages;
+       - success: "Your password has been changed. Use the new password the next time you sign in."
+     - You stay signed in on this device after changing it. The fields are cleared.
+     ADMIN MY PROFILE:
+       - route /admin/profile, "My Profile" under Account in the admin menu/sidebar, like the other roles;
+       - shows name, "Super admin" / "Limited admin" and email;
+       - YOUR OWN PHOTO (closes the "no button for admin's own photo" gap; it reuses PhotoUpload, so it was small);
+       - Change password;
+       - no ID-card section (admins don't get ID cards).
+     No migration needed. Checked LIVE in a rolled-back transaction, as a super admin (Ikong Jessi) and a limited admin
+     (Admin One):
+       - may set own photo (storage rule) = true;
+       - own users.photo_url update = 1 row changed, for both.
+
+Automated tests run:
+  - npm run lint: 0 warnings, 0 errors. npm run build: OK; no preview code or the preview test password in dist/.
+  - Node tests: 12 files, all pass. New: password_rules_test.mjs, 6 checks (the same 8-character rule and messages as
+    before, length checked before match).
+  - Browser (local dev server):
+    SIGN-IN PAGES at content widths 375 / 768 / 1280: /login, /forgot-password, /set-password (no link → the
+    invalid-link page).
+      - design-system root present; no old auth-card markup left; no horizontal overflow;
+      - card 16px from the edges at 375, a centred 420px card at 768 and 1280;
+      - inputs 48px with 16px text; nothing under 44px.
+      - Screenshots checked at 375 and at desktop width.
+    CHANGE PASSWORD in the profile previews, with a FAKE sign-in check that records every call:
+      - mismatch → message, no calls;
+      - too short → message, no calls;
+      - same as current → message, no calls;
+      - empty current → blocked by the browser;
+      - WRONG current → "Your current password is incorrect.": signInWithPassword was called and FAILED, and
+        updateUser was NEVER called;
+      - correct current → signInWithPassword succeeded, THEN updateUser; success message; fields cleared.
+      - Done for the teacher, the super-admin and the limited-admin profile.
+    ADMIN PROFILE previews:
+      - "Super admin · <email>" and "Limited admin · <email>";
+      - photo button present; no ID card; Change password present.
+    VISIT SCHOOL WEBSITE from admin, teacher, student and parent (375px):
+      - in the avatar menu, 44px, visible without scrolling, next to My Profile and Log out;
+      - tapping it → path "/", the public site renders, with no reload and no sign-out call.
+      - At 1280px it's in the sidebar.
+      - (The previews use a fake signed-in user that only exists on the preview page, so the public header there says
+        "Portal login". The real app shares one sign-in state; please confirm "My portal" live, step B.)
+  - NOT done by me: a real password change on the live server. I don't enter real passwords. Please run step C.
+
+How to test manually:
+  A. SIGN-IN PAGES LOOK:
+     1. Signed out, open /login on a phone (or dev tools at 375px):
+        - dark-green band with the crest and "Jessiikong High School / School portal";
+        - a white card: "Sign in", Email, Password, a full-width green "Sign in" button, "Forgot password?";
+        - "← Back to the school website" under the card.
+        - No sideways scrolling; tapping a field doesn't zoom.
+     2. Wrong password → red alert "Incorrect email or password." Log out from a portal → green "You have been logged
+        out." on this page.
+     3. /forgot-password → same style; submit → "Check your email" card with a green alert.
+     4. Open an old or invalid /set-password link → "Set your password" with a red alert and a "Request a new link" button.
+        With a real invite/reset link: New password (hint "At least 8 characters.") + Confirm → Save.
+     5. Repeat 1 at desktop width: a centred card on the green band.
+  B. VISIT SCHOOL WEBSITE (for each of admin, teacher, student, parent):
+     1. Sign in. On a phone tap your avatar (top right) → "Visit school website" at the bottom of the menu. On a
+        laptop use the link at the bottom of the left sidebar.
+     2. You land on the public home page. The header button reads "My portal" (NOT "Portal login").
+     3. Tap "My portal" → you're back in your portal, still signed in (no login screen).
+  C. CHANGE PASSWORD (use a test account; each role has it on My Profile, admin via avatar menu / sidebar → My Profile):
+     1. Wrong current password + a valid new password (twice) → "Your current password is incorrect."
+        Sign out and sign in with the OLD password: it still works (nothing changed).
+        This check is done by Supabase's server: the page asks Supabase to sign in with the typed current password, and
+        only continues if Supabase accepts it. To see it: dev tools → Network → the request to
+        …/auth/v1/token?grant_type=password returns 400 (invalid_credentials), and NO request to …/auth/v1/user
+        (the password update) follows.
+     2. New passwords that don't match → "The two passwords do not match."
+        New password of 7 characters → "Your password must be at least 8 characters long."
+     3. Correct current password + a new one → green "Your password has been changed…". You stay signed in.
+        In Network: token request 200, then PUT …/auth/v1/user 200.
+     4. Sign out → the OLD password now fails ("Incorrect email or password."); the NEW one signs you in.
+  D. ADMIN MY PROFILE, both tiers (a super admin and a limited admin):
+     1. My Profile shows your name, "Super admin" / "Limited admin" and email.
+     2. "Add photo" / "Change photo" uploads your own photo (JPG/PNG/WebP ≤ 5 MB). The avatar area updates.
+     3. Change password works as in C.
+
+Known issues / follow-ups / assumptions:
+  - You stay signed in after changing your password; the brief didn't ask for a sign-out. Other devices' sessions are
+    not ended: Supabase keeps them until they refresh or expire. A "sign out everywhere" option is a possible follow-up.
+  - The re-check sign-in starts a fresh session for the same account. That's invisible to the user; nothing reloads.
+  - Supabase's own "secure password change" (email re-authentication) is off in supabase/config.toml
+    (secure_password_change = false). This page's current-password check covers it. If it's ever turned on, the page
+    shows "For security, please sign out and in again, then change your password." instead of failing silently.
+  - Password rules are unchanged: at least 8 characters, and the two entries must match (plus Supabase's own minimum,
+    also 8 in config.toml). No new strength rules were invented. Supabase's "weak password" error, if ever returned,
+    is shown as before.
+  - Admin photo: admins have no ID card, so the admin profile's photo note says only "Photo: JPG, PNG or WebP,
+    up to 5 MB. To change your name or email, ask a super admin."
+  - "Visit school website" sits at the end of the menu (pinned) rather than inside the name / Log out box, so it's
+    one tap away on phones without crowding that box.
+  - The hero's "Staff, student & parent portal" button on the public home page still points to /login; for a
+    signed-in user /login forwards straight to their portal, so it also works.
+  Not committed yet.
+-------------------------------------------
+
+[2026-09-26 11:04] Task: Deactivate/reactivate ADMIN accounts (super admins only) with database safety rails; centred sign-in text; centred footer copyright
+
+Files changed/added:
+  NEW: supabase/migrations/20260926000042_admin_account_guards.sql. NOT applied yet: run the usual
+       dry-run / push when you want it live. The dry run lists only this migration.
+  CHANGED:
+    src/pages/admin/Staff.jsx (Actions column in the Admins table, super admins only)
+    src/components/PersonEdit.jsx (the confirmation's "what happens" list for admins)
+    src/lib/people.js (adminDeactivationBlocker: the reason shown when the action isn't available)
+    src/styles/app.css (sign-in cards centred)
+    src/styles/public.css (footer copyright centred)
+    src/pages/Login.jsx, ForgotPassword.jsx, SetPassword.jsx (removed the left-padding tweak on links so they centre)
+  Dev only: src/dev/PagePreviews.jsx (a "staff" preview, plus a deactivated sample super admin)
+
+What was done:
+  1. ADMIN DEACTIVATE / REACTIVATE
+     WHO (unchanged rules, re-confirmed):
+       - super admins may change any admin's active status (existing RLS);
+       - limited admins may not: they can't see other admins (migration 21), and protect_user_columns() refuses any
+         change to an admin's role, level, status or login.
+     NEW DATABASE RAILS (migration 042): a BEFORE UPDATE/DELETE trigger on public.users,
+     private.guard_admin_accounts(). It applies to every path: the app, server functions, or direct SQL with no
+     signed-in user.
+       RAIL 1: nobody can deactivate their OWN account.
+         Message: "You can't deactivate your own account. Ask another super admin to do it if needed."
+       RAIL 2: the LAST ACTIVE super admin can't stop being one.
+         - It can't be deactivated. The same danger applies, so it also can't be demoted to limited admin, given
+           another role, or deleted.
+         - Message: "<Name> is the last active super admin, so this account can't be deactivated, demoted or deleted.
+           Make another admin a super admin (or reactivate one) first."
+         - The check takes a transaction lock first, so two super admins deactivating each other at the same moment
+           can't leave zero.
+       - Both messages reach the screen as written (the app shows database-rule messages directly).
+     STAFF PAGE (super admins):
+       - the Admins table has an Actions column: "Deactivate" (or "Reactivate" for a deactivated admin), with the same
+         confirmation dialog as for teachers;
+       - the dialog lists what happens: no sign-in and admin access ends at once; nothing is deleted, audit entries
+         stay; can be reactivated any time; "This is recorded in the audit log."
+       - Your OWN row shows a DISABLED "Deactivate" with the reason as a tooltip AND as visible text ("You can't
+         deactivate your own account."). The page uses the same rules as the database, so nothing fails silently.
+       - Limited admins see no Actions column; they still only see their own admin row.
+     AUDIT (confirmed, not assumed): users is covered by the generic audit trigger (migration 19). Admin deactivation and
+     reactivation are logged as "update_users" with is_active true → false / false → true, by the super admin who did
+     it (shown in the Audit Log as "Updated user account: <name>", change "Active: Yes → No"). Refused attempts change nothing and log
+     nothing.
+  2. SIGN-IN PAGES CENTRED: checked first, and it HAD regressed. The old card centred everything; the design-system
+     rebuild left-aligned it. Now everything in the Login, Forgot password and Set password cards is centred:
+     heading, subtitle, labels, hints, alert text, links. What you TYPE in the boxes stays left-aligned, as before.
+  3. FOOTER: "© 2026 Jessiikong High School. All rights reserved." (public site footer) is centred.
+
+Automated tests run:
+  - NEW database suite adminguard_test (local Postgres, all migrations incl. 042): 43 checks, 43 passed.
+    LIMITED admin:
+      - deactivating either super admin → 0 rows, both still active;
+      - can't deactivate THEMSELVES (rail 1);
+      - can't promote themselves (existing rule);
+      - can still deactivate / reactivate a teacher (unchanged).
+    SUPER admin:
+      - can NOT deactivate own account (exact message), still active;
+      - deactivates the limited admin → AUDIT update_users is_active "true>false", by the super admin;
+      - reactivates → AUDIT "false>true"; exactly 2 audit entries for 2 changes;
+      - deactivates the OTHER super admin (one remains) → logged.
+    RAIL 2, with Sade the only active super admin:
+      - she can't deactivate herself (rail 1 answers first), demote herself, or delete her account;
+      - the deactivated super admin can't do anything (0 rows).
+    RAIL 2 AT THE DATABASE LEVEL, with NO signed-in user (as server code / direct SQL):
+      - deactivate, demote, change role and delete of the last active super admin are ALL refused; she stays active.
+    Not over-blocking:
+      - re-deactivating an already inactive super admin is fine;
+      - a name edit on the last super admin is fine;
+      - demoting / deactivating a LIMITED admin is unaffected.
+    Swap:
+      - Sade reactivates Tobi (logged); Tobi deactivates Sade (allowed);
+      - now TOBI is last: he can't deactivate or demote himself, and nobody else can deactivate him.
+    Non-admins: a teacher can't deactivate themselves or an admin.
+  - ALL other database suites re-run with migration 042: every one passes, except idcard_test (27/28). Its failure
+    ("permission denied for function verify_id_card") also happens WITHOUT 042: it's the old suite, superseded when
+    migration 035 made verify_id_card server-only. private_avatar_test (its replacement) passes 47/47. Not related.
+  - Node tests: 13 files, all pass. New: admin_blocker_test.mjs (7):
+    - own row → own-account message;
+    - another super admin → allowed;
+    - the last active super admin → last-admin message (or own-account first);
+    - an inactive admin can always be reactivated;
+    - a limited admin → allowed.
+  - npm run lint 0 / build OK.
+  - Browser, Staff preview (super admin), at 375 and 1280, no overflow:
+    - "Ikong Jessi (you)": disabled Deactivate, title and note "You can't deactivate your own account.";
+    - "Ada Okafor" (limited): Deactivate, 44px; the dialog "Deactivate Ada Okafor?" lists the 3 admin effects;
+    - "Tobi Second (Deactivated)": Reactivate.
+  - Browser, centring at 375 and 1280:
+    - every heading, label and link in the Login / Forgot password / Set password cards is centred on the card
+      (0px offset); inputs left-aligned;
+    - the footer copyright is centred (0px) at both widths.
+
+How to test manually:
+  First apply the migration:
+    1. npx supabase db push --dry-run   (lists 20260926000042_admin_account_guards.sql)
+    2. echo y | npx supabase db push
+    3. npx supabase migration list -o pretty
+  You need two super admins to see Deactivate on another super admin. Create a second one with a "+" alias of your
+  Gmail on the Staff page, account type "Admin (super)", and set its password from the invite.
+  A. SUPER ADMIN CAN deactivate / reactivate another admin:
+     1. Sign in as a super admin → Staff → Admins. Another admin's row shows "Deactivate". Click → the dialog lists the
+        effects → Deactivate → a "Deactivated" tag appears.
+     2. Try signing in as that admin (another browser / private window) → refused ("deactivated").
+        If they were signed in, their admin pages stop loading data at once.
+     3. Back as the super admin: "Reactivate" → they can sign in again with the same password.
+     4. Audit Log (What was changed: User accounts): two "Updated user account" entries, "Active: Yes → No" then "No → Yes", by you.
+  B. SUPER ADMIN CANNOT deactivate THEMSELVES:
+     1. On the Staff page your own row (marked "(you)") shows a greyed "Deactivate" with the note "You can't deactivate
+        your own account." Hovering shows the same text. It can't be clicked.
+     2. Database level (proves it isn't just the button): in the Supabase SQL editor, in a transaction you roll back:
+          begin;
+          set local role authenticated;
+          select set_config('request.jwt.claims', json_build_object('sub', (select auth_id from public.users where email = '<your super admin email>'), 'role', 'authenticated')::text, true);
+          update public.users set is_active = false where email = '<your super admin email>';
+          rollback;
+        → ERROR "You can't deactivate your own account. Ask another super admin to do it if needed."
+  C. NOBODY CAN deactivate the LAST ACTIVE super admin:
+     1. With two super admins, deactivate the second one (A1). You are now the only active super admin.
+     2. In the app: this case is always your own row, because only an active super admin sees these buttons. So the page
+        shows the own-account note (B1).
+     3. Database level, as the database owner with NO signed-in user (like server code), in the SQL editor:
+          begin;
+          update public.users set is_active = false where email = '<the last active super admin email>';
+          rollback;
+        → ERROR "<Name> is the last active super admin, so this account can't be deactivated, demoted or deleted. …"
+        The same for:
+          update public.users set admin_level = 'limited_admin' where email = '…';
+          delete from public.users where email = '…';
+     4. Reactivate the second super admin (A3). Now either can deactivate the OTHER, but not themselves.
+  D. LIMITED ADMIN still CANNOT deactivate any admin:
+     1. Sign in as a limited admin → Staff → Admins: only your own row, and no Actions column.
+     2. Database level (rolled back), impersonating the limited admin as in B2:
+          update public.users set is_active = false where email = '<a super admin email>';
+        → "UPDATE 0": the row isn't even visible to them.
+        Their own account:
+          update public.users set is_active = false where email = '<the limited admin email>';
+        → "You can't deactivate your own account…"
+  E. CENTRING (phone and desktop):
+     1. /login, /forgot-password, and an expired /set-password link: every heading, sub-heading, field label, hint,
+        message and link is centred in the white card. What you type in the boxes starts at the left.
+     2. Public site, bottom of any page: "© 2026 Jessiikong High School. All rights reserved." is centred.
+
+Known issues / follow-ups / assumptions:
+  - Rail 2 also blocks DEMOTING, changing the role of, or DELETING the last active super admin, not just deactivating
+    it. Each would leave the school with no active super admin in the same way. There is no UI for these today; it's
+    database protection only.
+  - Rail 1 (no self-deactivation) applies to every account. Non-admins already couldn't change their own status, so in
+    practice it's new only for admins, both tiers.
+  - The "last active super admin" note exists in the page logic (tested) but can't appear in the UI (see C2). The
+    database rule is what protects that case.
+  - Deactivating an admin doesn't end their current browser session: they keep a signed-in page open until it
+    reloads, but every data request fails at once (same as teachers/students).
+  - No ID-card effects for admins: admins don't have ID cards.
+  - Not committed yet; migration 042 not applied.
+-------------------------------------------

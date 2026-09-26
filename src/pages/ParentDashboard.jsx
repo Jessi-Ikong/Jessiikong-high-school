@@ -9,6 +9,7 @@ import { fetchChildrenSummaries, fetchCurrentTerm } from '../lib/dashboardData'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { useAuth } from '../hooks/useAuth'
 import { AnnouncementsPreview, GradeList, MessagesPreview } from '../components/DashboardParts'
+import { Alert, Badge, Card, EmptyState, LoadingState, PageHeader } from '../components/ui/Primitives'
 
 // Parent home: one card per child (attendance this term, recent grades, fees
 // still to pay), then messages and announcements. The summaries for all
@@ -31,17 +32,19 @@ export default function ParentDashboard() {
 
   return (
     <>
-      <h1>Welcome, {profile.first_name}</h1>
+      <PageHeader title={`Welcome, ${profile.first_name}`} />
       {query.loading ? (
-        <p className="muted">Loading…</p>
+        <LoadingState lines={5} />
       ) : query.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+        <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
       ) : query.data.children.length === 0 ? (
-        <p className="empty-state">No children are linked to your account yet. Please contact the school office.</p>
+        <Card>
+          <EmptyState icon="users">No children are linked to your account yet. Please contact the school office.</EmptyState>
+        </Card>
       ) : (
         <ChildCards data={query.data} todayIso={todayIso} />
       )}
-      <div className="dash-grid">
+      <div className="ds-grid-2">
         <MessagesPreview base="/parent" />
         <AnnouncementsPreview base="/parent" />
       </div>
@@ -57,30 +60,25 @@ function ChildCards({ data, todayIso }) {
   const invoicesOf = groupBy(data.invoices, 'student_id')
 
   return (
-    <div className="card-list">
+    <>
       {children.map((c) => {
         const rate = rateOf[c.id]
         const grades = recentGrades(scoresOf[c.id] ?? [], gradedOf[c.id] ?? [], 3)
         const owing = outstandingInvoices(invoicesOf[c.id] ?? [])
         return (
-          <div key={c.id} className="panel">
-            <h2>{fullName(c)}</h2>
-            <p className="muted small">
+          <Card key={c.id} title={fullName(c)}>
+            <p className="ds-muted ds-small" style={{ marginTop: 0 }}>
               {c.className ?? 'Not enrolled this session'} · Admission no. {c.admissionNumber}
             </p>
-            <div className="dash-child">
+            <div className="ds-child-grid">
               <div>
-                <h3>Attendance{term ? ` · ${term.name}` : ''}</h3>
+                <h3 className="ds-h3">Attendance{term ? ` · ${term.name}` : ''}</h3>
                 {!rate ? (
-                  <p className="muted small">Nothing marked yet this term.</p>
+                  <p className="ds-note">Nothing marked yet this term.</p>
                 ) : (
-                  <p>
-                    {isLow(rate.rate) ? (
-                      <span className="badge badge-warning">{formatPercent(rate.rate)}</span>
-                    ) : (
-                      <strong>{formatPercent(rate.rate)}</strong>
-                    )}
-                    <span className="muted small">
+                  <p style={{ margin: 0 }}>
+                    {isLow(rate.rate) ? <Badge status="low">{formatPercent(rate.rate)}</Badge> : <strong>{formatPercent(rate.rate)}</strong>}
+                    <span className="ds-muted ds-small">
                       {' '}
                       · {Number(rate.attended)} of {Number(rate.records) - Number(rate.excused)} lessons
                       {Number(rate.absent) > 0 && `, ${Number(rate.absent)} absent`}
@@ -90,31 +88,31 @@ function ChildCards({ data, todayIso }) {
                 )}
               </div>
               <div>
-                <h3>Recent grades</h3>
+                <h3 className="ds-h3">Recent grades</h3>
                 <GradeList items={grades} />
               </div>
               <div>
-                <h3>Fees</h3>
+                <h3 className="ds-h3">Fees</h3>
                 {owing.length === 0 ? (
-                  <p className="muted small">Nothing to pay.</p>
+                  <p className="ds-note">Nothing to pay.</p>
                 ) : (
-                  <ul className="dash-list">
+                  <ul className="ds-dash-list">
                     {owing.slice(0, 3).map((i) => {
                       const overdue = i.status === 'overdue' || (i.due_date && i.due_date < todayIso)
                       return (
-                        <li key={i.id} className="dash-row">
+                        <li key={i.id} className="ds-dash-row">
                           <span>
                             {i.fee_structures?.name ?? 'Fee'}
-                            <span className="muted small"> · {i.terms?.name}</span>
+                            <span className="ds-muted ds-small"> · {i.terms?.name}</span>
                           </span>
                           <span>
                             <strong>{formatNaira(i.balance)}</strong>{' '}
                             {i.due_date ? (
-                              <span className={`badge${overdue ? ' badge-warning' : ' badge-muted'}`}>
+                              <Badge status={overdue ? 'overdue' : 'due'}>
                                 {overdue ? 'overdue since' : 'due'} {formatDate(i.due_date)}
-                              </span>
+                              </Badge>
                             ) : (
-                              <span className="badge badge-muted">no due date</span>
+                              <Badge status="due">no due date</Badge>
                             )}
                           </span>
                         </li>
@@ -122,12 +120,14 @@ function ChildCards({ data, todayIso }) {
                     })}
                   </ul>
                 )}
-                <Link to={`/parent/fees?child=${c.id}`}>School fees →</Link>
+                <Link className="ds-btn ds-btn-link" style={{ paddingLeft: 0 }} to={`/parent/fees?child=${c.id}`}>
+                  School fees →
+                </Link>
               </div>
             </div>
-          </div>
+          </Card>
         )
       })}
-    </div>
+    </>
   )
 }

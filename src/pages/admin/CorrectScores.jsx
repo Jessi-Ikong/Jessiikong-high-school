@@ -4,6 +4,8 @@ import { fetchCorrectionSetup, fetchSectionSubjects } from '../../lib/correction
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { GradebookForClass } from '../../components/ScoreGradebook'
 import TermClassSectionPicker from '../../components/TermClassSectionPicker'
+import { Alert, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select } from '../../components/ui/Form'
 
 // Admins (both tiers) correct scores for ANY term, class and subject, with
 // the teacher's gradebook. Saving goes through the same scores table and
@@ -14,17 +16,18 @@ export default function CorrectScores() {
   const setup = useAsyncData(fetchCorrectionSetup, 'correction-setup')
   return (
     <>
-      <h1>Correct scores</h1>
-      <p className="muted">
-        Fix scores for any class and term, including terms that are locked for teachers. Each change is recorded in the
-        audit log.
-      </p>
+      <PageHeader
+        title="Correct scores"
+        subtitle="Fix scores for any class and term, including terms that are locked for teachers. Each change is recorded in the audit log."
+      />
       {setup.loading ? (
-        <p className="muted">Loading…</p>
+        <LoadingState lines={4} />
       ) : setup.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(setup.error)}</p>
+        <Alert tone="danger">{friendlyDbError(setup.error)}</Alert>
       ) : setup.data.terms.length === 0 ? (
-        <p className="empty-state">No terms exist yet.</p>
+        <Card>
+          <EmptyState icon="calendar">No terms exist yet.</EmptyState>
+        </Card>
       ) : (
         <Picker setup={setup.data} />
       )}
@@ -41,7 +44,9 @@ function Picker({ setup }) {
     <>
       <TermClassSectionPicker setup={setup} value={filters} onChange={setFilters} />
       {!filters.sectionId ? (
-        <p className="empty-state">Choose a class and section.</p>
+        <Card>
+          <EmptyState icon="edit">Choose a class and section.</EmptyState>
+        </Card>
       ) : (
         <SubjectPicker key={`${term.session_id}:${filters.sectionId}`} term={term} sectionId={filters.sectionId} />
       )}
@@ -53,28 +58,39 @@ function SubjectPicker({ term, sectionId }) {
   const subjectsQuery = useAsyncData(() => fetchSectionSubjects(term.session_id, sectionId), `section-subjects:${term.session_id}:${sectionId}`)
   const [subjectId, setSubjectId] = useState('')
 
-  if (subjectsQuery.loading) return <p className="muted">Loading subjects…</p>
-  if (subjectsQuery.error) return <p className="alert alert-error" role="alert">{friendlyDbError(subjectsQuery.error)}</p>
+  if (subjectsQuery.loading) return <LoadingState lines={3} label="Loading subjects…" />
+  if (subjectsQuery.error) return <Alert tone="danger">{friendlyDbError(subjectsQuery.error)}</Alert>
   const subjects = subjectsQuery.data
-  if (subjects.length === 0) return <p className="empty-state">No student in this section takes any subject in {term.sessions.name}.</p>
+  if (subjects.length === 0) {
+    return (
+      <Card>
+        <EmptyState icon="book">No student in this section takes any subject in {term.sessions.name}.</EmptyState>
+      </Card>
+    )
+  }
 
   const cls = subjectId ? { key: `${term.id}:${sectionId}:${subjectId}`, termId: term.id, sectionId, subjectId } : null
   return (
     <>
-      <div className="filter-bar">
-        <label className="inline-field">
-          Subject
-          <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
-            <option value="">Choose a subject</option>
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="ds-filters">
+        <Field label="Subject">
+          {(p) => (
+            <Select {...p} value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+              <option value="">Choose a subject</option>
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </div>
-      {cls && <GradebookForClass key={cls.key} cls={cls} term={term} admin />}
+      {cls && (
+        <Card title={subjects.find((s) => s.id === subjectId)?.name ?? 'Scores'}>
+          <GradebookForClass key={cls.key} cls={cls} term={term} admin />
+        </Card>
+      )}
     </>
   )
 }

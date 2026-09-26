@@ -4,6 +4,9 @@ import { supabase } from '../../lib/supabaseClient'
 import { friendlyDbError, run } from '../../lib/db'
 import { gradeFor, weightTotal } from '../../lib/grading'
 import { useAsyncData } from '../../hooks/useAsyncData'
+import { Alert, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 async function fetchSetup() {
   const [terms, classes, sections] = await Promise.all([
@@ -36,18 +39,19 @@ async function fetchRanking(termId, sectionId) {
 
 export default function ClassRanking() {
   const setup = useAsyncData(fetchSetup, 'ranking-setup')
-  if (setup.loading) return <p className="muted">Loading…</p>
-  if (setup.error) return <p className="alert alert-error" role="alert">{friendlyDbError(setup.error)}</p>
+  if (setup.loading) return <LoadingState lines={6} />
+  if (setup.error) return <Alert tone="danger">{friendlyDbError(setup.error)}</Alert>
 
   const { terms, sections } = setup.data
   if (terms.length === 0 || sections.length === 0) {
     return (
       <>
-        <h1>Class ranking</h1>
-        <p className="empty-state">
-          Create a <Link to="/admin/terms">term</Link> and a <Link to="/admin/classes">class with a section</Link>{' '}
-          first.
-        </p>
+        <PageHeader title="Class ranking" />
+        <Card>
+          <EmptyState icon="chart" title="A few things first">
+            Create a <Link to="/admin/terms">term</Link> and a <Link to="/admin/classes">class with a section</Link> first.
+          </EmptyState>
+        </Card>
       </>
     )
   }
@@ -69,118 +73,114 @@ function RankingView({ terms, classes, sections }) {
 
   return (
     <>
-      <h1>Class ranking</h1>
-      <p className="muted">
-        Position of each student in their section for a term, by their average across all subjects. Worked out live
-        from the scores entered so far. Nothing is stored, so it changes as soon as a score changes.
-      </p>
+      <PageHeader
+        title="Class ranking"
+        subtitle="Position of each student in their section for a term, by their average across all subjects. Worked out live from the scores entered so far. Nothing is stored, so it changes as soon as a score changes."
+      />
 
-      <div className="filter-bar">
-        <label className="inline-field">
-          Term
-          <select value={term.id} onChange={(e) => setChosenTermId(e.target.value)}>
-            {terms.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}, {t.sessions.name}
-                {t.is_current ? ' (current)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          Class
-          <select
-            value={cls.id}
-            onChange={(e) => {
-              setChosenClassId(e.target.value)
-              setChosenSectionId(null)
-            }}
-          >
-            {classesWithSections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="inline-field">
-          Section
-          <select value={section.id} onChange={(e) => setChosenSectionId(e.target.value)}>
-            {classSections.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="ds-filters">
+        <Field label="Term">
+          {(p) => (
+            <Select {...p} value={term.id} onChange={(e) => setChosenTermId(e.target.value)}>
+              {terms.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}, {t.sessions.name}
+                  {t.is_current ? ' (current)' : ''}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Class">
+          {(p) => (
+            <Select
+              {...p}
+              value={cls.id}
+              onChange={(e) => {
+                setChosenClassId(e.target.value)
+                setChosenSectionId(null)
+              }}
+            >
+              {classesWithSections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Section">
+          {(p) => (
+            <Select {...p} value={section.id} onChange={(e) => setChosenSectionId(e.target.value)}>
+              {classSections.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </div>
 
       {query.loading ? (
-        <p className="muted">Working out positions…</p>
+        <LoadingState lines={5} label="Working out positions…" />
       ) : query.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+        <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
       ) : (
         <>
           {query.data.incomplete.length > 0 && (
-            <p className="alert alert-info-plain">
+            <Alert tone="info">
               Not counted this term because their assessment components don&apos;t add up to 100%:{' '}
-              {query.data.incomplete.map((s) => `${s.name} (${s.total}%)`).join(', ')}.{' '}
-              <Link to="/admin/assessment">Fix in Assessment components</Link>.
-            </p>
+              {query.data.incomplete.map((s) => `${s.name} (${s.total}%)`).join(', ')}. <Link to="/admin/assessment">Fix in Assessment components</Link>.
+            </Alert>
           )}
-          {query.data.rows.length === 0 ? (
-            <p className="empty-state">
-              No ranking for {cls.name} {section.name} in {term.name} yet — no scores have been entered for its
-              students.
-            </p>
-          ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Position</th>
-                    <th>Student</th>
-                    <th>Admission no.</th>
-                    <th>Subjects counted</th>
-                    <th>Average</th>
-                    <th>Grade</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {query.data.rows.map((r) => (
-                    <tr key={r.enrollment_id}>
-                      <td>
-                        <strong>{ordinal(r.position)}</strong> <span className="muted small">of {r.class_size}</span>
-                      </td>
-                      <td>{r.full_name}</td>
-                      <td>{r.admission_number}</td>
-                      <td>{r.subjects_counted}</td>
-                      <td>{Number(r.average_score).toFixed(2)}%</td>
-                      <td className="grade-cell">
-                        {(() => {
-                          const band = gradeFor(r.average_score, query.data.scale)
-                          return band ? (
-                            <>
-                              {band.grade}
-                              {band.remark && <span className="muted small"> {band.remark}</span>}
-                            </>
-                          ) : (
-                            '—'
-                          )
-                        })()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <p className="muted small">
-            How it&apos;s worked out: for each subject, each assessment component counts once at least one score has been
-            entered for it in this section (a student missing that score gets 0 for it). The subject % is the weighted
-            share of those components. A student&apos;s average is the mean of their subject %s. Students with equal
-            averages share a position (1st, 1st, 3rd). The grade is the school grade scale applied to the average, rounded to
-            the nearest whole number (<Link to="/admin/grade-scale">edit the grade scale</Link>).
+          <Card title={`${cls.name} ${section.name} · ${term.name}`} flush>
+            <DataTable
+              caption={`Class ranking for ${cls.name} ${section.name}`}
+              rowKey={(r) => r.enrollment_id}
+              rows={query.data.rows}
+              empty={
+                <EmptyState icon="chart">
+                  No ranking for {cls.name} {section.name} in {term.name} yet — no scores have been entered for its students.
+                </EmptyState>
+              }
+              columns={[
+                { key: 'student', header: 'Student', primary: true, render: (r) => r.full_name },
+                {
+                  key: 'position',
+                  header: 'Position',
+                  render: (r) => (
+                    <span>
+                      <strong>{ordinal(r.position)}</strong> <span className="ds-muted ds-small">of {r.class_size}</span>
+                    </span>
+                  ),
+                },
+                { key: 'admission', header: 'Admission no.', render: (r) => r.admission_number },
+                { key: 'subjects', header: 'Subjects counted', numeric: true, render: (r) => r.subjects_counted },
+                { key: 'average', header: 'Average', numeric: true, render: (r) => `${Number(r.average_score).toFixed(2)}%` },
+                {
+                  key: 'grade',
+                  header: 'Grade',
+                  render: (r) => {
+                    const band = gradeFor(r.average_score, query.data.scale)
+                    return band ? (
+                      <span>
+                        <strong>{band.grade}</strong>
+                        {band.remark && <span className="ds-muted ds-small"> {band.remark}</span>}
+                      </span>
+                    ) : (
+                      '—'
+                    )
+                  },
+                },
+              ]}
+            />
+          </Card>
+          <p className="ds-note">
+            How it&apos;s worked out: for each subject, each assessment component counts once at least one score has been entered for it in this section (a
+            student missing that score gets 0 for it). The subject % is the weighted share of those components. A student&apos;s average is the mean of their
+            subject %s. Students with equal averages share a position (1st, 1st, 3rd). The grade is the school grade scale applied to the average, rounded to the
+            nearest whole number (<Link to="/admin/grade-scale">edit the grade scale</Link>).
           </p>
         </>
       )}

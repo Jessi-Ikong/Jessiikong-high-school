@@ -17,6 +17,10 @@ import { termGradingOpen } from '../../lib/grading'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useAuth } from '../../hooks/useAuth'
 import { FileLink, SubmissionBadges } from '../../components/SubmissionBadges'
+import { toneFor } from '../../lib/statusTones'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Checkbox, Field, TextArea, TextInput } from '../../components/ui/Form'
+import Dialog from '../../components/ui/Dialog'
 
 // Assignments for the subjects the student takes, in their section, in the
 // CURRENT session (every class they take, every term; the page groups them by
@@ -90,25 +94,25 @@ export default function Assignments() {
   const query = useAsyncData(() => fetchMyAssignments(profile.id), `my-assignments:${profile.id}`)
   const [message, setMessage] = useState(null)
 
-  if (query.loading) return <p className="muted">Loading your assignments…</p>
-  if (query.error) return <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+  if (query.loading) return <LoadingState lines={5} label="Loading your assignments…" />
+  if (query.error) return <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
 
   const data = query.data
   if (data.problem === 'no-student') {
     return (
       <>
-        <h1>Assignments</h1>
-        <p className="alert alert-error" role="alert">
-          Your account isn&apos;t set up as a student record yet. Please contact the school office.
-        </p>
+        <PageHeader title="Assignments" />
+        <Alert tone="danger">Your account isn&apos;t set up as a student record yet. Please contact the school office.</Alert>
       </>
     )
   }
   if (data.problem === 'no-enrollment') {
     return (
       <>
-        <h1>Assignments</h1>
-        <p className="empty-state">You aren&apos;t enrolled in a class for the current session yet, so there are no assignments.</p>
+        <PageHeader title="Assignments" />
+        <Card>
+          <EmptyState icon="file">You aren&apos;t enrolled in a class for the current session yet, so there are no assignments.</EmptyState>
+        </Card>
       </>
     )
   }
@@ -122,37 +126,40 @@ export default function Assignments() {
 
   return (
     <>
-      <h1>Assignments</h1>
-      <p className="muted">
-        {enrollment.sections.classes.name} {enrollment.sections.name} · {enrollment.sessions.name}. Work set for the
-        subjects you take.
-      </p>
-      {message && <p className="alert alert-success" role="status">{message}</p>}
+      <PageHeader
+        title="Assignments"
+        subtitle={`${enrollment.sections.classes.name} ${enrollment.sections.name} · ${enrollment.sessions.name}. Work set for the subjects you take.`}
+      />
+      {message && <Alert tone="success">{message}</Alert>}
       {data.subjectCount === 0 ? (
-        <p className="empty-state">No subjects have been chosen for you yet. Please contact the school office.</p>
+        <Card>
+          <EmptyState icon="book">No subjects have been chosen for you yet. Please contact the school office.</EmptyState>
+        </Card>
       ) : assignments.length === 0 ? (
-        <p className="empty-state">No assignments have been set for your subjects yet.</p>
+        <Card>
+          <EmptyState icon="file">No assignments have been set for your subjects yet.</EmptyState>
+        </Card>
       ) : (
         termsOf(items).map((term) => {
           const termItems = items.filter((i) => i.assignment.terms.id === term.id)
           return (
-            <section key={term.id} className="term-group">
-              <h2>
+            <section key={term.id} className="ds-term-group">
+              <h2 className="ds-h2 ds-inline" style={{ fontSize: 'var(--ds-text-lg)' }}>
                 {term.name}
-                {term.is_current && <span className="badge badge-info">Current term</span>}
-                {!termGradingOpen(term) && <span className="badge badge-muted">🔒 Closed</span>}
+                {term.is_current && <Badge status="current">Current term</Badge>}
+                {!termGradingOpen(term) && <Badge status="locked">🔒 Closed</Badge>}
               </h2>
               {GROUPS.map((group) => {
                 const groupItems = termItems.filter((i) => i.status.key === group.key)
                 return (
-                  <section key={group.key} className="assignment-group">
-                    <h3>
-                      {group.title} <span className="muted small">({groupItems.length})</span>
+                  <section key={group.key}>
+                    <h3 className="ds-h3" style={{ marginTop: 16 }}>
+                      {group.title} ({groupItems.length})
                     </h3>
                     {groupItems.length === 0 ? (
-                      <p className="muted small">{group.empty}</p>
+                      <p className="ds-note">{group.empty}</p>
                     ) : (
-                      <div className="assignment-list">
+                      <div>
                         {groupItems.map((item) => (
                           <AssignmentCard
                             key={`${item.assignment.id}:${item.submission?.submitted_at ?? ''}`}
@@ -187,25 +194,27 @@ function AssignmentCard({ assignment, submission, status, studentId, urls, onSub
   const offline = !assignment.requires_submission
 
   return (
-    <article className={`panel assignment-card status-${status.key}`}>
-      <header className="assignment-card-header">
-        <div>
-          <h3>
-            {assignment.title}
-            {offline && <span className="badge badge-muted">Offline work</span>}
-          </h3>
-          <p className="muted small">
-            {assignment.subjects.name}
-            {teacher ? ` · ${fullName(teacher)}` : ''}
-          </p>
-        </div>
+    <Card
+      className={`ds-edge-${toneFor(status.key)}`}
+      title={
+        <span className="ds-inline">
+          {assignment.title}
+          {offline && <Badge status="no hand-in">Offline work</Badge>}
+        </span>
+      }
+    >
+      <div className="ds-assignment-head">
+        <p className="ds-muted ds-small" style={{ margin: 0 }}>
+          {assignment.subjects.name}
+          {teacher ? ` · ${fullName(teacher)}` : ''}
+        </p>
         <SubmissionBadges status={status} />
-      </header>
-      <p className="small">
+      </div>
+      <p className="ds-small">
         <strong>Due:</strong> {assignment.due_at ? formatDateTime(assignment.due_at) : 'no due date'}
-        {assignment.max_score && <span className="muted"> · Marked out of {formatMark(assignment.max_score)}</span>}
+        {assignment.max_score && <span className="ds-muted"> · Marked out of {formatMark(assignment.max_score)}</span>}
       </p>
-      {assignment.description && <p className="assignment-description">{assignment.description}</p>}
+      {assignment.description && <p className="ds-pre ds-small">{assignment.description}</p>}
       {assignment.attachment_url && (
         <p>
           <FileLink path={assignment.attachment_url} urls={urls} />
@@ -213,66 +222,69 @@ function AssignmentCard({ assignment, submission, status, studentId, urls, onSub
       )}
 
       {submission && !offline && !editing && (
-        <div className="my-submission">
-          <h4>Your work</h4>
-          <p className="muted small">
+        <div className="ds-work-box">
+          <h4 className="ds-h3">Your work</h4>
+          <p className="ds-muted ds-small" style={{ marginTop: 0 }}>
             Handed in {formatDateTime(submission.submitted_at)}
-            {status.late && <strong className="late-text"> — after the due date (Late)</strong>}
+            {status.late && <strong className="ds-text-danger"> — after the due date (Late)</strong>}
           </p>
-          {submission.content && <div className="submission-text">{submission.content}</div>}
+          {submission.content && <div className="ds-pre ds-small">{submission.content}</div>}
           <FileLink path={submission.attachment_url} urls={urls} />
         </div>
       )}
 
       {status.key === 'graded' && (
-        <div className="grade-result">
-          <p>
+        <div className="ds-work-box ds-work-graded">
+          <p style={{ marginTop: 0 }}>
             <strong>
               Mark: {formatMark(submission.score)}
               {assignment.max_score ? ` / ${formatMark(assignment.max_score)}` : ''}
             </strong>
           </p>
           {submission.feedback ? (
-            <p className="submission-text">{submission.feedback}</p>
+            <p className="ds-pre">{submission.feedback}</p>
           ) : (
-            <p className="muted small">No written feedback.</p>
+            <p className="ds-muted ds-small">No written feedback.</p>
           )}
-          <p className="muted small">
+          <p className="ds-muted ds-small" style={{ marginBottom: 0 }}>
             🔒 Graded {formatDateTime(submission.graded_at)}.{offline ? '' : ' This submission can no longer be changed.'}
           </p>
         </div>
       )}
 
       {status.key !== 'graded' && offline && (
-        <p className="alert alert-info-plain">No submission needed — your teacher will grade this directly.</p>
+        <Alert tone="info">No submission needed — your teacher will grade this directly.</Alert>
       )}
 
       {status.key !== 'graded' && !offline && termClosed && (
-        <p className="alert alert-info-plain">
+        <Alert tone="info">
           🔒 This assignment&apos;s term has closed for new submissions. Contact an admin if you still need to hand this in.
-        </p>
+        </Alert>
       )}
 
       {status.key !== 'graded' &&
         !offline &&
         !termClosed &&
-        (editing ? (
-          <SubmitForm
-            assignment={assignment}
-            existing={submission}
-            studentId={studentId}
-            onCancel={() => setEditing(false)}
-            onSubmitted={onSubmitted}
-          />
-        ) : (
-          <div className="row-actions">
-            <button type="button" className={submission ? 'button-secondary' : undefined} onClick={() => setEditing(true)}>
-              {submission ? 'Change my submission' : 'Hand in work'}
-            </button>
-            {submission && <span className="muted small">You can change it until your teacher grades it.</span>}
-          </div>
-        ))}
-    </article>
+        (
+          <>
+            <div className="ds-row-actions" style={{ alignItems: 'center' }}>
+              <Button variant={submission ? 'secondary' : 'primary'} onClick={() => setEditing(true)}>
+                {submission ? 'Change my submission' : 'Hand in work'}
+              </Button>
+              {submission && <span className="ds-muted ds-small">You can change it until your teacher grades it.</span>}
+            </div>
+            {editing && (
+              <SubmitForm
+                assignment={assignment}
+                existing={submission}
+                studentId={studentId}
+                onCancel={() => setEditing(false)}
+                onSubmitted={onSubmitted}
+              />
+            )}
+          </>
+        )}
+    </Card>
   )
 }
 
@@ -323,45 +335,50 @@ function SubmitForm({ assignment, existing, studentId, onCancel, onSubmitted }) 
   }
 
   return (
-    <form className="submit-form" onSubmit={handleSubmit}>
-      {pastDue && (
-        <p className="alert alert-info-plain">
-          The due date has passed. You can still hand this in, but it will be marked <strong>Late</strong> for you and
-          your teacher.
-        </p>
-      )}
-      <label>
-        Your answer (optional if you attach a file)
-        <textarea rows={5} value={content} onChange={(e) => setContent(e.target.value)} />
-      </label>
-      {existing?.attachment_url && !file && (
-        <label className="checkbox-field">
-          <input type="checkbox" checked={removeFile} onChange={(e) => setRemoveFile(e.target.checked)} />
-          Remove the file I handed in before
-        </label>
-      )}
-      <label>
-        {existing?.attachment_url ? 'Replace file (optional)' : 'Attach a file (optional)'}
-        <input
-          type="file"
-          accept={FILE_ACCEPT}
-          onChange={(e) => {
-            const chosen = e.target.files[0] ?? null
-            setFile(chosen)
-            setError(fileProblem(chosen))
-          }}
-        />
-        <span className="muted small">{FILE_RULES}</span>
-      </label>
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
-      <div className="form-actions">
-        <button type="submit" disabled={saving}>
-          {saving ? 'Handing in…' : existing ? 'Hand in again' : 'Hand in'}
-        </button>
-        <button type="button" className="button-secondary" onClick={onCancel} disabled={saving}>
-          Cancel
-        </button>
-      </div>
-    </form>
+    <Dialog
+      title={`Hand in: ${assignment.title}`}
+      onClose={onCancel}
+      busy={saving}
+      dismissOnBackdrop={false}
+      footer={
+        <div className="ds-form-actions" style={{ margin: 0, width: '100%' }}>
+          <Button variant="secondary" onClick={onCancel} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="submit" form={`submit-${assignment.id}`} disabled={saving}>
+            {saving ? 'Handing in…' : existing ? 'Hand in again' : 'Hand in'}
+          </Button>
+        </div>
+      }
+    >
+      <form id={`submit-${assignment.id}`} onSubmit={handleSubmit}>
+        {pastDue && (
+          <Alert tone="warning">
+            The due date has passed. You can still hand this in, but it will be marked <strong>Late</strong> for you and your teacher.
+          </Alert>
+        )}
+        <Field label="Your answer" hint="Optional if you attach a file.">
+          {(p) => <TextArea {...p} rows={6} value={content} onChange={(e) => setContent(e.target.value)} data-autofocus />}
+        </Field>
+        {existing?.attachment_url && !file && (
+          <Checkbox label="Remove the file I handed in before" checked={removeFile} onChange={(e) => setRemoveFile(e.target.checked)} />
+        )}
+        <Field label={existing?.attachment_url ? 'Replace file (optional)' : 'Attach a file (optional)'} hint={FILE_RULES}>
+          {(p) => (
+            <TextInput
+              {...p}
+              type="file"
+              accept={FILE_ACCEPT}
+              onChange={(e) => {
+                const chosen = e.target.files[0] ?? null
+                setFile(chosen)
+                setError(fileProblem(chosen))
+              }}
+            />
+          )}
+        </Field>
+        {error && <Alert tone="danger">{error}</Alert>}
+      </form>
+    </Dialog>
   )
 }

@@ -5,6 +5,9 @@ import { AUDIENCES, audienceLabel, fetchAnnouncements } from '../../lib/announce
 import { formatDateTime } from '../../lib/assignments'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import DeleteAction from '../../components/DeleteAction'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Field, Select, TextArea, TextInput } from '../../components/ui/Form'
+import DataTable from '../../components/ui/DataTable'
 
 const EMPTY_FORM = { title: '', body: '', audience: 'all', class_id: '' }
 const MAX_BODY = 5000
@@ -76,119 +79,131 @@ export default function Announcements() {
     }
   }
 
-  if (query.loading) return <p className="muted">Loading…</p>
-  if (query.error) return <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+  if (query.loading) return <LoadingState lines={6} />
+  if (query.error) return <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
   const { announcements, classes } = query.data
 
   return (
     <>
-      <h1>Announcements</h1>
-      <p className="muted">
-        Post notices to everyone, to one group, or to a single class. A class announcement reaches the class&apos;s
-        students (active this session, any section), their parents, and the teachers who teach that class this session.
-      </p>
+      <PageHeader
+        title="Announcements"
+        subtitle="Post notices to everyone, to one group, or to a single class. A class announcement reaches the class's students (active this session, any section), their parents, and the teachers who teach that class this session."
+      />
 
-      <form className="panel form-grid" onSubmit={handleSubmit}>
-        <h2>{editing ? `Edit "${editing.title}"` : 'New announcement'}</h2>
-        {formError && <p className="alert alert-error" role="alert">{formError}</p>}
-        {notice && <p className="alert alert-success" role="status">{notice}</p>}
-        <label className="span-all">
-          Title
-          <input value={form.title} onChange={(e) => update('title', e.target.value)} maxLength={200} required />
-        </label>
-        <label>
-          Audience
-          <select value={form.audience} onChange={(e) => update('audience', e.target.value)}>
-            {AUDIENCES.map((a) => (
-              <option key={a.value} value={a.value}>
-                {a.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {form.audience === 'specific_class' && (
-          <label>
-            Class
-            <select value={form.class_id} onChange={(e) => update('class_id', e.target.value)} required>
-              <option value="">Choose a class…</option>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label className="span-all">
-          Message
-          <textarea rows={6} value={form.body} onChange={(e) => update('body', e.target.value)} maxLength={MAX_BODY} required />
-          <span className="muted small">
-            Plain text. {form.body.length}/{MAX_BODY}
-          </span>
-        </label>
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : editing ? 'Save changes' : 'Post announcement'}
-          </button>
-          {editing && (
-            <button type="button" className="button-secondary" onClick={resetForm}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </form>
+      <Card title={editing ? `Edit "${editing.title}"` : 'New announcement'}>
+        <form onSubmit={handleSubmit}>
+          {formError && <Alert tone="danger">{formError}</Alert>}
+          {notice && <Alert tone="success">{notice}</Alert>}
+          <div className="ds-form-grid">
+            <Field label="Title" className="ds-span-2">
+              {(p) => <TextInput {...p} value={form.title} onChange={(e) => update('title', e.target.value)} maxLength={200} required />}
+            </Field>
+            <Field label="Audience">
+              {(p) => (
+                <Select {...p} value={form.audience} onChange={(e) => update('audience', e.target.value)}>
+                  {AUDIENCES.map((a) => (
+                    <option key={a.value} value={a.value}>
+                      {a.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            {form.audience === 'specific_class' && (
+              <Field label="Class">
+                {(p) => (
+                  <Select {...p} value={form.class_id} onChange={(e) => update('class_id', e.target.value)} required>
+                    <option value="">Choose a class…</option>
+                    {classes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            )}
+            <Field label="Message" className="ds-span-2" hint={`Plain text. ${form.body.length}/${MAX_BODY}`}>
+              {(p) => <TextArea {...p} rows={6} value={form.body} onChange={(e) => update('body', e.target.value)} maxLength={MAX_BODY} required />}
+            </Field>
+          </div>
+          <div className="ds-form-actions">
+            {editing && (
+              <Button variant="secondary" onClick={resetForm}>
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : editing ? 'Save changes' : 'Post announcement'}
+            </Button>
+          </div>
+        </form>
+      </Card>
 
-      <h2>All announcements</h2>
-      {announcements.length === 0 ? (
-        <p className="empty-state">Nothing posted yet.</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table announcement-table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Audience</th>
-                <th>Posted by</th>
-                <th>Posted</th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {announcements.map((a) => (
-                <tr key={a.id} className={editing?.id === a.id ? 'row-editing' : undefined}>
-                  <td>
-                    <strong>{a.title}</strong>
-                    <div className="muted small announcement-preview">{a.body}</div>
-                  </td>
-                  <td>{audienceLabel(a)}</td>
-                  <td>{a.author_name ?? '—'}</td>
-                  <td className="small">
-                    {formatDateTime(a.published_at)}
-                    {a.updated_at && a.created_at && new Date(a.updated_at) - new Date(a.created_at) > 60_000 && (
-                      <div className="muted small">edited {formatDateTime(a.updated_at)}</div>
-                    )}
-                  </td>
-                  <td className="row-actions">
-                    <button type="button" className="button-link" onClick={() => startEdit(a)}>
-                      Edit
-                    </button>
-                    <DeleteAction
-                      itemName={`"${a.title}"`}
-                      dependencyChecks={[]}
-                      onDelete={() => runWrite(supabase.from('announcements').delete().eq('id', a.id).select('id'))}
-                      onDeleted={() => {
-                        if (editing?.id === a.id) resetForm()
-                        setNotice(`"${a.title}" was deleted.`)
-                        query.reload()
-                      }}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <Card title="All announcements" flush>
+        <DataTable
+          caption="All announcements"
+          rowKey={(a) => a.id}
+          rows={announcements}
+          empty={<EmptyState icon="megaphone">Nothing posted yet.</EmptyState>}
+          columns={[
+            {
+              key: 'title',
+              header: 'Title',
+              primary: true,
+              render: (a) => (
+                <span>
+                  <span className="ds-inline">
+                    {a.title}
+                    {editing?.id === a.id && <Badge status="editing">Editing</Badge>}
+                  </span>
+                  <span className="ds-muted ds-small ds-clamp-2" style={{ fontWeight: 400 }}>
+                    {a.body}
+                  </span>
+                </span>
+              ),
+            },
+            { key: 'audience', header: 'Audience', render: (a) => audienceLabel(a) },
+            { key: 'author', header: 'Posted by', render: (a) => a.author_name ?? '—' },
+            {
+              key: 'posted',
+              header: 'Posted',
+              render: (a) => (
+                <span className="ds-small">
+                  {formatDateTime(a.published_at)}
+                  {a.updated_at && a.created_at && new Date(a.updated_at) - new Date(a.created_at) > 60_000 && (
+                    <span className="ds-muted" style={{ display: 'block' }}>
+                      edited {formatDateTime(a.updated_at)}
+                    </span>
+                  )}
+                </span>
+              ),
+            },
+            {
+              key: 'actions',
+              header: 'Actions',
+              render: (a) => (
+                <div className="ds-row-actions">
+                  <button type="button" className="ds-btn ds-btn-link" onClick={() => startEdit(a)}>
+                    Edit
+                  </button>
+                  <DeleteAction
+                    itemName={`"${a.title}"`}
+                    buttonClassName="ds-btn ds-btn-link ds-btn-link-danger"
+                    dependencyChecks={[]}
+                    onDelete={() => runWrite(supabase.from('announcements').delete().eq('id', a.id).select('id'))}
+                    onDeleted={() => {
+                      if (editing?.id === a.id) resetForm()
+                      setNotice(`"${a.title}" was deleted.`)
+                      query.reload()
+                    }}
+                  />
+                </div>
+              ),
+            },
+          ]}
+        />
+      </Card>
     </>
   )
 }

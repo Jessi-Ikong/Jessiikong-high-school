@@ -16,6 +16,8 @@ import {
 } from '../../lib/publicContent'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import DeleteAction from '../../components/DeleteAction'
+import { Alert, Badge, Button, Card, EmptyState, LoadingState, PageHeader } from '../../components/ui/Primitives'
+import { Checkbox, Field, Select, TextInput } from '../../components/ui/Form'
 
 // The PUBLIC website's photo gallery (both admin tiers). Published photos are
 // shown to anyone, in the order set here; unpublished ones stay hidden
@@ -56,10 +58,7 @@ export default function PublicGallery() {
 
   return (
     <>
-      <h1>Gallery</h1>
-      <p className="muted">
-        Photos for the school&apos;s public website. Published photos can be seen by anyone, without signing in.
-      </p>
+      <PageHeader title="Gallery" subtitle="Photos for the school's public website. Published photos can be seen by anyone, without signing in." />
       <UploadForm
         nextOrder={Math.max(0, ...photos.map((p) => p.display_order)) + 10}
         onUploaded={(text) => {
@@ -67,71 +66,74 @@ export default function PublicGallery() {
           query.reload()
         }}
       />
-      {message && <p className="alert alert-success" role="status">{message}</p>}
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
+      {message && <Alert tone="success">{message}</Alert>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <div className="filter-bar">
-        <label className="inline-field">
-          Category
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">All categories</option>
-            {GALLERY_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="muted small">
-          {photos.filter((p) => p.is_published).length} of {photos.length} published
-        </span>
+      <div className="ds-filters">
+        <Field label="Category" hint={`${photos.filter((p) => p.is_published).length} of ${photos.length} published`}>
+          {(p) => (
+            <Select {...p} value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">All categories</option>
+              {GALLERY_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </div>
 
       {query.loading ? (
-        <p className="muted">Loading photos…</p>
+        <LoadingState lines={4} label="Loading photos…" />
       ) : query.error ? (
-        <p className="alert alert-error" role="alert">{friendlyDbError(query.error)}</p>
+        <Alert tone="danger">{friendlyDbError(query.error)}</Alert>
       ) : shown.length === 0 ? (
-        <p className="empty-state">{photos.length === 0 ? 'No photos yet.' : 'No photos in this category.'}</p>
+        <Card>
+          <EmptyState icon="grid">{photos.length === 0 ? 'No photos yet.' : 'No photos in this category.'}</EmptyState>
+        </Card>
       ) : (
-        <ul className="gallery-admin">
+        <ul className="ds-gallery-grid" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {shown.map((p) => {
             const index = photos.indexOf(p)
             return (
-              <li key={p.id} className={`panel gallery-item${p.is_published ? '' : ' is-draft'}`}>
-                <a href={galleryUrl(p.image_url)} target="_blank" rel="noreferrer">
-                  <img src={galleryUrl(p.image_url)} alt={p.caption ?? ''} loading="lazy" />
-                </a>
-                <PhotoDetails photo={p} disabled={busy} onSave={(fields, text) => run(() => updatePhoto(p.id, fields), text)} />
-                <div className="row-actions">
-                  {p.is_published ? <span className="badge">Published</span> : <span className="badge badge-muted">Hidden</span>}
-                  <button
-                    type="button"
-                    className="button-link"
-                    disabled={busy}
-                    onClick={() => run(() => updatePhoto(p.id, { is_published: !p.is_published }), p.is_published ? 'Photo hidden from the website.' : 'Photo published.')}
-                  >
-                    {p.is_published ? 'Unpublish' : 'Publish'}
-                  </button>
-                  <button type="button" className="button-link" disabled={busy || index === 0} onClick={() => move(p, -1)} aria-label="Move earlier">
-                    ↑
-                  </button>
-                  <button type="button" className="button-link" disabled={busy || index === photos.length - 1} onClick={() => move(p, 1)} aria-label="Move later">
-                    ↓
-                  </button>
-                  <DeleteAction
-                    itemName={p.caption ? `"${p.caption}"` : 'this photo'}
-                    dependencyChecks={[]}
-                    onDelete={async () => {
-                      await deletePhoto(p.id)
-                      await removeGalleryImage(p.image_url)
-                    }}
-                    onDeleted={() => {
-                      setMessage('Photo deleted.')
-                      query.reload()
-                    }}
-                  />
-                </div>
+              <li key={p.id}>
+                <Card>
+                  <a href={galleryUrl(p.image_url)} target="_blank" rel="noreferrer">
+                    <img className="ds-thumb" src={galleryUrl(p.image_url)} alt={p.caption ?? ''} loading="lazy" style={p.is_published ? undefined : { opacity: 0.6 }} />
+                  </a>
+                  <PhotoDetails photo={p} disabled={busy} onSave={(fields, text) => run(() => updatePhoto(p.id, fields), text)} />
+                  <div className="ds-row-actions" style={{ alignItems: 'center' }}>
+                    <Badge status={p.is_published ? 'published' : 'hidden'}>{p.is_published ? 'Published' : 'Hidden'}</Badge>
+                    <button
+                      type="button"
+                      className="ds-btn ds-btn-link"
+                      disabled={busy}
+                      onClick={() => run(() => updatePhoto(p.id, { is_published: !p.is_published }), p.is_published ? 'Photo hidden from the website.' : 'Photo published.')}
+                    >
+                      {p.is_published ? 'Unpublish' : 'Publish'}
+                    </button>
+                    <button type="button" className="ds-btn ds-btn-link" disabled={busy || index === 0} onClick={() => move(p, -1)} aria-label="Move earlier">
+                      ↑
+                    </button>
+                    <button type="button" className="ds-btn ds-btn-link" disabled={busy || index === photos.length - 1} onClick={() => move(p, 1)} aria-label="Move later">
+                      ↓
+                    </button>
+                    <DeleteAction
+                      itemName={p.caption ? `"${p.caption}"` : 'this photo'}
+                      buttonClassName="ds-btn ds-btn-link ds-btn-link-danger"
+                      dependencyChecks={[]}
+                      onDelete={async () => {
+                        await deletePhoto(p.id)
+                        await removeGalleryImage(p.image_url)
+                      }}
+                      onDeleted={() => {
+                        setMessage('Photo deleted.')
+                        query.reload()
+                      }}
+                    />
+                  </div>
+                </Card>
               </li>
             )
           })}
@@ -146,19 +148,19 @@ function PhotoDetails({ photo, disabled, onSave }) {
   const [category, setCategory] = useState(photo.category)
   const changed = caption.trim() !== (photo.caption ?? '') || category !== photo.category
   return (
-    <div className="gallery-item-details">
-      <input value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={300} placeholder="Caption" aria-label="Caption" />
-      <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category">
+    <div className="ds-stack" style={{ margin: '12px 0' }}>
+      <TextInput value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={300} placeholder="Caption" aria-label="Caption" />
+      <Select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category">
         {GALLERY_CATEGORIES.map((c) => (
           <option key={c} value={c}>
             {c}
           </option>
         ))}
-      </select>
+      </Select>
       {changed && (
-        <button type="button" className="button-secondary" disabled={disabled} onClick={() => onSave({ caption: caption.trim() || null, category }, 'Photo details saved.')}>
+        <Button variant="secondary" block disabled={disabled} onClick={() => onSave({ caption: caption.trim() || null, category }, 'Photo details saved.')}>
           Save
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -200,43 +202,39 @@ function UploadForm({ nextOrder, onUploaded }) {
   }
 
   return (
-    <form className="panel form-grid" onSubmit={handleSubmit}>
-      <h2>Upload a photo</h2>
-      <p className="alert alert-info-plain form-note" role="note">
-        ⚠️ {CONSENT_NOTE}
-      </p>
-      <label>
-        Photo <span className="muted small">(JPEG/PNG/WebP, max 10 MB)</span>
-        <input key={inputKey} type="file" accept={IMAGE_ACCEPT} onChange={(e) => setFile(e.target.files[0] ?? null)} required />
-      </label>
-      <label>
-        Caption <span className="muted small">(optional)</span>
-        <input value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={300} placeholder="Inter-house sports, 2026" />
-      </label>
-      <label>
-        Category
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          {GALLERY_CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="checkbox-field">
-        <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} />
-        Publish now
-      </label>
-      <label className="checkbox-field form-note">
-        <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
-        This photo is appropriate for public display, as described above.
-      </label>
-      {error && <p className="alert alert-error form-note" role="alert">{error}</p>}
-      <div className="form-actions">
-        <button type="submit" disabled={saving}>
-          {saving ? 'Uploading…' : 'Upload photo'}
-        </button>
-      </div>
-    </form>
+    <Card title="Upload a photo">
+      <form onSubmit={handleSubmit}>
+        <Alert tone="warning">⚠️ {CONSENT_NOTE}</Alert>
+        <div className="ds-form-grid">
+          <Field label="Photo" hint="JPEG/PNG/WebP, max 10 MB">
+            {(p) => <TextInput {...p} key={inputKey} type="file" accept={IMAGE_ACCEPT} onChange={(e) => setFile(e.target.files[0] ?? null)} required />}
+          </Field>
+          <Field label="Caption" hint="Optional">
+            {(p) => <TextInput {...p} value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={300} placeholder="Inter-house sports, 2026" />}
+          </Field>
+          <Field label="Category">
+            {(p) => (
+              <Select {...p} value={category} onChange={(e) => setCategory(e.target.value)}>
+                {GALLERY_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </div>
+        <div className="ds-checklist">
+          <Checkbox label="Publish now" checked={publish} onChange={(e) => setPublish(e.target.checked)} />
+          <Checkbox label="This photo is appropriate for public display, as described above." checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+        </div>
+        {error && <Alert tone="danger">{error}</Alert>}
+        <div className="ds-form-actions">
+          <Button type="submit" disabled={saving}>
+            {saving ? 'Uploading…' : 'Upload photo'}
+          </Button>
+        </div>
+      </form>
+    </Card>
   )
 }
