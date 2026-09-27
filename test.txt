@@ -4203,3 +4203,139 @@ Known issues / follow-ups / assumptions:
   - No ID-card effects for admins: admins don't have ID cards.
   - Not committed yet; migration 042 not applied.
 -------------------------------------------
+
+[2026-09-26 11:33] Task: Pre-deployment audit: localhost / single-origin assumptions, CORS, secrets in the bundle, Vercel routing, bundle size
+
+Files changed/added:
+  CHANGED: vercel.json (SPA rewrite no longer applies to /assets/). Nothing else changed in code or settings.
+
+What was done / found:
+  1. CORS (Edge Functions): ALREADY FINE, no change.
+     - invite-user, initialize-payment, verify-payment and verify-card send Access-Control-Allow-Origin: * on every
+       response (including errors and the OPTIONS preflight). The allowed headers match what supabase-js sends.
+     - paystack-webhook and reconcile-pending-payments send no CORS headers. That's correct: Paystack's servers and the
+       database's scheduled job call them, never a browser.
+     - Why "*" rather than an allow-list: security comes from the signed-in user's token + RLS inside each function (and
+       Paystack's signature for the webhook), not from CORS. The app sends its token in a header, not a cookie, so "*"
+       can't let another site act as a signed-in user. An allow-list would add a setting to update for every new
+       address (Vercel preview URLs, the custom domain) with no security gain.
+  2. LOCALHOST: nothing hardcoded in the app or the functions. The only localhost mentions in the repo are
+     supabase/config.toml (the LOCAL development auth settings; that's what it's for). BUT three LIVE settings still
+     point at localhost and MUST be changed at deployment:
+     a) Supabase secret APP_URL = http://localhost:5180 (identified by its fingerprint; the value wasn't printed).
+        It's used for:
+          - invite emails: the link to /set-password;
+          - Paystack: the address parents are sent back to after paying (/parent/payment-callback).
+        Until it's changed, new staff/students/parents get invite links to localhost, and parents land on localhost
+        after paying. Their payment itself still completes and is confirmed by the webhook.
+     b) The live project's auth settings: Site URL = http://localhost:3000 and Redirect URLs = EMPTY.
+        - "Forgot password" asks Supabase to send people back to <current site>/set-password, and invites to
+          APP_URL/set-password.
+        - Supabase only honours addresses on the Redirect URLs list; otherwise it falls back to the Site URL (localhost).
+        - So reset and invite links would not work from Vercel.
+     c) ID-card QR codes: the PDF puts VITE_PUBLIC_APP_URL (if set) or the CURRENT page address into each QR code. It
+        isn't set, so cards downloaded from Vercel will point at the vercel.app address.
+        - Set VITE_PUBLIC_APP_URL to the final address before printing cards for real.
+        - Any card PDF downloaded on the PC points at localhost: download it again after deployment. The card and its
+          token stay the same; only the printed QR changes. (Live: 3 cards issued, 2 active, all from testing.)
+  3. SECRETS IN THE BUILT BUNDLE: checked the REAL output (fresh npm run build, then searched every file in dist/):
+     - the only key present is the public anon key (its role claim reads "anon"). That's expected and safe: it's meant
+       to be public, and RLS protects the data;
+     - NOT present: the service role key or any "service_role" text, new-style secret keys, any Paystack key (sk_/pk_),
+       PAYSTACK_SECRET, the cron secret, database URLs, source maps, or any dev-preview code or its test password;
+     - the "localhost" strings in the bundle are library defaults (React Router, the Supabase client), overridden at
+       run time; not ours;
+     - .env.local holds only the three VITE_ public values and is git-ignored.
+  4. VERCEL ROUTING: the rewrite was already correct for a Vite single-page app:
+     - Vercel serves real files first (the /assets bundles, favicon.svg) and only then applies rewrites;
+     - so every app path (/admin/..., /parent/payment-callback, /set-password, /news/<id>, /verify/<token>) gets
+       index.html and React Router handles it.
+     IMPROVED: /assets/ is now excluded ("/((?!assets/).*)", the same exclusion pattern Vercel documents for /api/).
+     - Why: after a redeploy, a browser with the old page open may request an old JS file (e.g. the lazily loaded ID-card
+       PDF code). Before, it got index.html with status 200, which breaks with a confusing "failed to load module"
+       error. Now it gets a clean 404.
+     - Checked with the same regular expression against 10 sample paths; the file is valid JSON.
+     - Not tested on Vercel itself (no deployment yet): check on the first deploy (steps below).
+  5. BUNDLE SIZE (optional): MEASURED, NOT CHANGED.
+     - The ID-card PDF/QR code is ALREADY lazy (its own 426 kB chunk plus 3 helper chunks, loaded only when a card is
+       made). The main file is 812 kB (222 kB compressed).
+     - A throwaway experiment lazy-loading every signed-in page: 554 kB (159 kB compressed), about 28% less for
+       public-site visitors, and the 500 kB warning STILL appears (React + the Supabase client + router + public pages).
+     - Reverted, because it touches every signed-in route and I can't check those in a production build without real
+       logins. 222 kB compressed is acceptable for now; it's a reasonable follow-up to do and test together.
+
+Automated tests run:
+  - npm run build (fresh dist/) + the bundle search above; npm run lint: 0 problems.
+  - Rewrite pattern checked against sample paths.
+  - Live, read-only: secrets list (fingerprints only), auth config comparison (supabase config diff), ID card count.
+
+How to test manually / DEPLOYMENT STEPS (in this order):
+  1. Deploy on Vercel (Framework preset: Vite; build "npm run build"; output "dist").
+     Environment variables (Production, and Preview if wanted):
+       VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (same values as .env.local);
+       VITE_PUBLIC_APP_URL = the final public address (e.g. https://<project>.vercel.app for now).
+     The build reads them, so redeploy after changing them.
+  2. Supabase → Edge Functions → Secrets: set APP_URL to the same address (no trailing slash needed). No redeploy of
+     the functions is needed; they read it on each call.
+  3. Supabase → Authentication → URL Configuration:
+     - Site URL = the public address;
+     - Redirect URLs: add https://<your-address>/set-password (and the custom domain's /set-password later).
+       For Vercel preview deployments you can also add https://*-<team>.vercel.app/set-password.
+     DO NOT use "supabase config push" for this: the local config.toml would also overwrite other live settings
+     (email confirmations, MFA, password length and more; config diff shows 14 differences).
+     Optional: raise the live "Minimum password length" from 6 to 8 to match the app's own rule (the app already
+     enforces 8).
+  4. Check on the live site:
+     - open /admin/students directly and refresh: the page loads (rewrite works);
+     - /assets/does-not-exist.js shows 404 (not the app);
+     - Forgot password → the email link opens <your-address>/set-password;
+     - invite a test account (a "+" alias) → the link opens <your-address>/set-password;
+     - a Paystack test payment returns to <your-address>/parent/payment-callback;
+     - download an ID card PDF and scan its QR → <your-address>/verify/...
+  5. When the custom domain is added: update VITE_PUBLIC_APP_URL (and redeploy), APP_URL, the Site URL and Redirect
+     URLs. CORS needs nothing (it allows any origin).
+
+Known issues / follow-ups / assumptions:
+  - I did not change APP_URL or the auth URL settings: the production address isn't known yet, and they're live
+    settings you manage. They are the three blockers above.
+  - Route-level code splitting: measured, recommended as a later, tested change.
+  - Not committed yet (vercel.json).
+-------------------------------------------
+
+[2026-09-27 11:15] Task: Favicon from the school crest (SVG + PNG fallbacks); page title check
+Files changed/added:
+  - public/favicon.svg (REPLACED: it was Vite's logo under this name; now the crest)
+  - public/favicon-32x32.png (NEW), public/apple-touch-icon.png (NEW, 180x180)
+  - index.html (icon links)
+What was done:
+  - favicon.svg is the SAME drawing as src/components/public/Crest.jsx (shield, rising sun with 5 rays, open book),
+    with the brand colours written in (green #0e4a37, gold #e0a526, cream #fbf7ef), since a favicon can't read the
+    app's CSS. The canvas is square with a little side margin, so the tall shield isn't squashed.
+  - PNGs rendered from that SVG with headless Chrome:
+    - favicon-32x32.png: transparent background, for browsers without SVG favicons;
+    - apple-touch-icon.png: 180x180 on the cream background, with padding. iOS fills transparent areas with black, so
+      this one is opaque.
+  - index.html now links all three: SVG icon, PNG 32x32 icon, apple-touch-icon.
+  - No vite.svg existed. The old Vite logo was saved as public/favicon.svg and has been overwritten. Nothing else
+    references a Vite or React logo.
+  - Title: already "Jessiikong High School" in index.html. The only other title change is a news post's own title
+    ("<post> · Jessiikong High School"), which is intended. No Vite default anywhere.
+Automated tests run:
+  - Fresh npm run build: dist/ contains favicon.svg, favicon-32x32.png and apple-touch-icon.png, byte-identical to
+    public/; none of the old Vite logo remains. dist/index.html has the three icon links and the title.
+  - Served the build (vite preview): /favicon.svg → 200 image/svg+xml (1322 bytes), /favicon-32x32.png → 200
+    image/png, /apple-touch-icon.png → 200 image/png.
+  - Viewed both PNGs: the crest renders correctly (the 32px one is legible as the green shield with the sun and book).
+  - Vercel: these are real files, so they're served directly (the SPA rewrite only applies when no file matches).
+How to test manually:
+  1. After deploying (or npm run build && npx vite preview), open the site. The tab shows the green crest, not the
+     purple Vite logo.
+     Browsers cache favicons hard: if you still see the old one, open the site in a private window or visit
+     /favicon.svg once and reload.
+  2. Visit /favicon.svg, /favicon-32x32.png and /apple-touch-icon.png directly: each shows the crest.
+  3. iPhone/iPad: Safari → Share → Add to Home Screen. The icon is the crest on cream.
+Known issues / follow-ups / assumptions:
+  - No .ico file or web app manifest: SVG + PNG cover current browsers. A manifest (for "install app" on Android)
+    could be added later if wanted.
+  Not committed yet.
+-------------------------------------------
